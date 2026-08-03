@@ -1,62 +1,53 @@
 import type {
-  FeedbackMemory,
-  SimilarFeedbackMemoryMatchForPrompt,
-} from "./feedbackAnalysis.types";
+  FeedbackMemoryForDecisionPrompt,
+  SimilarFeedbackMemoryMatchForDecisionPrompt,
+} from "./findSimilarFeedbackMemories";
 
-export function buildFeedbackMemoryDecisionPrompt(input: {
-  new_memory: FeedbackMemory;
-  similar_memories: SimilarFeedbackMemoryMatchForPrompt[];
-}): string {
+type BuildFeedbackMemoryDecisionPromptInput = {
+  new_memory: FeedbackMemoryForDecisionPrompt;
+  similar_memories: SimilarFeedbackMemoryMatchForDecisionPrompt[];
+};
+
+export function buildFeedbackMemoryDecisionPrompt(
+  input: BuildFeedbackMemoryDecisionPromptInput,
+): string {
   return `
-You are a feedback memory decision engine for a personal AI assistant.
+You are deciding how to handle a newly extracted user feedback memory.
 
-Your task is to compare one incoming feedback memory against similar active stored feedback memories.
+Choose exactly one action:
 
-You must return exactly one final decision.
+1. CREATE_NEW
+   Use this when the new memory represents a distinct preference, instruction, rule, or context.
 
-Available decisions:
+2. APPEND_RECALL
+   Use this when the new memory expresses the same preference or rule as an existing memory.
+   Select the existing memory as target_memory_id.
 
-- APPEND_RECALL:
-  Use this only when the incoming feedback represents the same underlying user preference, complaint, requirement, or unresolved issue as one stored memory.
-  The stored memory remains valid.
-  Another system should append a recall to the selected stored memory.
-
-- SUSPEND_AND_CREATE:
-  Use this only when the incoming feedback contradicts, replaces, reverses, or materially changes the user preference represented by one stored memory.
-  Another system should suspend the selected stored memory and store the incoming memory as a new active memory.
-
-- CREATE_NEW:
-  Use this when the incoming feedback is independent from all candidates.
-  Another system should store the incoming memory as a new active memory.
+3. SUSPEND_AND_CREATE
+   Use this when the new memory replaces, contradicts, or supersedes an existing active memory.
+   Select the outdated existing memory as target_memory_id.
 
 Important rules:
+- Use only the provided candidate memory IDs.
+- Do not select an ID that is not listed.
+- Do not choose APPEND_RECALL or SUSPEND_AND_CREATE without a target_memory_id.
+- Use CREATE_NEW when none of the candidates represents the same or conflicting preference.
+- Similarity score only identifies retrieval candidates. It does not alone determine the decision.
+- Analyze meaning, user intent, scope, task type, and whether the new preference conflicts with an old preference.
+- Return only valid JSON with no markdown code fence.
 
-- Embedding similarity is only a candidate-retrieval signal. High similarity does not automatically mean the memories are identical.
-- Prefer APPEND_RECALL only for the same preference or recurring version of the same unresolved problem.
-- Use SUSPEND_AND_CREATE only for an actual conflict, replacement, reversal, or changed preference.
-- Use CREATE_NEW when the incoming memory is distinct, even if it shares topic, domain, task type, or wording with an existing memory.
-- Do not suspend a memory only because a new memory is more specific.
-- target_memory_id must be one of the provided candidate memory IDs for APPEND_RECALL and SUSPEND_AND_CREATE.
-- target_memory_id must be null for CREATE_NEW.
-- recall_summary must be non-null only for APPEND_RECALL.
-- Keep reasoning concise and in English.
-- Return valid JSON only.
-- Do not return Markdown.
-- Do not return any keys outside the required schema.
-
-Required JSON schema:
-
+Required JSON format:
 {
-  "decision": "APPEND_RECALL" | "SUSPEND_AND_CREATE" | "CREATE_NEW",
-  "target_memory_id": "candidate memory UUID or null",
-  "reasoning": "short English explanation",
-  "recall_summary": "short English summary for the recall or null"
+  "decision": "CREATE_NEW" | "APPEND_RECALL" | "SUSPEND_AND_CREATE",
+  "target_memory_id": "candidate-id" | null,
+  "reasoning": "Short explanation",
+  "recall_summary": "Short summary for APPEND_RECALL" | null
 }
 
-Incoming feedback memory:
+New memory:
 ${JSON.stringify(input.new_memory, null, 2)}
 
-Similar stored feedback memory candidates:
+Similar stored memories:
 ${JSON.stringify(input.similar_memories, null, 2)}
 `.trim();
 }

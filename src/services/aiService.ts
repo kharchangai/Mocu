@@ -15,7 +15,10 @@ type LlmConfig = {
   model: string;
 };
 
+type AudioFormat = "mp3" | "wav" | "opus" | "aac" | "flac";
+
 const MAX_HISTORY_MESSAGES = 12;
+const DEFAULT_TTS_FORMAT: AudioFormat = "mp3";
 
 const getApiConfig = async (): Promise<AppSettings> => {
   const config = await readSettings();
@@ -42,6 +45,48 @@ const getApiConfig = async (): Promise<AppSettings> => {
 
 const normalizeBaseUrl = (baseUrl: string): string => {
   return baseUrl.trim().replace(/\/+$/, "");
+};
+
+const getAudioMimeType = (
+  format: AudioFormat,
+): string => {
+  switch (format) {
+    case "mp3":
+      return "audio/mpeg";
+
+    case "wav":
+      return "audio/wav";
+
+    case "opus":
+      return "audio/ogg; codecs=opus";
+
+    case "aac":
+      return "audio/aac";
+
+    case "flac":
+      return "audio/flac";
+  }
+};
+
+const getAudioExtension = (
+  format: AudioFormat,
+): string => {
+  switch (format) {
+    case "mp3":
+      return "mp3";
+
+    case "wav":
+      return "wav";
+
+    case "opus":
+      return "ogg";
+
+    case "aac":
+      return "aac";
+
+    case "flac":
+      return "flac";
+  }
 };
 
 const throwIfAborted = (
@@ -200,7 +245,6 @@ export async function transcribeAudio(
   }
 
   const baseUrl = normalizeBaseUrl(config.expensiveBaseUrl);
-
   const formData = new FormData();
 
   const extension = audioBlob.type.includes("ogg")
@@ -277,10 +321,6 @@ export async function runAgent(
 
   const userMessage = new HumanMessage(cleanUserInput);
 
-  /*
-   * History is committed only after a successful request.
-   * A cancelled or failed message will not become permanent context.
-   */
   const requestMessages = [
     ...messageHistory,
     userMessage,
@@ -343,16 +383,20 @@ export async function generateSpeech(
   }
 
   const baseUrl = normalizeBaseUrl(config.expensiveBaseUrl);
+  const format = DEFAULT_TTS_FORMAT;
 
   const payload = {
     model: config.ttsModel.trim(),
     input: cleanText,
     voice: config.ttsVoice.trim(),
+    response_format: format,
   };
 
-  console.log("Sending TTS request:", {
+  console.log("Sending OpenRouter TTS request:", {
+    url: `${baseUrl}/audio/speech`,
     model: payload.model,
     voice: payload.voice,
+    responseFormat: payload.response_format,
     textLength: payload.input.length,
   });
 
@@ -363,6 +407,7 @@ export async function generateSpeech(
       headers: {
         Authorization: `Bearer ${config.apiKey.trim()}`,
         "Content-Type": "application/json",
+        Accept: getAudioMimeType(format),
       },
       body: JSON.stringify(payload),
       signal,
@@ -374,19 +419,65 @@ export async function generateSpeech(
   if (!response.ok) {
     const errorText = await response.text();
 
-    console.error(
-      "TTS request failed:",
+    console.error("OpenRouter TTS request failed:", {
+      status: response.status,
+      statusText: response.statusText,
+      contentType: response.headers.get("content-type"),
       errorText,
-    );
+    });
 
     throw new Error(
       `TTS Error (${response.status}): ${errorText}`,
     );
   }
 
-  const speechBlob = await response.blob();
+  const responseContentType = response.headers.get("content-type") || "";
+  const responseBuffer = await response.arrayBuffer();
 
   throwIfAborted(signal);
+
+  if (responseBuffer.byteLength === 0) {
+    throw new Error(
+      "TTS Error: OpenRouter returned an empty audio response.",
+    );
+  }
+
+  const isJsonResponse = responseContentType.includes(
+    "application/json",
+  );
+
+  const isHtmlResponse = responseContentType.includes(
+    "text/html",
+  );
+
+  if (isJsonResponse || isHtmlResponse) {
+    const responseText = new TextDecoder().decode(responseBuffer);
+
+    console.error("Unexpected TTS response:", {
+      contentType: responseContentType,
+      responseText,
+    });
+
+    throw new Error(
+      `TTS Error: Expected audio data but received ${responseContentType || "an unknown response type"}: ${responseText}`,
+    );
+  }
+
+  const audioMimeType = getAudioMimeType(format);
+
+  const speechBlob = new Blob(
+    [responseBuffer],
+    {
+      type: audioMimeType,
+    },
+  );
+
+  console.log("OpenRouter TTS audio received:", {
+    bytes: speechBlob.size,
+    serverContentType: responseContentType || "missing",
+    browserBlobType: speechBlob.type,
+    extension: getAudioExtension(format),
+  });
 
   return speechBlob;
 }

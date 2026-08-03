@@ -13,7 +13,6 @@ import {
   FeedbackMemorySchema,
   type FeedbackMemory,
   type FeedbackMemoryDecision,
-  type SimilarFeedbackMemoryMatchForPrompt,
 } from "./feedbackAnalysis.types";
 
 const FEEDBACK_MEMORIES_DIRECTORY = "feedback-memories";
@@ -67,6 +66,35 @@ export type AnalyzeFeedbackMemoryActionResult = {
   valid_memories_count: number;
 };
 
+export type FeedbackMemoryForDecisionPrompt = {
+  id: string;
+  state: string;
+
+  problem_category: string;
+  task_type: string;
+  scope: string;
+  scope_description: string;
+
+  created_at: string;
+  activated_at: string;
+
+  suspended_at: string | null;
+  suspension_reason: string | null;
+  replaced_by_memory_id: string | null;
+
+  source_interaction: {
+    user_request: string;
+    agent_response: string;
+    user_feedback: string;
+  };
+};
+
+export type SimilarFeedbackMemoryMatchForDecisionPrompt = {
+  file_name: string;
+  similarity_score: number;
+  memory: FeedbackMemoryForDecisionPrompt;
+};
+
 function validateOptions(
   options: FindSimilarFeedbackMemoriesOptions,
 ): Required<Omit<FindSimilarFeedbackMemoriesOptions, "exclude_memory_id">> {
@@ -110,6 +138,33 @@ function removeMarkdownCodeFence(value: string): string {
     .replace(/^```\s*/i, "")
     .replace(/\s*```$/i, "")
     .trim();
+}
+
+function createMemoryForDecisionPrompt(
+  memory: FeedbackMemory,
+): FeedbackMemoryForDecisionPrompt {
+  return {
+    id: memory.id,
+    state: memory.state,
+
+    problem_category: memory.problem_category,
+    task_type: memory.task_type,
+    scope: memory.scope,
+    scope_description: memory.scope_description,
+
+    created_at: memory.created_at,
+    activated_at: memory.activated_at,
+
+    suspended_at: memory.suspended_at,
+    suspension_reason: memory.suspension_reason,
+    replaced_by_memory_id: memory.replaced_by_memory_id,
+
+    source_interaction: {
+      user_request: memory.source_interaction.user_request,
+      agent_response: memory.source_interaction.agent_response,
+      user_feedback: memory.source_interaction.user_feedback,
+    },
+  };
 }
 
 async function readFeedbackMemoryFromFile(
@@ -367,15 +422,17 @@ export async function analyzeFeedbackMemoryDecision(
     return createFallbackCreateNewDecision();
   }
 
-  const similarMemoriesForPrompt: SimilarFeedbackMemoryMatchForPrompt[] =
+  const newMemoryForPrompt = createMemoryForDecisionPrompt(newMemory);
+
+  const similarMemoriesForPrompt: SimilarFeedbackMemoryMatchForDecisionPrompt[] =
     matches.map((match) => ({
       file_name: match.file_name,
       similarity_score: match.score,
-      memory: match.memory,
+      memory: createMemoryForDecisionPrompt(match.memory),
     }));
 
   const prompt = buildFeedbackMemoryDecisionPrompt({
-    new_memory: newMemory,
+    new_memory: newMemoryForPrompt,
     similar_memories: similarMemoriesForPrompt,
   });
 
