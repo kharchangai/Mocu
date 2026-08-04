@@ -23,6 +23,12 @@ const EMBEDDING_FIELD_PRIORITY_VALUES = [
   "scope",
 ] as const;
 
+const CONDITION_EMBEDDING_FIELD_PRIORITY_VALUES = [
+  "scope_description",
+  "problem_category",
+  "task_type",
+] as const;
+
 const MEMORY_DECISION_VALUES = [
   "APPEND_RECALL",
   "SUSPEND_AND_CREATE",
@@ -35,13 +41,23 @@ function hasAtMostTwoWords(value: string): boolean {
   return words.length >= 1 && words.length <= MAX_SHORT_LABEL_WORDS;
 }
 
+function hasExactlyValuesInOrder<T extends readonly string[]>(
+  values: readonly string[],
+  expected: T,
+): boolean {
+  return (
+    values.length === expected.length &&
+    values.every((value, index) => value === expected[index])
+  );
+}
+
 export const MemoryScopeSchema = z.enum(MEMORY_SCOPE_VALUES);
 
 export const MemoryStateSchema = z.enum(MEMORY_STATE_VALUES);
 
-/*
- * z.string().datetime() is deprecated in Zod v4.
- * Use z.iso.datetime() for ISO 8601 datetime validation.
+/**
+ * Requires Zod v4.
+ * z.iso.datetime() validates ISO 8601 datetime strings.
  */
 export const IsoDateTimeSchema = z.iso.datetime({
   error: "Value must be a valid ISO 8601 datetime string.",
@@ -56,6 +72,12 @@ export const NonEmptyTrimmedStringSchema = z
   .trim()
   .min(1, {
     error: "Value cannot be empty.",
+  });
+
+export const EmbeddingVectorSchema = z
+  .array(z.number().finite())
+  .min(1, {
+    error: "Embedding must contain at least one finite numeric value.",
   });
 
 export const FeedbackMemorySourceInteractionSchema = z.object({
@@ -76,24 +98,91 @@ export const FeedbackMemoryRecallSchema = z.object({
   source_interaction: FeedbackMemorySourceInteractionSchema,
 });
 
-export const FeedbackMemoryEmbeddingMetadataSchema = z.object({
-  strategy: z.literal("weighted_text_repetition"),
+/**
+ * Metadata for the main memory embedding.
+ *
+ * This embedding is used for:
+ * - Memory similarity
+ * - Duplicate detection
+ * - Relationship analysis
+ * - Memory-management operations
+ */
+export const FeedbackMemoryEmbeddingMetadataSchema = z
+  .object({
+    strategy: z.literal("weighted_text_repetition"),
 
-  field_priority: z
-    .array(z.enum(EMBEDDING_FIELD_PRIORITY_VALUES))
-    .length(4, {
-      error: "field_priority must contain exactly four fields.",
+    field_priority: z
+      .array(z.enum(EMBEDDING_FIELD_PRIORITY_VALUES))
+      .length(EMBEDDING_FIELD_PRIORITY_VALUES.length, {
+        error: "field_priority must contain exactly four fields.",
+      }),
+
+    repetitions: z.object({
+      scope_description: z.number().int().positive(),
+      problem_category: z.number().int().positive(),
+      task_type: z.number().int().positive(),
+      scope: z.number().int().positive(),
     }),
 
-  repetitions: z.object({
-    scope_description: z.number().int().positive(),
-    problem_category: z.number().int().positive(),
-    task_type: z.number().int().positive(),
-    scope: z.number().int().positive(),
-  }),
+    generated_at: IsoDateTimeSchema,
+  })
+  .superRefine((value, context) => {
+    if (
+      !hasExactlyValuesInOrder(
+        value.field_priority,
+        EMBEDDING_FIELD_PRIORITY_VALUES,
+      )
+    ) {
+      context.addIssue({
+        code: "custom",
+        message:
+          "field_priority must contain the expected fields in the required order: " +
+          "scope_description, problem_category, task_type, scope.",
+        path: ["field_priority"],
+      });
+    }
+  });
 
-  generated_at: IsoDateTimeSchema,
-});
+/**
+ * Metadata for the condition embedding.
+ *
+ * This embedding is only used to retrieve active memories that should
+ * be injected for a new request under a similar activation condition.
+ */
+export const FeedbackMemoryConditionEmbeddingMetadataSchema = z
+  .object({
+    strategy: z.literal("weighted_text_repetition"),
+
+    field_priority: z
+      .array(z.enum(CONDITION_EMBEDDING_FIELD_PRIORITY_VALUES))
+      .length(CONDITION_EMBEDDING_FIELD_PRIORITY_VALUES.length, {
+        error: "field_priority must contain exactly three fields.",
+      }),
+
+    repetitions: z.object({
+      scope_description: z.number().int().positive(),
+      problem_category: z.number().int().positive(),
+      task_type: z.number().int().positive(),
+    }),
+
+    generated_at: IsoDateTimeSchema,
+  })
+  .superRefine((value, context) => {
+    if (
+      !hasExactlyValuesInOrder(
+        value.field_priority,
+        CONDITION_EMBEDDING_FIELD_PRIORITY_VALUES,
+      )
+    ) {
+      context.addIssue({
+        code: "custom",
+        message:
+          "field_priority must contain the expected fields in the required order: " +
+          "scope_description, problem_category, task_type.",
+        path: ["field_priority"],
+      });
+    }
+  });
 
 export const FeedbackAnalysisModelResultSchema = z.object({
   problem_summary: NonEmptyTrimmedStringSchema,
@@ -110,11 +199,28 @@ export const FeedbackAnalysisModelResultSchema = z.object({
 
   scope_description: NonEmptyTrimmedStringSchema,
 
-  confidence: z.number().min(0).max(1),
+  confidence: z.number().finite().min(0).max(1),
 });
 
+/**
+ * Persistent feedback memory.
+ *
+ * `condition_id` is nullable only for backward compatibility with
+ * memory files created before feedback conditions were introduced.
+ *
+ * Every newly created memory should always receive a non-null condition_id.
+ */
 export const FeedbackMemorySchema = FeedbackAnalysisModelResultSchema.extend({
   id: UuidSchema,
+
+  /**
+   * The ID of the feedback condition that activates this memory.
+   *
+   * This must be explicitly declared because Zod strips unknown keys
+   * by default. Without this field, condition_id would be removed by
+   * FeedbackMemorySchema.parse(...) before the memory is saved.
+   */
+  condition_id: UuidSchema.nullable().default(null),
 
   state: MemoryStateSchema,
 
@@ -122,9 +228,9 @@ export const FeedbackMemorySchema = FeedbackAnalysisModelResultSchema.extend({
 
   activated_at: IsoDateTimeSchema.nullable(),
 
-  /*
-   * These fields must be null for an active memory.
-   * They receive real values only when the memory is suspended or superseded.
+  /**
+   * These fields must be null while the memory is active.
+   * They receive real values only after suspension or supersession.
    */
   suspended_at: IsoDateTimeSchema.nullable(),
 
@@ -136,15 +242,114 @@ export const FeedbackMemorySchema = FeedbackAnalysisModelResultSchema.extend({
 
   recall_count: z.number().int().nonnegative().default(0),
 
-  combined_embedding: z.array(z.number().finite()).min(1, {
-    error: "combined_embedding must contain at least one value.",
-  }),
+  /**
+   * The primary embedding used for memory-to-memory comparison.
+   */
+  combined_embedding: EmbeddingVectorSchema,
 
   embedding_text: NonEmptyTrimmedStringSchema,
 
   embedding_metadata: FeedbackMemoryEmbeddingMetadataSchema,
 
+  /**
+   * The dedicated embedding used for condition-based memory retrieval.
+   *
+   * Its source text is built from:
+   * - scope_description
+   * - problem_category
+   * - task_type
+   */
+  condition_embedding: EmbeddingVectorSchema,
+
+  condition_embedding_text: NonEmptyTrimmedStringSchema,
+
+  condition_embedding_metadata:
+    FeedbackMemoryConditionEmbeddingMetadataSchema,
+
   source_interaction: FeedbackMemorySourceInteractionSchema,
+}).superRefine((memory, context) => {
+  const isActive = memory.state === "active";
+  const isSuspended = memory.state === "suspended";
+  const isSuperseded = memory.state === "superseded";
+
+  if (isActive && memory.activated_at === null) {
+    context.addIssue({
+      code: "custom",
+      message: "Active memories must have activated_at.",
+      path: ["activated_at"],
+    });
+  }
+
+  if (
+    isActive &&
+    (memory.suspended_at !== null ||
+      memory.suspension_reason !== null ||
+      memory.replaced_by_memory_id !== null)
+  ) {
+    context.addIssue({
+      code: "custom",
+      message:
+        "Active memories must have null suspended_at, suspension_reason, and replaced_by_memory_id.",
+      path: ["state"],
+    });
+  }
+
+  if (isSuspended && memory.suspended_at === null) {
+    context.addIssue({
+      code: "custom",
+      message: "Suspended memories must have suspended_at.",
+      path: ["suspended_at"],
+    });
+  }
+
+  if (isSuspended && memory.suspension_reason === null) {
+    context.addIssue({
+      code: "custom",
+      message: "Suspended memories must have suspension_reason.",
+      path: ["suspension_reason"],
+    });
+  }
+
+  if (isSuspended && memory.replaced_by_memory_id !== null) {
+    context.addIssue({
+      code: "custom",
+      message:
+        "Suspended memories must not have replaced_by_memory_id. Use superseded state instead.",
+      path: ["replaced_by_memory_id"],
+    });
+  }
+
+  if (isSuperseded && memory.suspended_at === null) {
+    context.addIssue({
+      code: "custom",
+      message: "Superseded memories must have suspended_at.",
+      path: ["suspended_at"],
+    });
+  }
+
+  if (isSuperseded && memory.suspension_reason === null) {
+    context.addIssue({
+      code: "custom",
+      message: "Superseded memories must have suspension_reason.",
+      path: ["suspension_reason"],
+    });
+  }
+
+  if (isSuperseded && memory.replaced_by_memory_id === null) {
+    context.addIssue({
+      code: "custom",
+      message: "Superseded memories must have replaced_by_memory_id.",
+      path: ["replaced_by_memory_id"],
+    });
+  }
+
+  if (memory.recall_count !== memory.recalls.length) {
+    context.addIssue({
+      code: "custom",
+      message: "recall_count must equal recalls.length.",
+      path: ["recall_count"],
+    });
+  }
 });
 
 export const FeedbackMemoryDecisionSchema = z
@@ -158,70 +363,67 @@ export const FeedbackMemoryDecisionSchema = z
     recall_summary: NonEmptyTrimmedStringSchema.nullable(),
   })
   .superRefine((value, context) => {
-    if (
-      value.decision === "APPEND_RECALL" &&
-      value.target_memory_id === null
-    ) {
-      context.addIssue({
-        code: "custom",
-        message: "APPEND_RECALL requires target_memory_id.",
-        path: ["target_memory_id"],
-      });
-    }
+    switch (value.decision) {
+      case "APPEND_RECALL": {
+        if (value.target_memory_id === null) {
+          context.addIssue({
+            code: "custom",
+            message: "APPEND_RECALL requires target_memory_id.",
+            path: ["target_memory_id"],
+          });
+        }
 
-    if (
-      value.decision === "APPEND_RECALL" &&
-      value.recall_summary === null
-    ) {
-      context.addIssue({
-        code: "custom",
-        message: "APPEND_RECALL requires recall_summary.",
-        path: ["recall_summary"],
-      });
-    }
+        if (value.recall_summary === null) {
+          context.addIssue({
+            code: "custom",
+            message: "APPEND_RECALL requires recall_summary.",
+            path: ["recall_summary"],
+          });
+        }
 
-    if (
-      value.decision === "SUSPEND_AND_CREATE" &&
-      value.target_memory_id === null
-    ) {
-      context.addIssue({
-        code: "custom",
-        message: "SUSPEND_AND_CREATE requires target_memory_id.",
-        path: ["target_memory_id"],
-      });
-    }
+        break;
+      }
 
-    if (
-      value.decision === "SUSPEND_AND_CREATE" &&
-      value.recall_summary !== null
-    ) {
-      context.addIssue({
-        code: "custom",
-        message: "SUSPEND_AND_CREATE must not have recall_summary.",
-        path: ["recall_summary"],
-      });
-    }
+      case "SUSPEND_AND_CREATE": {
+        if (value.target_memory_id === null) {
+          context.addIssue({
+            code: "custom",
+            message: "SUSPEND_AND_CREATE requires target_memory_id.",
+            path: ["target_memory_id"],
+          });
+        }
 
-    if (
-      value.decision === "CREATE_NEW" &&
-      value.target_memory_id !== null
-    ) {
-      context.addIssue({
-        code: "custom",
-        message: "CREATE_NEW must not have target_memory_id.",
-        path: ["target_memory_id"],
-      });
-    }
+        if (value.recall_summary !== null) {
+          context.addIssue({
+            code: "custom",
+            message:
+              "SUSPEND_AND_CREATE must not have recall_summary.",
+            path: ["recall_summary"],
+          });
+        }
 
-    if (
-      value.decision === "CREATE_NEW" &&
-      value.recall_summary !== null
-    ) {
-      context.addIssue({
-        code: "custom",
-        message: "CREATE_NEW must not have recall_summary.",
-        path: ["recall_summary"],
-      });
+        break;
+      }
+
+      case "CREATE_NEW": {
+        if (value.target_memory_id !== null) {
+          context.addIssue({
+            code: "custom",
+            message: "CREATE_NEW must not have target_memory_id.",
+            path: ["target_memory_id"],
+          });
+        }
+
+        if (value.recall_summary !== null) {
+          context.addIssue({
+            code: "custom",
+            message: "CREATE_NEW must not have recall_summary.",
+            path: ["recall_summary"],
+          });
+        }
+
+        break;
+      }
     }
   });
 
@@ -229,8 +431,20 @@ export type MemoryScope = z.infer<typeof MemoryScopeSchema>;
 
 export type MemoryState = z.infer<typeof MemoryStateSchema>;
 
+export type FeedbackAnalysisModelResult = z.infer<
+  typeof FeedbackAnalysisModelResultSchema
+>;
+
 export type FeedbackMemoryRecall = z.infer<
   typeof FeedbackMemoryRecallSchema
+>;
+
+export type FeedbackMemoryEmbeddingMetadata = z.infer<
+  typeof FeedbackMemoryEmbeddingMetadataSchema
+>;
+
+export type FeedbackMemoryConditionEmbeddingMetadata = z.infer<
+  typeof FeedbackMemoryConditionEmbeddingMetadataSchema
 >;
 
 export type FeedbackMemory = z.infer<typeof FeedbackMemorySchema>;

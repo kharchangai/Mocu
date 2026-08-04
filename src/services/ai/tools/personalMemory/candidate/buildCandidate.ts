@@ -2,23 +2,64 @@ import { z } from "zod";
 import { getAsyncLLM } from "../../../llm";
 import { conditionCandidateSystemPrompt } from "./prompts";
 
-const llmOutputSchema = z.object({
-  activationDescription: z.string().trim().min(1),
+const NonEmptyStringSchema = z
+  .string()
+  .trim()
+  .min(1, {
+    error: "Value cannot be empty.",
+  });
+
+const OptionalNullableStringSchema = z
+  .string()
+  .nullable()
+  .optional();
+
+const AnalyzeFeedbackSchema = z.looseObject({
+  user_request: NonEmptyStringSchema,
+  agent_response: NonEmptyStringSchema,
+  user_feedback: NonEmptyStringSchema,
+
+  problem_summary:
+    OptionalNullableStringSchema,
+
+  problem_category:
+    OptionalNullableStringSchema,
+
+  task_type:
+    OptionalNullableStringSchema,
+
+  scope:
+    OptionalNullableStringSchema,
+
+  scope_description:
+    OptionalNullableStringSchema,
+
+  domain:
+    OptionalNullableStringSchema,
+
+  topic:
+    OptionalNullableStringSchema,
+
+  content_type:
+    OptionalNullableStringSchema,
+
+  project_id:
+    OptionalNullableStringSchema,
 });
 
-export type AnalyzeFeedback = {
-  problem_category?: string | null;
-  task_type?: string | null;
-  scope_description?: string | null;
-  domain?: string | null;
-  topic?: string | null;
-  content_type?: string | null;
-  project_id?: string | null;
-};
+const LlmOutputSchema = z.object({
+  activationDescription:
+    NonEmptyStringSchema,
+});
+
+export type AnalyzeFeedback = z.infer<
+  typeof AnalyzeFeedbackSchema
+>;
 
 export type ConditionCandidateScope = {
   problemCategory?: string;
   taskType?: string;
+  scope?: string;
   scopeDescription?: string;
   domain?: string;
   topic?: string;
@@ -26,48 +67,66 @@ export type ConditionCandidateScope = {
   projectId?: string;
 };
 
-export type ConditionCandidate = {
-  activationDescription: string;
-  scope: ConditionCandidateScope;
-};
+export type ConditionCandidate = z.infer<
+  typeof LlmOutputSchema
+>;
 
-export type BuildConditionCandidateInput = {
-  userMessage: string;
-  agentResponse: string;
-  userFeedback: string;
-  analyzeFeedback: AnalyzeFeedback;
-};
+function normalizeOptionalString(
+  value: string | null | undefined,
+): string | undefined {
+  if (typeof value !== "string") {
+    return undefined;
+  }
 
-function normalizeOptionalString(value: string | null | undefined): string | undefined {
-  const normalizedValue = value?.trim();
+  const normalizedValue = value.trim();
 
-  return normalizedValue ? normalizedValue : undefined;
+  return normalizedValue || undefined;
 }
 
-function extractJsonObject(content: string): string {
+function extractJsonObject(
+  content: string,
+): string {
   const trimmedContent = content.trim();
 
-  if (trimmedContent.startsWith("{") && trimmedContent.endsWith("}")) {
+  if (
+    trimmedContent.startsWith("{") &&
+    trimmedContent.endsWith("}")
+  ) {
     return trimmedContent;
   }
 
-  const fencedJsonMatch = trimmedContent.match(
-    /```(?:json)?\s*([\s\S]*?)\s*```/i,
-  );
+  const fencedJsonMatch =
+    trimmedContent.match(
+      /```(?:json)?\s*([\s\S]*?)\s*```/i,
+    );
 
   if (fencedJsonMatch?.[1]) {
-    const fencedContent = fencedJsonMatch[1].trim();
+    const fencedContent =
+      fencedJsonMatch[1].trim();
 
-    if (fencedContent.startsWith("{") && fencedContent.endsWith("}")) {
+    if (
+      fencedContent.startsWith("{") &&
+      fencedContent.endsWith("}")
+    ) {
       return fencedContent;
     }
   }
 
-  const firstBraceIndex = trimmedContent.indexOf("{");
-  const lastBraceIndex = trimmedContent.lastIndexOf("}");
+  const firstBraceIndex =
+    trimmedContent.indexOf("{");
 
-  if (firstBraceIndex >= 0 && lastBraceIndex > firstBraceIndex) {
-    return trimmedContent.slice(firstBraceIndex, lastBraceIndex + 1);
+  const lastBraceIndex =
+    trimmedContent.lastIndexOf("}");
+
+  if (
+    firstBraceIndex >= 0 &&
+    lastBraceIndex >
+      firstBraceIndex
+  ) {
+    return trimmedContent.slice(
+      firstBraceIndex,
+      lastBraceIndex + 1,
+    );
   }
 
   throw new Error(
@@ -75,9 +134,16 @@ function extractJsonObject(content: string): string {
   );
 }
 
-function getMessageContent(content: unknown): string {
+function getMessageContent(
+  content: unknown,
+): string {
   if (typeof content === "string") {
-    return content.trim();
+    const normalizedContent =
+      content.trim();
+
+    if (normalizedContent) {
+      return normalizedContent;
+    }
   }
 
   if (Array.isArray(content)) {
@@ -87,7 +153,8 @@ function getMessageContent(content: unknown): string {
           typeof part === "object" &&
           part !== null &&
           "text" in part &&
-          typeof part.text === "string"
+          typeof part.text ===
+            "string"
         ) {
           return part.text;
         }
@@ -110,30 +177,65 @@ function getMessageContent(content: unknown): string {
 function normalizeScope(
   analyzeFeedback: AnalyzeFeedback,
 ): ConditionCandidateScope {
-  const scope: ConditionCandidateScope = {};
+  const scope: ConditionCandidateScope =
+    {};
 
-  const problemCategory = normalizeOptionalString(
-    analyzeFeedback.problem_category,
-  );
-  const taskType = normalizeOptionalString(analyzeFeedback.task_type);
-  const scopeDescription = normalizeOptionalString(
-    analyzeFeedback.scope_description,
-  );
-  const domain = normalizeOptionalString(analyzeFeedback.domain);
-  const topic = normalizeOptionalString(analyzeFeedback.topic);
-  const contentType = normalizeOptionalString(analyzeFeedback.content_type);
-  const projectId = normalizeOptionalString(analyzeFeedback.project_id);
+  const problemCategory =
+    normalizeOptionalString(
+      analyzeFeedback.problem_category,
+    );
+
+  const taskType =
+    normalizeOptionalString(
+      analyzeFeedback.task_type,
+    );
+
+  const normalizedScope =
+    normalizeOptionalString(
+      analyzeFeedback.scope,
+    );
+
+  const scopeDescription =
+    normalizeOptionalString(
+      analyzeFeedback.scope_description,
+    );
+
+  const domain =
+    normalizeOptionalString(
+      analyzeFeedback.domain,
+    );
+
+  const topic =
+    normalizeOptionalString(
+      analyzeFeedback.topic,
+    );
+
+  const contentType =
+    normalizeOptionalString(
+      analyzeFeedback.content_type,
+    );
+
+  const projectId =
+    normalizeOptionalString(
+      analyzeFeedback.project_id,
+    );
 
   if (problemCategory) {
-    scope.problemCategory = problemCategory;
+    scope.problemCategory =
+      problemCategory;
   }
 
   if (taskType) {
     scope.taskType = taskType;
   }
 
+  if (normalizedScope) {
+    scope.scope = normalizedScope;
+  }
+
   if (scopeDescription) {
-    scope.scopeDescription = scopeDescription;
+    scope.scopeDescription =
+      scopeDescription;
   }
 
   if (domain) {
@@ -155,58 +257,123 @@ function normalizeScope(
   return scope;
 }
 
+function createPromptInput(
+  analyzeFeedback: AnalyzeFeedback,
+  scope: ConditionCandidateScope,
+): Record<string, unknown> {
+  const problemSummary =
+    normalizeOptionalString(
+      analyzeFeedback.problem_summary,
+    );
+
+  return {
+    interaction: {
+      userRequest:
+        analyzeFeedback.user_request,
+
+      agentResponse:
+        analyzeFeedback.agent_response,
+
+      userFeedback:
+        analyzeFeedback.user_feedback,
+    },
+
+    analyzeFeedback: {
+      ...(problemSummary
+        ? {
+            problemSummary,
+          }
+        : {}),
+
+      ...scope,
+    },
+  };
+}
+
+/**
+ * Builds a condition candidate by generating only its activation
+ * description. Scope data is used as prompt context but is not
+ * returned as part of the candidate.
+ */
 export async function buildConditionCandidate(
-  input: BuildConditionCandidateInput,
+  analyzeFeedbackInput: AnalyzeFeedback,
 ): Promise<ConditionCandidate> {
-  const llm = await getAsyncLLM("medium");
-  const scope = normalizeScope(input.analyzeFeedback);
+  const validationResult =
+    AnalyzeFeedbackSchema.safeParse(
+      analyzeFeedbackInput,
+    );
+
+  if (!validationResult.success) {
+    throw new Error(
+      `Invalid analyzeFeedback input: ${validationResult.error.message}`,
+    );
+  }
+
+  const analyzeFeedback =
+    validationResult.data;
+
+  const scope = normalizeScope(
+    analyzeFeedback,
+  );
+
+  const promptInput = createPromptInput(
+    analyzeFeedback,
+    scope,
+  );
 
   const userPrompt = `
 ${conditionCandidateSystemPrompt}
 
-Create an activation description from the following input.
+Create an activation description from the provided interaction and feedback analysis.
 
-Return only valid JSON in this exact format:
+Return only valid JSON in exactly this format:
 {
   "activationDescription": "..."
 }
 
-${JSON.stringify(
-  {
-    interaction: {
-      userMessage: input.userMessage,
-      agentResponse: input.agentResponse,
-      userFeedback: input.userFeedback,
-    },
-    analyzeFeedback: scope,
-  },
-  null,
-  2,
-)}
+Input:
+${JSON.stringify(promptInput, null, 2)}
 `.trim();
 
-  const response = await llm.invoke(userPrompt);
-  const content = getMessageContent(response.content);
-  const jsonContent = extractJsonObject(content);
+  const llm =
+    await getAsyncLLM("medium");
+
+  const response =
+    await llm.invoke(userPrompt);
+
+  const content = getMessageContent(
+    response.content,
+  );
+
+  const jsonContent =
+    extractJsonObject(content);
 
   let parsedOutput: unknown;
 
   try {
-    parsedOutput = JSON.parse(jsonContent);
-  } catch {
-    throw new Error("The condition candidate LLM returned invalid JSON.");
-  }
-
-  const validationResult = llmOutputSchema.safeParse(parsedOutput);
-
-  if (!validationResult.success) {
+    parsedOutput =
+      JSON.parse(jsonContent);
+  } catch (error) {
     throw new Error(
-      `The condition candidate LLM returned an invalid output: ${validationResult.error.message}`,
+      "The condition candidate LLM returned invalid JSON.",
+      {
+        cause: error,
+      },
     );
   }
 
-  return {
-    activationDescription: validationResult.data.activationDescription,
-    scope,
-  };
+  const outputValidationResult =
+    LlmOutputSchema.safeParse(
+      parsedOutput,
+    );
+
+  if (
+    !outputValidationResult.success
+  ) {
+    throw new Error(
+      `The condition candidate LLM returned an invalid output: ${outputValidationResult.error.message}`,
+    );
+  }
+
+  return outputValidationResult.data;
 }

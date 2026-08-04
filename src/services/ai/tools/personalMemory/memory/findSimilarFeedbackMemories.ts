@@ -15,7 +15,7 @@ import {
   type FeedbackMemoryDecision,
 } from "./feedbackAnalysis.types";
 
-const FEEDBACK_MEMORIES_DIRECTORY = "feedback-memories";
+const FEEDBACK_MEMORIES_DIRECTORY = "feedback-memories/memory";
 const DEFAULT_SIMILARITY_THRESHOLD = 0.7;
 const DEFAULT_MAX_RESULTS = 10;
 
@@ -76,7 +76,7 @@ export type FeedbackMemoryForDecisionPrompt = {
   scope_description: string;
 
   created_at: string;
-  activated_at: string;
+  activated_at: string | null;
 
   suspended_at: string | null;
   suspension_reason: string | null;
