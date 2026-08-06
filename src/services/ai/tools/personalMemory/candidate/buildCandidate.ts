@@ -1,6 +1,13 @@
 import { z } from "zod";
 import { getAsyncLLM } from "../../../llm";
+import { generateAtomicPolicy } from "./generateAtomicPolicy";
 import { conditionCandidateSystemPrompt } from "./prompts";
+import {
+  createMainAgentPolicies,
+} from "../policy/createMainAgentPolicies";
+import type {
+  CreateMainAgentPoliciesResult,
+} from "../policy/mainAgentPolicySchema";
 
 const NonEmptyStringSchema = z
   .string()
@@ -67,9 +74,16 @@ export type ConditionCandidateScope = {
   projectId?: string;
 };
 
+/**
+ * The final output contains both the generated activation
+ * description and all resolved main-agent policy references.
+ */
 export type ConditionCandidate = z.infer<
   typeof LlmOutputSchema
->;
+> & {
+  mainAgentPolicies:
+    CreateMainAgentPoliciesResult;
+};
 
 function normalizeOptionalString(
   value: string | null | undefined,
@@ -120,8 +134,7 @@ function extractJsonObject(
 
   if (
     firstBraceIndex >= 0 &&
-    lastBraceIndex >
-      firstBraceIndex
+    lastBraceIndex > firstBraceIndex
   ) {
     return trimmedContent.slice(
       firstBraceIndex,
@@ -153,8 +166,7 @@ function getMessageContent(
           typeof part === "object" &&
           part !== null &&
           "text" in part &&
-          typeof part.text ===
-            "string"
+          typeof part.text === "string"
         ) {
           return part.text;
         }
@@ -226,11 +238,13 @@ function normalizeScope(
   }
 
   if (taskType) {
-    scope.taskType = taskType;
+    scope.taskType =
+      taskType;
   }
 
   if (normalizedScope) {
-    scope.scope = normalizedScope;
+    scope.scope =
+      normalizedScope;
   }
 
   if (scopeDescription) {
@@ -239,19 +253,23 @@ function normalizeScope(
   }
 
   if (domain) {
-    scope.domain = domain;
+    scope.domain =
+      domain;
   }
 
   if (topic) {
-    scope.topic = topic;
+    scope.topic =
+      topic;
   }
 
   if (contentType) {
-    scope.contentType = contentType;
+    scope.contentType =
+      contentType;
   }
 
   if (projectId) {
-    scope.projectId = projectId;
+    scope.projectId =
+      projectId;
   }
 
   return scope;
@@ -291,9 +309,18 @@ function createPromptInput(
 }
 
 /**
- * Builds a condition candidate by generating only its activation
- * description. Scope data is used as prompt context but is not
- * returned as part of the candidate.
+ * Builds a complete condition candidate.
+ *
+ * This function:
+ * 1. Generates the activation description.
+ * 2. Generates atomic policies.
+ * 3. Resolves existing policy IDs.
+ * 4. Creates, embeds, and stores missing policies.
+ * 5. Returns the activation description together with all
+ *    resolved atomic-policy references.
+ *
+ * Policy generation errors are propagated to prevent storing
+ * an incomplete condition.
  */
 export async function buildConditionCandidate(
   analyzeFeedbackInput: AnalyzeFeedback,
@@ -333,13 +360,15 @@ Return only valid JSON in exactly this format:
 
 Input:
 ${JSON.stringify(promptInput, null, 2)}
-`.trim();
+  `.trim();
 
-  const llm =
-    await getAsyncLLM("medium");
+  const llm = await getAsyncLLM(
+    "medium",
+  );
 
-  const response =
-    await llm.invoke(userPrompt);
+  const response = await llm.invoke(
+    userPrompt,
+  );
 
   const content = getMessageContent(
     response.content,
@@ -353,12 +382,9 @@ ${JSON.stringify(promptInput, null, 2)}
   try {
     parsedOutput =
       JSON.parse(jsonContent);
-  } catch (error) {
+  } catch {
     throw new Error(
       "The condition candidate LLM returned invalid JSON.",
-      {
-        cause: error,
-      },
     );
   }
 
@@ -375,5 +401,105 @@ ${JSON.stringify(promptInput, null, 2)}
     );
   }
 
-  return outputValidationResult.data;
+  const activationResult =
+    outputValidationResult.data;
+
+  console.log(
+    "Generated activation description:",
+    JSON.stringify(
+      activationResult,
+      null,
+      2,
+    ),
+  );
+
+  /*
+   * Generate atomic policies and detect whether each policy
+   * already has a stored policy file.
+   */
+  const atomicPolicyResult =
+    await generateAtomicPolicy({
+      user_request:
+        analyzeFeedback.user_request,
+
+      agent_response:
+        analyzeFeedback.agent_response,
+
+      user_feedback:
+        analyzeFeedback.user_feedback,
+
+      problem_summary:
+        normalizeOptionalString(
+          analyzeFeedback.problem_summary,
+        ) ?? "",
+
+      problem_category:
+        normalizeOptionalString(
+          analyzeFeedback.problem_category,
+        ) ?? "",
+
+      task_type:
+        normalizeOptionalString(
+          analyzeFeedback.task_type,
+        ) ?? "",
+
+      activation_description:
+        activationResult.activationDescription,
+    });
+
+  console.log(
+    "Generated atomic policies:",
+    JSON.stringify(
+      atomicPolicyResult,
+      null,
+      2,
+    ),
+  );
+
+  /*
+   * Existing policy IDs are preserved. Missing policies are
+   * generated, embedded with textSimilarity, and stored.
+   */
+  const mainAgentPolicies =
+    await createMainAgentPolicies({
+      user_request:
+        analyzeFeedback.user_request,
+
+      agent_response:
+        analyzeFeedback.agent_response,
+
+      user_feedback:
+        analyzeFeedback.user_feedback,
+
+      atomic_policies:
+        atomicPolicyResult.atomic_policies,
+    });
+
+  console.log(
+    "Resolved main-agent policies:",
+    JSON.stringify(
+      mainAgentPolicies,
+      null,
+      2,
+    ),
+  );
+
+  const conditionCandidate:
+    ConditionCandidate = {
+      activationDescription:
+        activationResult.activationDescription,
+
+      mainAgentPolicies,
+    };
+
+  console.log(
+    "Final condition candidate:",
+    JSON.stringify(
+      conditionCandidate,
+      null,
+      2,
+    ),
+  );
+
+  return conditionCandidate;
 }

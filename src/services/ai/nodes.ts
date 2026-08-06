@@ -43,9 +43,46 @@ import { desktopVisionTool } from "./tools/desktop-vision-tool";
 import { terminalExecutionTool } from "./tools/terminal_execution_tool";
 import { perplexitySearchTool } from "./tools/perplexity_search_tool";
 
+import {
+  runPersonalMemoryGate,
+  PersonalMemoryGateInput,
+} from "./tools/personalMemory/personalMemoryGate";
+
+import { generateMainAgentPolicyPrompt } from "./tools/personalMemory/generateMainAgentPrompt";
+
 const MAX_STEPS = 3;
 
 type ToolArgs = Record<string, unknown>;
+
+type StoredMemoryTurn = {
+  userMessage: string;
+  assistantMessage: string;
+};
+
+/**
+ * Personal-memory cycle state for a single conversation.
+ *
+ * The cycle always uses exactly three messages:
+ *
+ *   1. user message
+ *   2. assistant response
+ *   3. next user message
+ *
+ * After the gate runs, the assistant response generated for the
+ * third message is intentionally ignored and a brand new cycle starts.
+ */
+type PersonalMemoryCycleState = {
+  pendingTurn: StoredMemoryTurn | null;
+};
+
+/**
+ * Cycle state is kept per conversation so that different chats
+ * never mix their interactions.
+ */
+const personalMemoryCycles = new Map<
+  string,
+  PersonalMemoryCycleState
+>();
 
 const getStringArg = (
   args: ToolArgs,
@@ -54,6 +91,168 @@ const getStringArg = (
   const value = args[key];
 
   return typeof value === "string" ? value : "";
+};
+
+const getConversationId = (
+  config: RunnableConfig,
+): string => {
+  const threadId = config.configurable?.thread_id;
+
+  if (
+    typeof threadId === "string" &&
+    threadId.trim()
+  ) {
+    return threadId.trim();
+  }
+
+  if (typeof threadId === "number") {
+    return String(threadId);
+  }
+
+  return "default";
+};
+
+const getPersonalMemoryCycle = (
+  conversationId: string,
+): PersonalMemoryCycleState => {
+  const existingCycle =
+    personalMemoryCycles.get(conversationId);
+
+  if (existingCycle) {
+    return existingCycle;
+  }
+
+  const newCycle: PersonalMemoryCycleState = {
+    pendingTurn: null,
+  };
+
+  personalMemoryCycles.set(
+    conversationId,
+    newCycle,
+  );
+
+  return newCycle;
+};
+
+/**
+ * Consumes the stored user/assistant turn and sends it to the
+ * personal-memory gate together with the current user message.
+ *
+ * The pending turn is cleared before the background task starts,
+ * so the same interaction can never be processed twice.
+ *
+ * Returns true when the current user message completed a cycle.
+ * In that case the response generated for this message must not
+ * be stored as the beginning of the next cycle.
+ */
+const runPersonalMemoryGateForCurrentMessage = (
+  currentUserMessage: string,
+  conversationId: string,
+): boolean => {
+  if (!currentUserMessage.trim()) {
+    return false;
+  }
+
+  const cycle =
+    getPersonalMemoryCycle(conversationId);
+
+  const previousTurn = cycle.pendingTurn;
+
+  if (!previousTurn) {
+    return false;
+  }
+
+  // Consume the pending turn immediately.
+  cycle.pendingTurn = null;
+
+  const gateInput: PersonalMemoryGateInput = {
+    userMessage: previousTurn.userMessage,
+    assistantMessage:
+      previousTurn.assistantMessage,
+    nextUserMessage: currentUserMessage,
+  };
+
+  void runPersonalMemoryGate(gateInput)
+    .then((result) => {
+      console.log(
+        "[Personal Memory Gate] Background result:",
+        result,
+      );
+    })
+    .catch((error: unknown) => {
+      console.error(
+        "[Personal Memory Gate] Background task failed:",
+        error,
+      );
+    });
+
+  return true;
+};
+
+/**
+ * Starts a new personal-memory cycle by storing the current
+ * user message together with the assistant response.
+ */
+const startNewPersonalMemoryCycle = (
+  conversationId: string,
+  userMessage: string,
+  assistantMessage: string,
+): void => {
+  if (!userMessage.trim()) {
+    return;
+  }
+
+  const cycle =
+    getPersonalMemoryCycle(conversationId);
+
+  cycle.pendingTurn = {
+    userMessage,
+    assistantMessage,
+  };
+};
+
+const getPolicyPromptText = (
+  value: unknown,
+): string => {
+  if (typeof value === "string") {
+    return value.trim();
+  }
+
+  if (
+    value &&
+    typeof value === "object" &&
+    "prompt" in value &&
+    typeof value.prompt === "string"
+  ) {
+    return value.prompt.trim();
+  }
+
+  if (
+    value &&
+    typeof value === "object" &&
+    "policyPrompt" in value &&
+    typeof value.policyPrompt === "string"
+  ) {
+    return value.policyPrompt.trim();
+  }
+
+  return "";
+};
+
+const appendPolicyToSystemPrompt = (
+  systemPrompt: string,
+  policyPrompt: string,
+): string => {
+  if (!policyPrompt.trim()) {
+    return systemPrompt;
+  }
+
+  return [
+    systemPrompt,
+    "",
+    "## Personal Memory Policy",
+    policyPrompt.trim(),
+  ].join("\n");
 };
 
 const createToolExecutor = (
@@ -158,6 +357,50 @@ export const callMainAgent = async (
     ? getTextContent(lastMessage.content).trim()
     : "";
 
+  const conversationId =
+    getConversationId(runnableConfig);
+
+  /*
+   * The personal-memory gate runs in the background.
+   *
+   * It receives:
+   * - previous user message
+   * - previous agent response
+   * - current user message
+   *
+   * The main agent continues immediately and does not wait for it.
+   *
+   * When this returns true, the current message completed a cycle,
+   * so the response generated below will be ignored by the cycle.
+   */
+  const currentMessageCompletesMemoryCycle =
+    runPersonalMemoryGateForCurrentMessage(
+      userText,
+      conversationId,
+    );
+
+  /*
+   * Every current user message is sent to the policy generator.
+   * We wait for it because its result must be injected into the
+   * main agent system prompt before the agent is invoked.
+   */
+  let personalPolicyPrompt = "";
+
+  try {
+    const generatedPolicy =
+      await generateMainAgentPolicyPrompt(userText);
+
+    personalPolicyPrompt =
+      getPolicyPromptText(generatedPolicy);
+  } catch (error: unknown) {
+    console.error(
+      "[Main Agent Policy] Failed to generate personal policy prompt:",
+      error,
+    );
+  }
+
+  throwIfAborted(signal);
+
   const shortMemoryContext =
     await getShortMemoryContextForAgent(
       userText,
@@ -208,11 +451,17 @@ export const callMainAgent = async (
     },
   );
 
-  const systemPrompt = buildMainAgentSystemPrompt({
-    shortMemoryContext,
-    longTermMemoryContext: relevantMemoryContext,
-    currentDateTime,
-  });
+  const baseSystemPrompt =
+    buildMainAgentSystemPrompt({
+      shortMemoryContext,
+      longTermMemoryContext: relevantMemoryContext,
+      currentDateTime,
+    });
+
+  const systemPrompt = appendPolicyToSystemPrompt(
+    baseSystemPrompt,
+    personalPolicyPrompt,
+  );
 
   let messagesToRun: BaseMessage[] = [
     new SystemMessage(systemPrompt),
@@ -318,6 +567,8 @@ export const callMainAgent = async (
     stepCount += 1;
   }
 
+  let finalAssistantContent = "";
+
   if (toolResultsSummary.length > 0) {
     throwIfAborted(signal);
 
@@ -345,21 +596,36 @@ export const callMainAgent = async (
 
     throwIfAborted(signal);
 
-    const finalContent = stripMarkdown(
+    finalAssistantContent = stripMarkdown(
       getTextContent(finalResponse.content),
     );
-
-    response.content =
-      finalContent ||
-      "Task completed successfully.";
   } else {
-    const finalContent = stripMarkdown(
+    finalAssistantContent = stripMarkdown(
       getTextContent(response.content),
     );
+  }
 
-    response.content =
-      finalContent ||
+  if (!finalAssistantContent) {
+    finalAssistantContent =
       "Task completed successfully.";
+  }
+
+  response.content = finalAssistantContent;
+
+  /*
+   * Store this turn only if the current user message did not
+   * complete the previous cycle.
+   *
+   * If it did complete the cycle, this assistant response is
+   * intentionally ignored and the next user message starts
+   * a completely new cycle.
+   */
+  if (!currentMessageCompletesMemoryCycle) {
+    startNewPersonalMemoryCycle(
+      conversationId,
+      userText,
+      finalAssistantContent,
+    );
   }
 
   const completedMessages: BaseMessage[] = [

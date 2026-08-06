@@ -30,7 +30,7 @@ const NonEmptyStringSchema = z
   });
 
 const EmbeddingSchema = z
-  .array(z.number())
+  .array(z.number().finite())
   .min(1, {
     error: "Embedding must contain at least one number.",
   });
@@ -41,10 +41,34 @@ const ConditionStateSchema = z.enum([
   "superseded",
 ]);
 
+/**
+ * A reference from a condition to a separately stored policy file.
+ */
+const AtomicPolicyReferenceSchema = z.object({
+  atomic_policy: NonEmptyStringSchema,
+  policy_id: NonEmptyStringSchema,
+});
+
+/**
+ * This is the result returned by createMainAgentPolicies through
+ * buildConditionCandidate.
+ */
+const MainAgentPoliciesResultSchema = z.object({
+  atomic_policies: z.array(
+    AtomicPolicyReferenceSchema,
+  ),
+});
+
+/**
+ * Old condition files may not contain atomic_policies.
+ * The default value preserves backward compatibility.
+ */
 const StoredFeedbackConditionSchema = z.looseObject({
   id: NonEmptyStringSchema,
 
-  state: ConditionStateSchema.default("active"),
+  state: ConditionStateSchema.default(
+    "active",
+  ),
 
   activation_description:
     NonEmptyStringSchema,
@@ -64,12 +88,31 @@ const StoredFeedbackConditionSchema = z.looseObject({
   scope_description:
     NonEmptyStringSchema,
 
+  atomic_policies: z
+    .array(
+      AtomicPolicyReferenceSchema,
+    )
+    .default([]),
+
   condition_embedding:
     EmbeddingSchema,
 });
 
+/**
+ * The interaction fields are required because
+ * buildConditionCandidate uses them to generate policies.
+ */
 const AnalyzeFeedbackConditionInputSchema =
   z.looseObject({
+    user_request:
+      NonEmptyStringSchema,
+
+    agent_response:
+      NonEmptyStringSchema,
+
+    user_feedback:
+      NonEmptyStringSchema,
+
     problem_summary:
       NonEmptyStringSchema.optional(),
 
@@ -85,41 +128,76 @@ const AnalyzeFeedbackConditionInputSchema =
     scope_description:
       NonEmptyStringSchema,
 
+    domain:
+      NonEmptyStringSchema.optional(),
+
+    topic:
+      NonEmptyStringSchema.optional(),
+
+    content_type:
+      NonEmptyStringSchema.optional(),
+
+    project_id:
+      NonEmptyStringSchema.optional(),
+
     condition_embedding:
       EmbeddingSchema,
   });
 
-const LlmConditionSelectionSchema = z.object({
-  selected_condition_id:
-    NonEmptyStringSchema,
+const LlmConditionSelectionSchema =
+  z.object({
+    selected_condition_id:
+      NonEmptyStringSchema,
 
-  reasoning:
-    NonEmptyStringSchema,
-});
+    reasoning:
+      NonEmptyStringSchema,
+  });
 
-const ConditionCandidateSchema = z.looseObject({
-  activationDescription:
-    NonEmptyStringSchema,
+/**
+ * The candidate now contains the output of
+ * createMainAgentPolicies.
+ */
+const ConditionCandidateSchema =
+  z.looseObject({
+    activationDescription:
+      NonEmptyStringSchema,
 
-  scope:
-    NonEmptyStringSchema.optional(),
-});
+    scope:
+      NonEmptyStringSchema.optional(),
 
-export type StoredFeedbackCondition = z.infer<
-  typeof StoredFeedbackConditionSchema
->;
+    mainAgentPolicies:
+      MainAgentPoliciesResultSchema,
+  });
 
-export type AnalyzeFeedbackConditionInput = z.infer<
-  typeof AnalyzeFeedbackConditionInputSchema
->;
+export type AtomicPolicyReference =
+  z.infer<
+    typeof AtomicPolicyReferenceSchema
+  >;
 
-export type LlmConditionSelection = z.infer<
-  typeof LlmConditionSelectionSchema
->;
+export type MainAgentPoliciesResult =
+  z.infer<
+    typeof MainAgentPoliciesResultSchema
+  >;
 
-export type ConditionCandidate = z.infer<
-  typeof ConditionCandidateSchema
->;
+export type StoredFeedbackCondition =
+  z.infer<
+    typeof StoredFeedbackConditionSchema
+  >;
+
+export type AnalyzeFeedbackConditionInput =
+  z.infer<
+    typeof AnalyzeFeedbackConditionInputSchema
+  >;
+
+export type LlmConditionSelection =
+  z.infer<
+    typeof LlmConditionSelectionSchema
+  >;
+
+export type ConditionCandidate =
+  z.infer<
+    typeof ConditionCandidateSchema
+  >;
 
 export type SimilarFeedbackConditionMatch = {
   condition_id: string;
@@ -209,8 +287,9 @@ function haveSameEmbeddingDimensions(
 
 function createConditionId(): string {
   if (
-    typeof crypto === "undefined" ||
-    typeof crypto.randomUUID !==
+    typeof globalThis.crypto ===
+      "undefined" ||
+    typeof globalThis.crypto.randomUUID !==
       "function"
   ) {
     throw new Error(
@@ -218,12 +297,35 @@ function createConditionId(): string {
     );
   }
 
-  return crypto.randomUUID();
+  return globalThis.crypto.randomUUID();
 }
 
-async function getStoredConditionFileNames(): Promise<
-  string[]
-> {
+async function ensureConditionDirectory():
+  Promise<void> {
+  const directoryExists = await exists(
+    FEEDBACK_CONDITIONS_DIRECTORY,
+    {
+      baseDir:
+        BaseDirectory.AppData,
+    },
+  );
+
+  if (directoryExists) {
+    return;
+  }
+
+  await mkdir(
+    FEEDBACK_CONDITIONS_DIRECTORY,
+    {
+      baseDir:
+        BaseDirectory.AppData,
+      recursive: true,
+    },
+  );
+}
+
+async function getStoredConditionFileNames():
+  Promise<string[]> {
   const directoryExists = await exists(
     FEEDBACK_CONDITIONS_DIRECTORY,
     {
@@ -303,9 +405,8 @@ async function readStoredConditionFile(
   }
 }
 
-async function readAllStoredConditions(): Promise<
-  LoadedFeedbackCondition[]
-> {
+async function readAllStoredConditions():
+  Promise<LoadedFeedbackCondition[]> {
   const fileNames =
     await getStoredConditionFileNames();
 
@@ -443,23 +544,19 @@ function findSimilarConditions(
 
       return {
         condition_id:
-          loadedCondition
-            .condition.id,
+          loadedCondition.condition.id,
 
         file_name:
-          loadedCondition
-            .file_name,
+          loadedCondition.file_name,
 
         file_path:
-          loadedCondition
-            .file_path,
+          loadedCondition.file_path,
 
         similarity_score:
           match.score,
 
         condition:
-          loadedCondition
-            .condition,
+          loadedCondition.condition,
       };
     })
     .sort(
@@ -515,8 +612,7 @@ function createConditionCandidateForPrompt(
       match.condition.task_type,
 
     scope:
-      match.condition.scope ??
-      null,
+      match.condition.scope ?? null,
 
     scope_description:
       match.condition
@@ -618,25 +714,99 @@ async function selectConditionWithLlm(
 }
 
 /**
- * Creates a new condition from the current feedback analysis,
- * generates its embedding, stores it, and returns its ID.
+ * Creates a condition candidate, creates and stores its missing
+ * policy files, and stores references to all policies in the
+ * condition file.
  */
 async function createAndStoreCondition(
   input: AnalyzeFeedbackConditionInput,
 ): Promise<string> {
+  /*
+   * buildConditionCandidate calls generateAtomicPolicy and
+   * createMainAgentPolicies. Missing policy files are stored
+   * before this function continues.
+   */
   const rawCandidate =
-    await buildConditionCandidate(
-      input,
-    );
+    await buildConditionCandidate({
+      user_request:
+        input.user_request,
+
+      agent_response:
+        input.agent_response,
+
+      user_feedback:
+        input.user_feedback,
+
+      ...(input.problem_summary
+        ? {
+            problem_summary:
+              input.problem_summary,
+          }
+        : {}),
+
+      problem_category:
+        input.problem_category,
+
+      task_type:
+        input.task_type,
+
+      ...(input.scope
+        ? {
+            scope:
+              input.scope,
+          }
+        : {}),
+
+      scope_description:
+        input.scope_description,
+
+      ...(input.domain
+        ? {
+            domain:
+              input.domain,
+          }
+        : {}),
+
+      ...(input.topic
+        ? {
+            topic:
+              input.topic,
+          }
+        : {}),
+
+      ...(input.content_type
+        ? {
+            content_type:
+              input.content_type,
+          }
+        : {}),
+
+      ...(input.project_id
+        ? {
+            project_id:
+              input.project_id,
+          }
+        : {}),
+    });
 
   const candidate =
     ConditionCandidateSchema.parse(
       rawCandidate,
     );
 
+  const atomicPolicies =
+    candidate
+      .mainAgentPolicies
+      .atomic_policies;
+
   const conditionId =
     createConditionId();
 
+  /*
+   * The input condition_embedding is used only for finding an
+   * existing condition. A stable embedding is generated for the
+   * newly stored condition using the final activation description.
+   */
   const conditionEmbedding =
     await textSimilarity.embedMemory({
       content:
@@ -693,29 +863,18 @@ async function createAndStoreCondition(
       scope_description:
         input.scope_description,
 
+      /*
+       * These references connect this condition to the policy
+       * files stored in feedback-memories/policy.
+       */
+      atomic_policies:
+        atomicPolicies,
+
       condition_embedding:
         conditionEmbedding,
     });
 
-  const directoryExists =
-    await exists(
-      FEEDBACK_CONDITIONS_DIRECTORY,
-      {
-        baseDir:
-          BaseDirectory.AppData,
-      },
-    );
-
-  if (!directoryExists) {
-    await mkdir(
-      FEEDBACK_CONDITIONS_DIRECTORY,
-      {
-        baseDir:
-          BaseDirectory.AppData,
-        recursive: true,
-      },
-    );
-  }
+  await ensureConditionDirectory();
 
   const fileName =
     `${conditionId}.json`;
@@ -723,17 +882,32 @@ async function createAndStoreCondition(
   const filePath =
     getConditionFilePath(fileName);
 
-  await writeTextFile(
-    filePath,
-    `${JSON.stringify(
+  try {
+    await writeTextFile(
+      filePath,
+      `${JSON.stringify(
+        storedCondition,
+        null,
+        2,
+      )}\n`,
+      {
+        baseDir:
+          BaseDirectory.AppData,
+      },
+    );
+  } catch (error) {
+    throw new Error(
+      `Failed to store feedback condition file "${fileName}".`
+    );
+  }
+
+  console.log(
+    "Stored feedback condition:",
+    JSON.stringify(
       storedCondition,
       null,
       2,
-    )}\n`,
-    {
-      baseDir:
-        BaseDirectory.AppData,
-    },
+    ),
   );
 
   return conditionId;
@@ -742,8 +916,12 @@ async function createAndStoreCondition(
 /**
  * Returns an existing matching condition ID.
  *
- * If no matching condition exists, it creates a new condition,
- * stores it, and returns the new condition ID.
+ * If no matching condition exists, this function:
+ * 1. Builds a new condition candidate.
+ * 2. Generates and resolves its policies.
+ * 3. Stores missing policy files.
+ * 4. Stores policy references inside the condition file.
+ * 5. Returns the new condition ID.
  */
 export async function findMatchingFeedbackCondition(
   analyzeFeedbackResult:

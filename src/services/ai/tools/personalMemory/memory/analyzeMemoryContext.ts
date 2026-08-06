@@ -683,7 +683,6 @@ export async function analyzeFeedback(
     state: "active" as const,
 
     recall_count: 0,
-    recalls: [],
 
     created_at: timestamps.createdAt,
     activated_at: timestamps.activatedAt,

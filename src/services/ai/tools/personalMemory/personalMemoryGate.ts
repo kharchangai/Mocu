@@ -1,4 +1,5 @@
-import {getAsyncLLM} from "../../llm"
+import { getAsyncLLM } from "../../llm";
+import { analyzeFeedback } from "./memory/analyzeMemoryContext";
 import { z } from "zod";
 
 import {
@@ -42,16 +43,19 @@ export type PersonalMemoryGateResult =
   | PersonalMemoryGatePassedResult
   | PersonalMemoryGateSkippedResult;
 
-const model = await getAsyncLLM("medium")
+const model = await getAsyncLLM("medium");
 
-const structuredModel = model.withStructuredOutput(personalMemoryGateSchema, {
-  name: "personal_memory_gate_result",
-});
+const structuredModel = model.withStructuredOutput(
+  personalMemoryGateSchema,
+  {
+    name: "personal_memory_gate_result",
+  },
+);
 
 /**
  * Checks whether a three-message interaction is suitable for personal memory.
  *
- * If it passes, the original three messages are returned.
+ * When the gate passes, analyzeFeedback is called before returning PASSED.
  * If it does not pass, { status: "SKIP", output: "SKIP" } is returned.
  */
 export async function runPersonalMemoryGate(
@@ -79,6 +83,12 @@ export async function runPersonalMemoryGate(
       };
     }
 
+    await analyzeFeedback({
+      user_request: input.userMessage,
+      agent_response: input.assistantMessage,
+      user_feedback: input.nextUserMessage,
+    });
+
     return {
       status: "PASSED",
       messages: input,
@@ -87,8 +97,7 @@ export async function runPersonalMemoryGate(
   } catch (error) {
     console.error("Personal memory gate failed:", error);
 
-    // If the gate fails, do not store anything.
-    // This prevents accidental memory creation on errors.
+    // If the gate or memory analysis fails, do not store anything.
     return {
       status: "SKIP",
       output: "SKIP",

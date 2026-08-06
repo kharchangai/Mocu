@@ -88,16 +88,6 @@ export const FeedbackMemorySourceInteractionSchema = z.object({
   user_feedback: NonEmptyTrimmedStringSchema,
 });
 
-export const FeedbackMemoryRecallSchema = z.object({
-  id: UuidSchema,
-
-  created_at: IsoDateTimeSchema,
-
-  summary: NonEmptyTrimmedStringSchema,
-
-  source_interaction: FeedbackMemorySourceInteractionSchema,
-});
-
 /**
  * Metadata for the main memory embedding.
  *
@@ -187,13 +177,19 @@ export const FeedbackMemoryConditionEmbeddingMetadataSchema = z
 export const FeedbackAnalysisModelResultSchema = z.object({
   problem_summary: NonEmptyTrimmedStringSchema,
 
-  problem_category: NonEmptyTrimmedStringSchema.refine(hasAtMostTwoWords, {
-    error: "problem_category must contain one or two words.",
-  }),
+  problem_category: NonEmptyTrimmedStringSchema.refine(
+    hasAtMostTwoWords,
+    {
+      error: "problem_category must contain one or two words.",
+    },
+  ),
 
-  task_type: NonEmptyTrimmedStringSchema.refine(hasAtMostTwoWords, {
-    error: "task_type must contain one or two words.",
-  }),
+  task_type: NonEmptyTrimmedStringSchema.refine(
+    hasAtMostTwoWords,
+    {
+      error: "task_type must contain one or two words.",
+    },
+  ),
 
   scope: MemoryScopeSchema,
 
@@ -210,147 +206,161 @@ export const FeedbackAnalysisModelResultSchema = z.object({
  *
  * Every newly created memory should always receive a non-null condition_id.
  */
-export const FeedbackMemorySchema = FeedbackAnalysisModelResultSchema.extend({
-  id: UuidSchema,
+export const FeedbackMemorySchema =
+  FeedbackAnalysisModelResultSchema.extend({
+    id: UuidSchema,
 
-  /**
-   * The ID of the feedback condition that activates this memory.
-   *
-   * This must be explicitly declared because Zod strips unknown keys
-   * by default. Without this field, condition_id would be removed by
-   * FeedbackMemorySchema.parse(...) before the memory is saved.
-   */
-  condition_id: UuidSchema.nullable().default(null),
+    /**
+     * The ID of the feedback condition that activates this memory.
+     *
+     * This must be explicitly declared because Zod strips unknown keys
+     * by default. Without this field, condition_id would be removed by
+     * FeedbackMemorySchema.parse(...) before the memory is saved.
+     */
+    condition_id: UuidSchema.nullable().default(null),
 
-  state: MemoryStateSchema,
+    state: MemoryStateSchema,
 
-  created_at: IsoDateTimeSchema,
+    created_at: IsoDateTimeSchema,
 
-  activated_at: IsoDateTimeSchema.nullable(),
+    activated_at: IsoDateTimeSchema.nullable(),
 
-  /**
-   * These fields must be null while the memory is active.
-   * They receive real values only after suspension or supersession.
-   */
-  suspended_at: IsoDateTimeSchema.nullable(),
+    /**
+     * These fields must be null while the memory is active.
+     * They receive real values only after suspension or supersession.
+     */
+    suspended_at: IsoDateTimeSchema.nullable(),
 
-  suspension_reason: NonEmptyTrimmedStringSchema.nullable(),
+    suspension_reason: NonEmptyTrimmedStringSchema.nullable(),
 
-  replaced_by_memory_id: UuidSchema.nullable(),
+    replaced_by_memory_id: UuidSchema.nullable(),
 
-  recalls: z.array(FeedbackMemoryRecallSchema).default([]),
+    /**
+     * The number of times this memory has been recalled.
+     */
+    recall_count: z.number().int().nonnegative().default(0),
 
-  recall_count: z.number().int().nonnegative().default(0),
+    /**
+     * The primary embedding used for memory-to-memory comparison.
+     */
+    combined_embedding: EmbeddingVectorSchema,
 
-  /**
-   * The primary embedding used for memory-to-memory comparison.
-   */
-  combined_embedding: EmbeddingVectorSchema,
+    embedding_text: NonEmptyTrimmedStringSchema,
 
-  embedding_text: NonEmptyTrimmedStringSchema,
+    embedding_metadata:
+      FeedbackMemoryEmbeddingMetadataSchema,
 
-  embedding_metadata: FeedbackMemoryEmbeddingMetadataSchema,
+    /**
+     * The dedicated embedding used for condition-based memory retrieval.
+     *
+     * Its source text is built from:
+     * - scope_description
+     * - problem_category
+     * - task_type
+     */
+    condition_embedding: EmbeddingVectorSchema,
 
-  /**
-   * The dedicated embedding used for condition-based memory retrieval.
-   *
-   * Its source text is built from:
-   * - scope_description
-   * - problem_category
-   * - task_type
-   */
-  condition_embedding: EmbeddingVectorSchema,
+    condition_embedding_text: NonEmptyTrimmedStringSchema,
 
-  condition_embedding_text: NonEmptyTrimmedStringSchema,
+    condition_embedding_metadata:
+      FeedbackMemoryConditionEmbeddingMetadataSchema,
 
-  condition_embedding_metadata:
-    FeedbackMemoryConditionEmbeddingMetadataSchema,
+    source_interaction:
+      FeedbackMemorySourceInteractionSchema,
+  }).superRefine((memory, context) => {
+    const isActive = memory.state === "active";
+    const isSuspended = memory.state === "suspended";
+    const isSuperseded = memory.state === "superseded";
 
-  source_interaction: FeedbackMemorySourceInteractionSchema,
-}).superRefine((memory, context) => {
-  const isActive = memory.state === "active";
-  const isSuspended = memory.state === "suspended";
-  const isSuperseded = memory.state === "superseded";
+    if (isActive && memory.activated_at === null) {
+      context.addIssue({
+        code: "custom",
+        message: "Active memories must have activated_at.",
+        path: ["activated_at"],
+      });
+    }
 
-  if (isActive && memory.activated_at === null) {
-    context.addIssue({
-      code: "custom",
-      message: "Active memories must have activated_at.",
-      path: ["activated_at"],
-    });
-  }
+    if (
+      isActive &&
+      (memory.suspended_at !== null ||
+        memory.suspension_reason !== null ||
+        memory.replaced_by_memory_id !== null)
+    ) {
+      context.addIssue({
+        code: "custom",
+        message:
+          "Active memories must have null suspended_at, suspension_reason, and replaced_by_memory_id.",
+        path: ["state"],
+      });
+    }
 
-  if (
-    isActive &&
-    (memory.suspended_at !== null ||
-      memory.suspension_reason !== null ||
-      memory.replaced_by_memory_id !== null)
-  ) {
-    context.addIssue({
-      code: "custom",
-      message:
-        "Active memories must have null suspended_at, suspension_reason, and replaced_by_memory_id.",
-      path: ["state"],
-    });
-  }
+    if (isSuspended && memory.suspended_at === null) {
+      context.addIssue({
+        code: "custom",
+        message: "Suspended memories must have suspended_at.",
+        path: ["suspended_at"],
+      });
+    }
 
-  if (isSuspended && memory.suspended_at === null) {
-    context.addIssue({
-      code: "custom",
-      message: "Suspended memories must have suspended_at.",
-      path: ["suspended_at"],
-    });
-  }
+    if (
+      isSuspended &&
+      memory.suspension_reason === null
+    ) {
+      context.addIssue({
+        code: "custom",
+        message:
+          "Suspended memories must have suspension_reason.",
+        path: ["suspension_reason"],
+      });
+    }
 
-  if (isSuspended && memory.suspension_reason === null) {
-    context.addIssue({
-      code: "custom",
-      message: "Suspended memories must have suspension_reason.",
-      path: ["suspension_reason"],
-    });
-  }
+    if (
+      isSuspended &&
+      memory.replaced_by_memory_id !== null
+    ) {
+      context.addIssue({
+        code: "custom",
+        message:
+          "Suspended memories must not have replaced_by_memory_id. Use superseded state instead.",
+        path: ["replaced_by_memory_id"],
+      });
+    }
 
-  if (isSuspended && memory.replaced_by_memory_id !== null) {
-    context.addIssue({
-      code: "custom",
-      message:
-        "Suspended memories must not have replaced_by_memory_id. Use superseded state instead.",
-      path: ["replaced_by_memory_id"],
-    });
-  }
+    if (
+      isSuperseded &&
+      memory.suspended_at === null
+    ) {
+      context.addIssue({
+        code: "custom",
+        message: "Superseded memories must have suspended_at.",
+        path: ["suspended_at"],
+      });
+    }
 
-  if (isSuperseded && memory.suspended_at === null) {
-    context.addIssue({
-      code: "custom",
-      message: "Superseded memories must have suspended_at.",
-      path: ["suspended_at"],
-    });
-  }
+    if (
+      isSuperseded &&
+      memory.suspension_reason === null
+    ) {
+      context.addIssue({
+        code: "custom",
+        message:
+          "Superseded memories must have suspension_reason.",
+        path: ["suspension_reason"],
+      });
+    }
 
-  if (isSuperseded && memory.suspension_reason === null) {
-    context.addIssue({
-      code: "custom",
-      message: "Superseded memories must have suspension_reason.",
-      path: ["suspension_reason"],
-    });
-  }
-
-  if (isSuperseded && memory.replaced_by_memory_id === null) {
-    context.addIssue({
-      code: "custom",
-      message: "Superseded memories must have replaced_by_memory_id.",
-      path: ["replaced_by_memory_id"],
-    });
-  }
-
-  if (memory.recall_count !== memory.recalls.length) {
-    context.addIssue({
-      code: "custom",
-      message: "recall_count must equal recalls.length.",
-      path: ["recall_count"],
-    });
-  }
-});
+    if (
+      isSuperseded &&
+      memory.replaced_by_memory_id === null
+    ) {
+      context.addIssue({
+        code: "custom",
+        message:
+          "Superseded memories must have replaced_by_memory_id.",
+        path: ["replaced_by_memory_id"],
+      });
+    }
+  });
 
 export const FeedbackMemoryDecisionSchema = z
   .object({
@@ -360,7 +370,8 @@ export const FeedbackMemoryDecisionSchema = z
 
     reasoning: NonEmptyTrimmedStringSchema,
 
-    recall_summary: NonEmptyTrimmedStringSchema.nullable(),
+    recall_summary:
+      NonEmptyTrimmedStringSchema.nullable(),
   })
   .superRefine((value, context) => {
     switch (value.decision) {
@@ -368,7 +379,8 @@ export const FeedbackMemoryDecisionSchema = z
         if (value.target_memory_id === null) {
           context.addIssue({
             code: "custom",
-            message: "APPEND_RECALL requires target_memory_id.",
+            message:
+              "APPEND_RECALL requires target_memory_id.",
             path: ["target_memory_id"],
           });
         }
@@ -376,7 +388,8 @@ export const FeedbackMemoryDecisionSchema = z
         if (value.recall_summary === null) {
           context.addIssue({
             code: "custom",
-            message: "APPEND_RECALL requires recall_summary.",
+            message:
+              "APPEND_RECALL requires recall_summary.",
             path: ["recall_summary"],
           });
         }
@@ -388,7 +401,8 @@ export const FeedbackMemoryDecisionSchema = z
         if (value.target_memory_id === null) {
           context.addIssue({
             code: "custom",
-            message: "SUSPEND_AND_CREATE requires target_memory_id.",
+            message:
+              "SUSPEND_AND_CREATE requires target_memory_id.",
             path: ["target_memory_id"],
           });
         }
@@ -409,7 +423,8 @@ export const FeedbackMemoryDecisionSchema = z
         if (value.target_memory_id !== null) {
           context.addIssue({
             code: "custom",
-            message: "CREATE_NEW must not have target_memory_id.",
+            message:
+              "CREATE_NEW must not have target_memory_id.",
             path: ["target_memory_id"],
           });
         }
@@ -417,7 +432,8 @@ export const FeedbackMemoryDecisionSchema = z
         if (value.recall_summary !== null) {
           context.addIssue({
             code: "custom",
-            message: "CREATE_NEW must not have recall_summary.",
+            message:
+              "CREATE_NEW must not have recall_summary.",
             path: ["recall_summary"],
           });
         }
@@ -427,27 +443,30 @@ export const FeedbackMemoryDecisionSchema = z
     }
   });
 
-export type MemoryScope = z.infer<typeof MemoryScopeSchema>;
+export type MemoryScope = z.infer<
+  typeof MemoryScopeSchema
+>;
 
-export type MemoryState = z.infer<typeof MemoryStateSchema>;
+export type MemoryState = z.infer<
+  typeof MemoryStateSchema
+>;
 
 export type FeedbackAnalysisModelResult = z.infer<
   typeof FeedbackAnalysisModelResultSchema
->;
-
-export type FeedbackMemoryRecall = z.infer<
-  typeof FeedbackMemoryRecallSchema
 >;
 
 export type FeedbackMemoryEmbeddingMetadata = z.infer<
   typeof FeedbackMemoryEmbeddingMetadataSchema
 >;
 
-export type FeedbackMemoryConditionEmbeddingMetadata = z.infer<
-  typeof FeedbackMemoryConditionEmbeddingMetadataSchema
->;
+export type FeedbackMemoryConditionEmbeddingMetadata =
+  z.infer<
+    typeof FeedbackMemoryConditionEmbeddingMetadataSchema
+  >;
 
-export type FeedbackMemory = z.infer<typeof FeedbackMemorySchema>;
+export type FeedbackMemory = z.infer<
+  typeof FeedbackMemorySchema
+>;
 
 export type FeedbackMemoryDecision = z.infer<
   typeof FeedbackMemoryDecisionSchema
