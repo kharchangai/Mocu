@@ -212,6 +212,14 @@ pub fn run() {
                 None::<&str>,
             )?;
 
+            let open_chat_item = MenuItem::with_id(
+                app,
+                "open_chat",
+                "Open Chat",
+                true,
+                None::<&str>,
+            )?;
+
             let quit_item = MenuItem::with_id(
                 app,
                 "quit",
@@ -222,7 +230,7 @@ pub fn run() {
 
             let menu = Menu::with_items(
                 app,
-                &[&settings_item, &quit_item],
+                &[&settings_item, &open_chat_item, &quit_item],
             )?;
 
             // Get the app's default icon
@@ -265,9 +273,33 @@ pub fn run() {
                         }
                     }
 
-                    "quit" => {
-                        app.exit(0);
+                    "open_chat" => {
+                    if let Some(chat_window) = app.get_webview_window("chat") {
+                        let _ = chat_window.maximize();
+                        let _ = chat_window.show();
+                        let _ = chat_window.set_focus();
+                    } else {
+                        match WebviewWindowBuilder::new(
+                            app,
+                            "chat",
+                            WebviewUrl::App("/#chat".into()),
+                        )
+                        .title("Mocu Chat")
+                        .resizable(true)
+                        .decorations(true)
+                        .build()
+                        {
+                            Ok(chat_window) => {
+                                let _ = chat_window.maximize();
+                            }
+                            Err(error) => {
+                                eprintln!(
+                                    "[mocu] Failed to create chat window: {error}"
+                                );
+                            }
+                        }
                     }
+                }
 
                     _ => {}
                 })

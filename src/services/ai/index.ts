@@ -1,8 +1,18 @@
 // src/services/ai/index.ts
 import { HumanMessage } from "@langchain/core/messages";
+import { MemorySaver } from "@langchain/langgraph";
 import { workflow } from "./graph";
 
-const app = workflow.compile();
+/*
+ * In-memory checkpointer keeps per-thread conversation history,
+ * so multi-turn chats (src/chat) get real context in the agent.
+ *
+ * When no thread_id is passed (e.g. the voice pipeline), each call
+ * runs on its own ephemeral thread, same as before.
+ */
+const checkpointer = new MemorySaver();
+
+const app = workflow.compile({ checkpointer });
 
 const throwIfAborted = (
   signal?: AbortSignal,
@@ -18,6 +28,7 @@ const throwIfAborted = (
 export const chatWithMocu = async (
   userInput: string,
   signal?: AbortSignal,
+  threadId?: string,
 ): Promise<string> => {
   throwIfAborted(signal);
 
@@ -37,12 +48,18 @@ export const chatWithMocu = async (
     /*
      * Passing signal to LangGraph lets supported nodes and nested
      * LangChain calls stop when AbortController.abort() is called.
+     *
+     * When a threadId is given, the graph resumes the same
+     * conversation (checkpointed history) instead of starting fresh.
      */
     const finalState = await app.invoke(
       inputs,
-      {
-        signal,
-      },
+      threadId
+        ? {
+            signal,
+            configurable: { thread_id: threadId },
+          }
+        : { signal },
     );
 
     throwIfAborted(signal);
