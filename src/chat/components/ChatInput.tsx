@@ -1,38 +1,56 @@
-// src/chat/components/ChatInput.tsx
-
 import {
-  useEffect,
-  useRef,
-  type ChangeEvent,
-  type KeyboardEvent,
-} from 'react';
+  FolderOpen,
+  Mic,
+  Paperclip,
+  SendHorizontal,
+  Square,
+  X,
+} from 'lucide-react';
+import { useEffect, useRef, useState } from 'react';
+import './ChatInput.css';
+
+type SendOptions = {
+  projectPath: string | null;
+};
 
 type ChatInputProps = {
-  value: string;
+  value?: string;
+  projectPath?: string;
   isLoading?: boolean;
   agentName?: string;
   modelLabel?: string;
   effortLabel?: string;
   onValueChange: (value: string) => void;
-  onSend: (text: string) => void | Promise<void>;
+  onProjectPathChange?: (path: string) => void;
+  onChooseProjectFolder?: () => void | Promise<void>;
+  onSend: (text: string, options: SendOptions) => void | Promise<void>;
   onStop?: () => void;
 };
 
-const MAX_TEXTAREA_HEIGHT = 180;
-
 export function ChatInput({
-  value,
+  value = '',
+  projectPath = '',
   isLoading = false,
   agentName = 'Mocu',
   modelLabel = 'Mocu · Standard',
   effortLabel = 'Balanced',
   onValueChange,
+  onProjectPathChange = () => undefined,
+  onChooseProjectFolder,
   onSend,
   onStop,
 }: ChatInputProps) {
   const textareaRef = useRef<HTMLTextAreaElement | null>(null);
+  const [isProjectPanelOpen, setIsProjectPanelOpen] = useState(false);
 
-  const resizeTextarea = () => {
+  const safeValue = typeof value === 'string' ? value : '';
+  const safeProjectPath =
+    typeof projectPath === 'string' ? projectPath : '';
+
+  const canSend = safeValue.trim().length > 0 && !isLoading;
+  const hasProjectPath = safeProjectPath.trim().length > 0;
+
+  useEffect(() => {
     const textarea = textareaRef.current;
 
     if (!textarea) {
@@ -40,211 +58,190 @@ export function ChatInput({
     }
 
     textarea.style.height = 'auto';
+    textarea.style.height = `${Math.min(textarea.scrollHeight, 180)}px`;
+  }, [safeValue]);
 
-    const nextHeight = Math.min(
-      textarea.scrollHeight,
-      MAX_TEXTAREA_HEIGHT,
-    );
-
-    textarea.style.height = `${nextHeight}px`;
-    textarea.style.overflowY =
-      textarea.scrollHeight > MAX_TEXTAREA_HEIGHT
-        ? 'auto'
-        : 'hidden';
-  };
-
-  useEffect(() => {
-    resizeTextarea();
-  }, [value]);
-
-  const handleChange = (
-    event: ChangeEvent<HTMLTextAreaElement>,
+  const handleMessageChange = (
+    event: React.ChangeEvent<HTMLTextAreaElement>,
   ) => {
     onValueChange(event.target.value);
   };
 
-  const handleSend = () => {
-    const text = value.trim();
+  const handleProjectPathChange = (
+    event: React.ChangeEvent<HTMLInputElement>,
+  ) => {
+    onProjectPathChange(event.target.value);
+  };
 
-    if (!text || isLoading) {
+  const handleSend = async () => {
+    const message = safeValue.trim();
+
+    if (!message || isLoading) {
       return;
     }
 
-    onValueChange('');
-    void onSend(text);
+    const normalizedProjectPath = safeProjectPath.trim() || null;
 
-    requestAnimationFrame(() => {
-      if (textareaRef.current) {
-        textareaRef.current.style.height = 'auto';
-      }
+    onValueChange('');
+
+    await onSend(message, {
+      projectPath: normalizedProjectPath,
     });
   };
 
   const handleKeyDown = (
-    event: KeyboardEvent<HTMLTextAreaElement>,
+    event: React.KeyboardEvent<HTMLTextAreaElement>,
   ) => {
-    if (
-      event.key === 'Enter' &&
-      !event.shiftKey &&
-      !event.nativeEvent.isComposing
-    ) {
+    if (event.key === 'Enter' && !event.shiftKey) {
       event.preventDefault();
-      handleSend();
+      void handleSend();
     }
   };
 
-  const canSend = value.trim().length > 0 && !isLoading;
+  const handleChooseFolder = async () => {
+    if (!onChooseProjectFolder) {
+      return;
+    }
+
+    await onChooseProjectFolder();
+  };
 
   return (
-    <footer className="chat-input-area">
-      <div className="chat-input-container">
-        <div className="chat-input">
+    <div className="chat-input-shell">
+      <div className="chat-input-inner">
+        <div className="project-folder-section">
+          <button
+            type="button"
+            className={`project-folder-trigger ${
+              hasProjectPath ? 'project-folder-trigger--active' : ''
+            }`}
+            onClick={() => setIsProjectPanelOpen((current) => !current)}
+            aria-expanded={isProjectPanelOpen}
+          >
+            <FolderOpen size={16} />
+            <span>
+              {hasProjectPath ? 'Project folder connected' : 'Project folder'}
+            </span>
+            <span className="project-folder-optional">Optional</span>
+          </button>
+
+          {isProjectPanelOpen && (
+            <div className="project-folder-panel">
+              <div className="project-folder-panel-header">
+                <div>
+                  <h3>Project workspace</h3>
+                  <p>
+                    Mocu can use this folder for project files, chat memory,
+                    and project-related data.
+                  </p>
+                </div>
+
+                <button
+                  type="button"
+                  className="project-folder-close-button"
+                  onClick={() => setIsProjectPanelOpen(false)}
+                  aria-label="Close project folder panel"
+                >
+                  <X size={16} />
+                </button>
+              </div>
+
+              <div className="project-folder-controls">
+                <input
+                  type="text"
+                  value={safeProjectPath}
+                  onChange={handleProjectPathChange}
+                  placeholder="Select or enter a project folder path..."
+                  aria-label="Project folder path"
+                />
+
+                <button
+                  type="button"
+                  className="choose-folder-button"
+                  onClick={() => void handleChooseFolder()}
+                >
+                  <FolderOpen size={16} />
+                  Choose folder
+                </button>
+              </div>
+
+              {hasProjectPath && (
+                <p className="selected-project-path">{safeProjectPath}</p>
+              )}
+            </div>
+          )}
+        </div>
+
+        <div className="chat-composer">
           <textarea
             ref={textareaRef}
-            value={value}
-            onChange={handleChange}
+            value={safeValue}
+            onChange={handleMessageChange}
             onKeyDown={handleKeyDown}
             placeholder={`Message ${agentName}`}
-            className="chat-input-field"
             rows={1}
-            dir="auto"
+            disabled={isLoading}
             aria-label={`Message ${agentName}`}
           />
 
-          <div className="chat-input-toolbar">
-            <div className="chat-input-toolbar-left">
+          <div className="chat-composer-footer">
+            <div className="chat-composer-left-actions">
               <button
                 type="button"
-                className="chat-input-icon-button"
-                title="Attach file"
-                aria-label="Attach file"
+                className="composer-icon-button"
+                aria-label="Attach a file"
               >
-                <svg
-                  viewBox="0 0 24 24"
-                  width="17"
-                  height="17"
-                  fill="none"
-                  stroke="currentColor"
-                  strokeWidth="1.8"
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  aria-hidden="true"
-                >
-                  <path d="M12 5v14" />
-                  <path d="M5 12h14" />
-                </svg>
+                <Paperclip size={18} />
               </button>
 
-              <button
-                type="button"
-                className="chat-input-pill-button"
-              >
-                <span>{modelLabel}</span>
-
-                <svg
-                  viewBox="0 0 24 24"
-                  width="11"
-                  height="11"
-                  fill="none"
-                  stroke="currentColor"
-                  strokeWidth="2"
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  aria-hidden="true"
-                >
-                  <path d="m7 10 5 5 5-5" />
-                </svg>
+              <button type="button" className="composer-menu-button">
+                {modelLabel}
+                <span>⌄</span>
               </button>
 
-              <button
-                type="button"
-                className="chat-input-pill-button"
-              >
-                <span>{effortLabel}</span>
-
-                <svg
-                  viewBox="0 0 24 24"
-                  width="11"
-                  height="11"
-                  fill="none"
-                  stroke="currentColor"
-                  strokeWidth="2"
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  aria-hidden="true"
-                >
-                  <path d="m7 10 5 5 5-5" />
-                </svg>
+              <button type="button" className="composer-menu-button">
+                {effortLabel}
+                <span>⌄</span>
               </button>
             </div>
 
-            <div className="chat-input-toolbar-right">
+            <div className="chat-composer-right-actions">
               <button
                 type="button"
-                className="chat-input-icon-button"
-                title="Voice input"
+                className="composer-icon-button"
                 aria-label="Voice input"
               >
-                <svg
-                  viewBox="0 0 24 24"
-                  width="16"
-                  height="16"
-                  fill="none"
-                  stroke="currentColor"
-                  strokeWidth="1.8"
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  aria-hidden="true"
-                >
-                  <rect x="9" y="2" width="6" height="11" rx="3" />
-                  <path d="M5 10v1a7 7 0 0 0 14 0v-1" />
-                  <path d="M12 18v3" />
-                </svg>
+                <Mic size={17} />
               </button>
 
               {isLoading ? (
                 <button
                   type="button"
-                  className="chat-input-send-button chat-input-stop-button"
+                  className="send-button send-button--stop"
                   onClick={onStop}
-                  aria-label="Stop generation"
-                  title="Stop generation"
+                  aria-label="Stop generating"
                 >
-                  <span className="chat-input-stop-icon" />
+                  <Square size={15} fill="currentColor" />
                 </button>
               ) : (
                 <button
                   type="button"
-                  className="chat-input-send-button"
+                  className="send-button"
+                  onClick={() => void handleSend()}
                   disabled={!canSend}
-                  onClick={handleSend}
                   aria-label="Send message"
-                  title="Send message"
                 >
-                  <svg
-                    viewBox="0 0 24 24"
-                    width="15"
-                    height="15"
-                    fill="none"
-                    stroke="currentColor"
-                    strokeWidth="2.2"
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    aria-hidden="true"
-                  >
-                    <path d="M12 19V5" />
-                    <path d="m6 11 6-6 6 6" />
-                  </svg>
+                  <SendHorizontal size={18} />
                 </button>
               )}
             </div>
           </div>
         </div>
 
-        <p className="chat-input-hint">
+        <p className="chat-input-disclaimer">
           Mocu can make mistakes. Check important information.
         </p>
       </div>
-    </footer>
+    </div>
   );
 }
