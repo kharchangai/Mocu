@@ -6,14 +6,33 @@ import {
   Square,
   X,
 } from 'lucide-react';
-import { useEffect, useRef, useState } from 'react';
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from 'react';
+import { listAvailableSkills } from '../services/skillService';
+import { SkillMentionMenu } from './SkillMentionMenu';
+import {
+  filterSkills,
+  findActiveSkillMention,
+  getSelectedSkills,
+  type ActiveSkillMention,
+} from './skillMention';
+import type {
+  AvailableSkill,
+  SelectedSkill,
+} from './skillTypes';
 import './ChatInput.css';
 
-type SendOptions = {
+export type SendOptions = {
   projectPath: string | null;
+  selectedSkills: SelectedSkill[];
 };
 
-type ChatInputProps = {
+export type ChatInputProps = {
   value?: string;
   projectPath?: string;
   isLoading?: boolean;
@@ -23,7 +42,10 @@ type ChatInputProps = {
   onValueChange: (value: string) => void;
   onProjectPathChange?: (path: string) => void;
   onChooseProjectFolder?: () => void | Promise<void>;
-  onSend: (text: string, options: SendOptions) => void | Promise<void>;
+  onSend: (
+    text: string,
+    options: SendOptions,
+  ) => void | Promise<void>;
   onStop?: () => void;
 };
 
@@ -41,14 +63,73 @@ export function ChatInput({
   onStop,
 }: ChatInputProps) {
   const textareaRef = useRef<HTMLTextAreaElement | null>(null);
-  const [isProjectPanelOpen, setIsProjectPanelOpen] = useState(false);
+
+  const [isProjectPanelOpen, setIsProjectPanelOpen] =
+    useState(false);
+
+  const [availableSkills, setAvailableSkills] = useState<
+    AvailableSkill[]
+  >([]);
+
+  const [activeMention, setActiveMention] =
+    useState<ActiveSkillMention | null>(null);
+
+  const [selectedSkillIndex, setSelectedSkillIndex] = useState(0);
+  const [isLoadingSkills, setIsLoadingSkills] = useState(false);
+  const [skillsError, setSkillsError] = useState<string | null>(
+    null,
+  );
 
   const safeValue = typeof value === 'string' ? value : '';
   const safeProjectPath =
     typeof projectPath === 'string' ? projectPath : '';
 
+  const normalizedProjectPath =
+    safeProjectPath.trim().length > 0
+      ? safeProjectPath.trim()
+      : null;
+
   const canSend = safeValue.trim().length > 0 && !isLoading;
-  const hasProjectPath = safeProjectPath.trim().length > 0;
+  const hasProjectPath = normalizedProjectPath !== null;
+
+  const filteredSkills = useMemo(() => {
+    if (!activeMention) {
+      return [];
+    }
+
+    return filterSkills(availableSkills, activeMention.query);
+  }, [activeMention, availableSkills]);
+
+  const isSkillMenuOpen =
+    activeMention !== null && !isLoading;
+
+  const loadSkills = useCallback(async () => {
+    setIsLoadingSkills(true);
+    setSkillsError(null);
+
+    try {
+      const skills = await listAvailableSkills(
+        normalizedProjectPath,
+      );
+
+      setAvailableSkills(skills);
+    } catch (error) {
+      console.error('Failed to load skills:', error);
+
+      setAvailableSkills([]);
+      setSkillsError(
+        error instanceof Error
+          ? error.message
+          : 'Failed to load available skills.',
+      );
+    } finally {
+      setIsLoadingSkills(false);
+    }
+  }, [normalizedProjectPath]);
+
+  useEffect(() => {
+    void loadSkills();
+  }, [loadSkills]);
 
   useEffect(() => {
     const textarea = textareaRef.current;
@@ -58,19 +139,101 @@ export function ChatInput({
     }
 
     textarea.style.height = 'auto';
-    textarea.style.height = `${Math.min(textarea.scrollHeight, 180)}px`;
+    textarea.style.height = `${Math.min(
+      textarea.scrollHeight,
+      180,
+    )}px`;
   }, [safeValue]);
+
+  useEffect(() => {
+    if (
+      selectedSkillIndex >= filteredSkills.length &&
+      filteredSkills.length > 0
+    ) {
+      setSelectedSkillIndex(filteredSkills.length - 1);
+    }
+  }, [filteredSkills.length, selectedSkillIndex]);
+
+  const updateActiveMention = (
+    nextValue: string,
+    caretPosition: number,
+  ) => {
+    const mention = findActiveSkillMention(
+      nextValue,
+      caretPosition,
+    );
+
+    setActiveMention(mention);
+    setSelectedSkillIndex(0);
+  };
+
+  const closeSkillMenu = () => {
+    setActiveMention(null);
+    setSelectedSkillIndex(0);
+  };
+
+  const setTextareaCaret = (position: number) => {
+    requestAnimationFrame(() => {
+      const textarea = textareaRef.current;
+
+      if (!textarea) {
+        return;
+      }
+
+      textarea.focus();
+      textarea.setSelectionRange(position, position);
+    });
+  };
 
   const handleMessageChange = (
     event: React.ChangeEvent<HTMLTextAreaElement>,
   ) => {
-    onValueChange(event.target.value);
+    const nextValue = event.target.value;
+    const caretPosition = event.target.selectionStart;
+
+    onValueChange(nextValue);
+    updateActiveMention(nextValue, caretPosition);
+  };
+
+  const handleTextareaSelection = (
+    event: React.SyntheticEvent<HTMLTextAreaElement>,
+  ) => {
+    const textarea = event.currentTarget;
+
+    updateActiveMention(
+      textarea.value,
+      textarea.selectionStart,
+    );
   };
 
   const handleProjectPathChange = (
     event: React.ChangeEvent<HTMLInputElement>,
   ) => {
     onProjectPathChange(event.target.value);
+  };
+
+  const handleSkillSelect = (skill: AvailableSkill) => {
+    if (!activeMention) {
+      return;
+    }
+
+    const textBeforeMention = safeValue.slice(
+      0,
+      activeMention.start,
+    );
+
+    const textAfterMention = safeValue.slice(activeMention.end);
+    const insertedMention = `@${skill.name} `;
+
+    const nextValue =
+      textBeforeMention + insertedMention + textAfterMention;
+
+    const nextCaretPosition =
+      textBeforeMention.length + insertedMention.length;
+
+    onValueChange(nextValue);
+    closeSkillMenu();
+    setTextareaCaret(nextCaretPosition);
   };
 
   const handleSend = async () => {
@@ -80,18 +243,84 @@ export function ChatInput({
       return;
     }
 
-    const normalizedProjectPath = safeProjectPath.trim() || null;
+    const selectedSkills = getSelectedSkills(
+      message,
+      availableSkills,
+    );
 
+    closeSkillMenu();
     onValueChange('');
 
-    await onSend(message, {
-      projectPath: normalizedProjectPath,
-    });
+    try {
+      await onSend(message, {
+        projectPath: normalizedProjectPath,
+        selectedSkills,
+      });
+    } catch (error) {
+      /*
+       * Restore the message when sending fails. Remove this block if
+       * message restoration is already handled by the parent.
+       */
+      onValueChange(message);
+      throw error;
+    }
   };
 
   const handleKeyDown = (
     event: React.KeyboardEvent<HTMLTextAreaElement>,
   ) => {
+    if (isSkillMenuOpen) {
+      if (event.key === 'ArrowDown') {
+        event.preventDefault();
+
+        if (filteredSkills.length > 0) {
+          setSelectedSkillIndex((currentIndex) =>
+            currentIndex >= filteredSkills.length - 1
+              ? 0
+              : currentIndex + 1,
+          );
+        }
+
+        return;
+      }
+
+      if (event.key === 'ArrowUp') {
+        event.preventDefault();
+
+        if (filteredSkills.length > 0) {
+          setSelectedSkillIndex((currentIndex) =>
+            currentIndex <= 0
+              ? filteredSkills.length - 1
+              : currentIndex - 1,
+          );
+        }
+
+        return;
+      }
+
+      if (
+        (event.key === 'Enter' || event.key === 'Tab') &&
+        filteredSkills.length > 0
+      ) {
+        event.preventDefault();
+
+        const selectedSkill =
+          filteredSkills[selectedSkillIndex];
+
+        if (selectedSkill) {
+          handleSkillSelect(selectedSkill);
+        }
+
+        return;
+      }
+
+      if (event.key === 'Escape') {
+        event.preventDefault();
+        closeSkillMenu();
+        return;
+      }
+    }
+
     if (event.key === 'Enter' && !event.shiftKey) {
       event.preventDefault();
       void handleSend();
@@ -113,16 +342,26 @@ export function ChatInput({
           <button
             type="button"
             className={`project-folder-trigger ${
-              hasProjectPath ? 'project-folder-trigger--active' : ''
+              hasProjectPath
+                ? 'project-folder-trigger--active'
+                : ''
             }`}
-            onClick={() => setIsProjectPanelOpen((current) => !current)}
+            onClick={() =>
+              setIsProjectPanelOpen((current) => !current)
+            }
             aria-expanded={isProjectPanelOpen}
           >
             <FolderOpen size={16} />
+
             <span>
-              {hasProjectPath ? 'Project folder connected' : 'Project folder'}
+              {hasProjectPath
+                ? 'Project folder connected'
+                : 'Project folder'}
             </span>
-            <span className="project-folder-optional">Optional</span>
+
+            <span className="project-folder-optional">
+              Optional
+            </span>
           </button>
 
           {isProjectPanelOpen && (
@@ -130,9 +369,10 @@ export function ChatInput({
               <div className="project-folder-panel-header">
                 <div>
                   <h3>Project workspace</h3>
+
                   <p>
-                    Mocu can use this folder for project files, chat memory,
-                    and project-related data.
+                    Mocu can use this folder for project files,
+                    chat memory, and project-related data.
                   </p>
                 </div>
 
@@ -166,22 +406,60 @@ export function ChatInput({
               </div>
 
               {hasProjectPath && (
-                <p className="selected-project-path">{safeProjectPath}</p>
+                <>
+                  <p className="selected-project-path">
+                    {safeProjectPath}
+                  </p>
+
+                  <p className="project-folder-save-hint">
+                    Chats with this folder are saved under Projects
+                    in the sidebar.
+                  </p>
+                </>
               )}
             </div>
           )}
         </div>
 
         <div className="chat-composer">
+          {isSkillMenuOpen && (
+            <SkillMentionMenu
+              skills={filteredSkills}
+              selectedIndex={selectedSkillIndex}
+              isLoading={isLoadingSkills}
+              error={skillsError}
+              onSelect={handleSkillSelect}
+              onHover={setSelectedSkillIndex}
+            />
+          )}
+
           <textarea
             ref={textareaRef}
             value={safeValue}
             onChange={handleMessageChange}
             onKeyDown={handleKeyDown}
+            onClick={handleTextareaSelection}
+            onKeyUp={(event) => {
+              if (
+                event.key !== 'ArrowUp' &&
+                event.key !== 'ArrowDown' &&
+                event.key !== 'Enter' &&
+                event.key !== 'Escape' &&
+                event.key !== 'Tab'
+              ) {
+                handleTextareaSelection(event);
+              }
+            }}
             placeholder={`Message ${agentName}`}
             rows={1}
             disabled={isLoading}
             aria-label={`Message ${agentName}`}
+            aria-expanded={isSkillMenuOpen}
+            aria-controls={
+              isSkillMenuOpen
+                ? 'skill-mention-list'
+                : undefined
+            }
           />
 
           <div className="chat-composer-footer">
@@ -194,12 +472,18 @@ export function ChatInput({
                 <Paperclip size={18} />
               </button>
 
-              <button type="button" className="composer-menu-button">
+              <button
+                type="button"
+                className="composer-menu-button"
+              >
                 {modelLabel}
                 <span>⌄</span>
               </button>
 
-              <button type="button" className="composer-menu-button">
+              <button
+                type="button"
+                className="composer-menu-button"
+              >
                 {effortLabel}
                 <span>⌄</span>
               </button>
@@ -239,7 +523,8 @@ export function ChatInput({
         </div>
 
         <p className="chat-input-disclaimer">
-          Mocu can make mistakes. Check important information.
+          Type @ to select a skill. Mocu can make mistakes. Check
+          important information.
         </p>
       </div>
     </div>
