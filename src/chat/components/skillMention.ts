@@ -3,32 +3,50 @@ import type {
   SelectedSkill,
 } from './skillTypes';
 
-export type ActiveSkillMention = {
+/*
+ * An active slash command typed at the caret.
+ *
+ * Example positions:
+ *
+ *   "  /skill react" (caret at end)
+ *   -> start at "/", end at caret, command "skill", query "react"
+ */
+export type ActiveSlashCommand = {
   start: number;
   end: number;
+  command: string;
   query: string;
 };
 
-export function findActiveSkillMention(
+export function findActiveSlashCommand(
   value: string,
   caretPosition: number,
-): ActiveSkillMention | null {
+): ActiveSlashCommand | null {
   const textBeforeCaret = value.slice(0, caretPosition);
-  const match = textBeforeCaret.match(/(^|\s)@([a-zA-Z0-9_-]*)$/);
+  /*
+   * Match a forward slash that begins at the start of the input or
+   * after whitespace, followed by an optional command token and an
+   * optional whitespace-separated query.
+   */
+  const match = textBeforeCaret.match(
+    /(^|\s)\/([a-zA-Z0-9_-]*)(?:\s+(\S*))?$/,
+  );
 
   if (!match) {
     return null;
   }
 
   const matchedText = match[0];
-  const query = match[2] ?? '';
-  const atOffset = matchedText.lastIndexOf('@');
+  const command = match[2] ?? '';
+  const query = match[3] ?? '';
+  const slashOffset = matchedText.indexOf('/');
   const start =
-    textBeforeCaret.length - matchedText.length + atOffset;
+    textBeforeCaret.length - matchedText.length + slashOffset;
 
   return {
     start,
     end: caretPosition,
+    command,
     query,
   };
 }
@@ -43,9 +61,17 @@ export function filterSkills(
     return skills;
   }
 
-  return skills.filter((skill) =>
-    skill.name.toLowerCase().startsWith(normalizedQuery),
-  );
+  return skills.filter((skill) => {
+    const nameMatch =
+      skill.name.toLowerCase().includes(normalizedQuery);
+
+    const description = (skill.description ?? '').trim();
+    const descriptionMatch =
+      description.length > 0 &&
+      description.toLowerCase().includes(normalizedQuery);
+
+    return nameMatch || descriptionMatch;
+  });
 }
 
 export function sortSkills(
@@ -80,35 +106,10 @@ export function mergeSkills(
   return sortSkills([...skillsByName.values()]);
 }
 
-export function getSelectedSkills(
-  message: string,
-  availableSkills: AvailableSkill[],
-): SelectedSkill[] {
-  const selectedSkills = new Map<string, SelectedSkill>();
-  const mentionPattern =
-    /(^|\s)@([a-z0-9]+(?:[-_][a-z0-9]+)*)/gi;
-
-  for (const match of message.matchAll(mentionPattern)) {
-    const mentionedName = match[2]?.toLowerCase();
-
-    if (!mentionedName) {
-      continue;
-    }
-
-    const skill = availableSkills.find(
-      (item) => item.name.toLowerCase() === mentionedName,
-    );
-
-    if (!skill) {
-      continue;
-    }
-
-    selectedSkills.set(skill.id, {
-      name: skill.name,
-      source: skill.source,
-      path: skill.path,
-    });
-  }
-
-  return [...selectedSkills.values()];
-}
+/*
+ * The SelectedSkill shape used for selected-skills tags.
+ *
+ * This re-exports the type so the input layer does not need to import
+ * the skill type module directly.
+ */
+export type { SelectedSkill };

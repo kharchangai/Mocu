@@ -27,6 +27,8 @@ import {
 
 import type { ChatMessage } from '../types/chat';
 
+import type { SelectedSkill } from './skillTypes';
+
 import './ChatBox.css';
 
 type EnsureChatResult = {
@@ -40,6 +42,7 @@ type EnsureChatResult = {
  */
 type SendOptions = {
   projectPath?: string | null;
+  selectedSkills?: SelectedSkill[];
 };
 
 type ChatBoxProps = {
@@ -453,6 +456,14 @@ export function ChatBox({
            * Each conversation uses its own LangGraph thread.
            */
           thread_id: requestChatId,
+          /*
+           * Skills selected with the /skill command are resolved inside
+           * the agent into their SKILL.md system-prompt content.
+           */
+          selectedSkills:
+            options?.selectedSkills?.map(
+              (skill) => skill.name,
+            ) ?? [],
         },
       };
 
@@ -679,6 +690,7 @@ export function ChatBox({
       )}
 
       <ChatInput
+        key={chatId ?? 'new-chat'}
         value={draftMessage}
         onValueChange={setDraftMessage}
         onSend={handleSendMessage}

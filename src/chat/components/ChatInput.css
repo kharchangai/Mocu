@@ -324,9 +324,9 @@
   text-align: center;
 }
 
-/* Skill mention menu */
+/* Command menu */
 
-.skill-mention-menu {
+.command-menu {
   position: absolute;
   z-index: 40;
   right: 0;
@@ -342,7 +342,7 @@
   backdrop-filter: blur(18px);
 }
 
-.skill-mention-menu-header {
+.command-menu-header {
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -356,20 +356,21 @@
   font-weight: 650;
 }
 
-.skill-mention-menu-hint {
+.command-menu-hint {
   color: #9ca3af;
   font-size: 9px;
   font-weight: 400;
 }
 
-.skill-mention-menu-content {
+.command-menu-content {
   max-height: 290px;
   padding: 6px;
   overflow-y: auto;
   overscroll-behavior: contain;
 }
 
-.skill-mention-item {
+.command-menu-command,
+.command-menu-skill {
   display: flex;
   width: 100%;
   min-height: 58px;
@@ -385,12 +386,14 @@
   cursor: pointer;
 }
 
-.skill-mention-item:hover,
-.skill-mention-item--selected {
+.command-menu-command:hover,
+.command-menu-command--selected,
+.command-menu-skill:hover,
+.command-menu-skill--selected {
   background: #f3f4f6;
 }
 
-.skill-mention-icon {
+.command-menu-icon {
   display: grid;
   flex: 0 0 auto;
   width: 32px;
@@ -402,12 +405,13 @@
   place-items: center;
 }
 
-.skill-mention-item--selected .skill-mention-icon {
+.command-menu-command--selected .command-menu-icon,
+.command-menu-skill--selected .command-menu-icon {
   color: #2563eb;
   border-color: #bfdbfe;
 }
 
-.skill-mention-information {
+.command-menu-information {
   display: flex;
   min-width: 0;
   flex: 1;
@@ -415,7 +419,8 @@
   gap: 3px;
 }
 
-.skill-mention-name {
+.command-menu-command-name,
+.command-menu-skill-name {
   overflow: hidden;
   color: #111827;
   font-size: 12px;
@@ -424,7 +429,8 @@
   white-space: nowrap;
 }
 
-.skill-mention-description {
+.command-menu-command-description,
+.command-menu-skill-description {
   display: -webkit-box;
   overflow: hidden;
   color: #6b7280;
@@ -434,7 +440,7 @@
   -webkit-line-clamp: 2;
 }
 
-.skill-source-badge {
+.command-source-badge {
   flex: 0 0 auto;
   padding: 4px 7px;
   border-radius: 999px;
@@ -442,25 +448,73 @@
   font-weight: 650;
 }
 
-.skill-source-badge--project {
+.command-source-badge--project {
   color: #1d4ed8;
   background: #dbeafe;
 }
 
-.skill-source-badge--global {
+.command-source-badge--global {
   color: #4b5563;
   background: #f3f4f6;
 }
 
-.skill-mention-status {
+.command-menu-status {
   padding: 28px 14px;
   color: #6b7280;
   font-size: 11px;
   text-align: center;
 }
 
-.skill-mention-status--error {
+.command-menu-status--error {
   color: #dc2626;
+}
+
+/* Selected skill tags */
+
+.skill-tags-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 6px;
+}
+
+.skill-tag {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  max-width: 220px;
+  padding: 4px 8px;
+  color: #1d4ed8;
+  background: #eff6ff;
+  border: 1px solid #bfdbfe;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 600;
+}
+
+.skill-tag-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.skill-tag-remove {
+  display: grid;
+  width: 16px;
+  height: 16px;
+  padding: 0;
+  color: #2563eb;
+  background: transparent;
+  border: 0;
+  border-radius: 50%;
+  place-items: center;
+  cursor: pointer;
+}
+
+.skill-tag-remove:hover {
+  color: #ffffff;
+  background: #dc2626;
 }
 
 @media (max-width: 640px) {
@@ -481,7 +535,7 @@
     display: none;
   }
 
-  .skill-mention-menu-hint {
+  .command-menu-hint {
     display: none;
   }
 }

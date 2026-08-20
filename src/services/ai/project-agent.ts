@@ -27,7 +27,7 @@ import {
 } from "./agent/chat-prompts";
 
 import {
-  resolveSkillsFromUserText,
+  resolveSelectedSkills,
 } from "../../chat/components/skills/selected-skill-loader";
 
 import {
@@ -143,7 +143,7 @@ const getCurrentDateTime =
  * Builds the dedicated system prompt used by the project agent.
  *
  * skillsPrompt contains the contents of the SKILL.md files selected
- * by the user through @skill mentions.
+ * by the user through the /skill command.
  */
 const buildProjectAgentSystemPrompt = (
   projectPath: string,
@@ -459,6 +459,27 @@ const buildProjectToolResultSummaryPrompt = ({
 };
 
 /*
+ * Reads the skill names selected with the /skill command from the
+ * RunnableConfig carried through the project request.
+ */
+const getSelectedSkillNames = (
+  config: RunnableConfig,
+): string[] => {
+  const value =
+    config.configurable?.selectedSkills;
+
+  if (!Array.isArray(value)) {
+    return [];
+  }
+
+  return value.filter(
+    (item): item is string =>
+      typeof item === "string" &&
+      item.trim().length > 0,
+  );
+};
+
+/*
  * Executes the dedicated project agent without sending previous chat
  * messages to the model.
  *
@@ -512,16 +533,22 @@ export const callProjectAgent =
     );
 
     /*
-     * Detect @skill mentions and load the corresponding SKILL.md files.
+     * Load the SKILL.md files for the skills selected with the /skill
+     * command.
      *
      * Search priority inside the skill loader:
      *
      * 1. <project>/.mocu/skills/<skill-name>/SKILL.md
      * 2. BaseDirectory.AppData/skills/<skill-name>/SKILL.md
      */
+    const selectedSkillNames =
+      getSelectedSkillNames(
+        runnableConfig,
+      );
+
     const skillResolution =
-      await resolveSkillsFromUserText(
-        rawUserText,
+      await resolveSelectedSkills(
+        selectedSkillNames,
         normalizedProjectPath,
       );
 
@@ -530,13 +557,10 @@ export const callProjectAgent =
     );
 
     /*
-     * Successfully loaded @skill mentions are removed from userText.
-     *
-     * Keep rawUserText as a fallback when the message contains only
-     * an @skill mention and no additional request.
+     * The /skill command is stripped in the input layer, so the request
+     * text sent to the model is the original user message unchanged.
      */
     const userText =
-      skillResolution.userText ||
       rawUserText;
 
     console.log(
@@ -568,7 +592,7 @@ export const callProjectAgent =
         .length > 0
     ) {
       console.warn(
-        "[Project Agent] Skill mentions not found:",
+        "[Project Agent] Selected skills not found:",
         skillResolution.missingSkills,
       );
     }

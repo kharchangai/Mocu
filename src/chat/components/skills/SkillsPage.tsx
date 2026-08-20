@@ -8,9 +8,21 @@ import {
   useProjectSkills,
 } from '../../hooks/useProjectSkills';
 
+import {
+  installSkillFromZip,
+} from '../../services/skillInstaller';
+
 import type {
   ProjectSkillFile,
 } from '../../types/skill';
+
+import type {
+  SkillInstallTarget,
+} from '../../types/skillInstaller';
+
+import {
+  NewSkillModal,
+} from './NewSkillModal';
 
 import {
   SkillCard,
@@ -31,13 +43,41 @@ type SkillsPageProps = {
 };
 
 function createSearchableMetadataText(
-  metadata: Record<string, unknown>,
+  metadata:
+    | Record<string, unknown>
+    | null
+    | undefined,
 ): string {
+  if (!metadata) {
+    return '';
+  }
+
   try {
     return JSON.stringify(metadata);
   } catch {
     return '';
   }
+}
+
+function getErrorMessage(
+  error: unknown,
+  fallbackMessage: string,
+): string {
+  if (
+    error instanceof Error &&
+    error.message.trim()
+  ) {
+    return error.message;
+  }
+
+  if (
+    typeof error === 'string' &&
+    error.trim()
+  ) {
+    return error;
+  }
+
+  return fallbackMessage;
 }
 
 export function SkillsPage({
@@ -52,6 +92,23 @@ export function SkillsPage({
     selectedSkill,
     setSelectedSkill,
   ] = useState<ProjectSkillFile | null>(
+    null,
+  );
+
+  const [
+    isNewSkillModalOpen,
+    setIsNewSkillModalOpen,
+  ] = useState(false);
+
+  const [
+    isInstalling,
+    setIsInstalling,
+  ] = useState(false);
+
+  const [
+    installationError,
+    setInstallationError,
+  ] = useState<string | null>(
     null,
   );
 
@@ -70,6 +127,9 @@ export function SkillsPage({
   const normalizedProjectPath =
     projectPath?.trim() ?? '';
 
+  const hasProject =
+    normalizedProjectPath.length > 0;
+
   const isProjectSource =
     source === 'project';
 
@@ -80,8 +140,8 @@ export function SkillsPage({
 
   const sourceDescription =
     isProjectSource
-      ? 'View and edit Agent Skills stored inside the active project.'
-      : 'View and edit Agent Skills available globally across Mocu.';
+      ? 'View, install, and edit Agent Skills stored inside the active project.'
+      : 'View, install, and edit Agent Skills available globally across Mocu.';
 
   const sourceLabel =
     isProjectSource
@@ -97,6 +157,27 @@ export function SkillsPage({
     isProjectSource
       ? 'Project skills'
       : 'Global skills';
+
+  const searchPlaceholder =
+    isProjectSource
+      ? 'Search project skills...'
+      : 'Search global skills...';
+
+  const searchAriaLabel =
+    isProjectSource
+      ? 'Search project skills'
+      : 'Search global skills';
+
+  const reloadLabel =
+    isProjectSource
+      ? 'Reload project skills'
+      : 'Reload global skills';
+
+  const displayedDirectory =
+    isProjectSource
+      ? normalizedProjectPath
+      : skillsDirectory ||
+        'BaseDirectory.AppData/skills';
 
   const filteredSkills =
     useMemo(() => {
@@ -162,9 +243,11 @@ export function SkillsPage({
 
   const handleCloseEditor =
     useCallback((): void => {
-      if (!isSaving) {
-        setSelectedSkill(null);
+      if (isSaving) {
+        return;
       }
+
+      setSelectedSkill(null);
     }, [isSaving]);
 
   const handleSaveSkill =
@@ -182,6 +265,84 @@ export function SkillsPage({
         );
       },
       [updateSkill],
+    );
+
+  const handleOpenNewSkill =
+    useCallback((): void => {
+      setInstallationError(null);
+      setIsNewSkillModalOpen(true);
+    }, []);
+
+  const handleCloseNewSkill =
+    useCallback((): void => {
+      if (isInstalling) {
+        return;
+      }
+
+      setInstallationError(null);
+      setIsNewSkillModalOpen(false);
+    }, [isInstalling]);
+
+  const handleInstallSkill =
+    useCallback(
+      async (
+        zipPath: string,
+        target: SkillInstallTarget,
+      ): Promise<void> => {
+        if (
+          isInstalling ||
+          !zipPath.trim()
+        ) {
+          return;
+        }
+
+        if (
+          (target === 'project' ||
+            target === 'both') &&
+          !hasProject
+        ) {
+          setInstallationError(
+            'Select a project before installing a project skill.',
+          );
+
+          return;
+        }
+
+        setIsInstalling(true);
+        setInstallationError(null);
+
+        try {
+          await installSkillFromZip({
+            zipPath,
+            target,
+            projectPath: hasProject
+              ? normalizedProjectPath
+              : null,
+          });
+
+          await reloadSkills();
+
+          setIsNewSkillModalOpen(
+            false,
+          );
+          setInstallationError(null);
+        } catch (installError) {
+          setInstallationError(
+            getErrorMessage(
+              installError,
+              'The skill could not be installed.',
+            ),
+          );
+        } finally {
+          setIsInstalling(false);
+        }
+      },
+      [
+        hasProject,
+        isInstalling,
+        normalizedProjectPath,
+        reloadSkills,
+      ],
     );
 
   return (
@@ -204,8 +365,14 @@ export function SkillsPage({
         <button
           type="button"
           className="skill-primary-button"
-          disabled
-          title="Skill creation will be added next"
+          onClick={
+            handleOpenNewSkill
+          }
+          disabled={
+            isLoading ||
+            isInstalling
+          }
+          title="Install a new skill from a ZIP file"
         >
           <svg
             viewBox="0 0 24 24"
@@ -230,10 +397,7 @@ export function SkillsPage({
         <span>{sourceLabel}</span>
 
         <strong>
-          {isProjectSource
-            ? normalizedProjectPath
-            : skillsDirectory ||
-              'BaseDirectory.AppData/skills'}
+          {displayedDirectory}
         </strong>
       </div>
 
@@ -262,21 +426,17 @@ export function SkillsPage({
           <input
             type="search"
             value={searchQuery}
-            onChange={(event) =>
+            onChange={(event) => {
               setSearchQuery(
                 event.target.value,
-              )
-            }
+              );
+            }}
             placeholder={
-              isProjectSource
-                ? 'Search project skills...'
-                : 'Search global skills...'
+              searchPlaceholder
             }
             disabled={isLoading}
             aria-label={
-              isProjectSource
-                ? 'Search project skills'
-                : 'Search global skills'
+              searchAriaLabel
             }
           />
 
@@ -311,17 +471,12 @@ export function SkillsPage({
           type="button"
           className="skills-refresh-button"
           onClick={handleReload}
-          disabled={isLoading}
-          title={
-            isProjectSource
-              ? 'Reload project skills'
-              : 'Reload global skills'
+          disabled={
+            isLoading ||
+            isInstalling
           }
-          aria-label={
-            isProjectSource
-              ? 'Reload project skills'
-              : 'Reload global skills'
-          }
+          title={reloadLabel}
+          aria-label={reloadLabel}
         >
           <svg
             viewBox="0 0 24 24"
@@ -341,10 +496,9 @@ export function SkillsPage({
       </div>
 
       {skillsDirectory &&
-      (isProjectSource
-        ? skillsDirectory !==
-          normalizedProjectPath
-        : false) ? (
+      isProjectSource &&
+      skillsDirectory !==
+        normalizedProjectPath ? (
         <p className="skills-directory">
           {skillsDirectory}
         </p>
@@ -360,7 +514,10 @@ export function SkillsPage({
           <button
             type="button"
             onClick={handleReload}
-            disabled={isLoading}
+            disabled={
+              isLoading ||
+              isInstalling
+            }
           >
             Try again
           </button>
@@ -435,10 +592,13 @@ export function SkillsPage({
       ) : (
         <SkillsEmptyState
           /*
-           * Global skills are also a valid source, even when no project
-           * folder has been selected. Therefore this must remain true.
+           * Global skills remain available when
+           * no project is selected.
            */
-          hasProject
+          hasProject={
+            hasProject ||
+            !isProjectSource
+          }
           hasSearchQuery={
             Boolean(
               searchQuery.trim(),
@@ -456,6 +616,24 @@ export function SkillsPage({
           }
           onSave={
             handleSaveSkill
+          }
+        />
+      ) : null}
+
+      {isNewSkillModalOpen ? (
+        <NewSkillModal
+          hasProject={hasProject}
+          isInstalling={
+            isInstalling
+          }
+          installationError={
+            installationError
+          }
+          onClose={
+            handleCloseNewSkill
+          }
+          onInstall={
+            handleInstallSkill
           }
         />
       ) : null}

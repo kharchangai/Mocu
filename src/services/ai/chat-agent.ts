@@ -39,7 +39,7 @@ import {
 } from "./agent/chat-prompts";
 
 import {
-  resolveSkillsFromUserText,
+  resolveSelectedSkills,
 } from "../../chat/components/skills/selected-skill-loader";
 
 import {
@@ -165,9 +165,8 @@ const getCurrentUserText = (
 /*
  * Replaces the latest human message with the cleaned current request.
  *
- * Valid @skill mentions are removed by resolveSkillsFromUserText. This
- * prevents the model from receiving the internal mention syntax while
- * preserving the previous conversation messages.
+ * The /skill command is stripped in the input layer, so the request text
+ * is already clean when it reaches the agent.
  */
 const buildChatMessagesForCurrentRequest = (
   messages: BaseMessage[],
@@ -228,6 +227,27 @@ const addSkillsToChatSystemPrompt = (
     "Do not claim that you used a skill that was not successfully loaded.",
   ].join(
     "\n",
+  );
+};
+
+/*
+ * Reads the skill names selected with the /skill command from the
+ * RunnableConfig carried through the chat request.
+ */
+const getSelectedSkillNames = (
+  config: RunnableConfig,
+): string[] => {
+  const value =
+    config.configurable?.selectedSkills;
+
+  if (!Array.isArray(value)) {
+    return [];
+  }
+
+  return value.filter(
+    (item): item is string =>
+      typeof item === "string" &&
+      item.trim().length > 0,
   );
 };
 
@@ -701,7 +721,8 @@ export const callChatAgent =
     );
 
     /*
-     * Keep the original text until skill mentions have been resolved.
+     * Keep the original text until the selected skills have been
+     * resolved.
      */
     const rawUserText =
       getCurrentUserText(
@@ -721,7 +742,8 @@ export const callChatAgent =
     );
 
     /*
-     * Detect @skill mentions and load selected global SKILL.md files.
+     * Load the SKILL.md files for the skills selected with the /skill
+     * command.
      *
      * The project path is intentionally empty because callChatAgent is
      * used when no project is selected. The skill loader must therefore
@@ -729,9 +751,14 @@ export const callChatAgent =
      *
      * BaseDirectory.AppData/skills/<skill-name>/SKILL.md
      */
+    const selectedSkillNames =
+      getSelectedSkillNames(
+        runnableConfig,
+      );
+
     const skillResolution =
-      await resolveSkillsFromUserText(
-        rawUserText,
+      await resolveSelectedSkills(
+        selectedSkillNames,
         CHAT_AGENT_PROJECT_PATH,
       );
 
@@ -740,14 +767,10 @@ export const callChatAgent =
     );
 
     /*
-     * Successfully resolved @skill mentions are removed from the request
-     * sent to the model.
-     *
-     * rawUserText remains the fallback for a message containing only a
-     * skill mention and no additional request.
+     * The /skill command is stripped in the input layer, so the request
+     * text sent to the model is the original user message unchanged.
      */
     const userText =
-      skillResolution.userText ||
       rawUserText;
 
     console.log(
@@ -781,7 +804,7 @@ export const callChatAgent =
         .length > 0
     ) {
       console.warn(
-        "[Chat Agent] Skill mentions not found:",
+        "[Chat Agent] Selected skills not found:",
         skillResolution.missingSkills,
       );
     }
@@ -1168,7 +1191,7 @@ export const callChatAgent =
     }
 
     /*
-     * Save the cleaned request rather than the internal @skill mention.
+     * Save the cleaned request rather than the internal /skill command.
      */
     const completedMessages:
       BaseMessage[] = [

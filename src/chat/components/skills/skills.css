@@ -708,3 +708,250 @@
     grid-template-columns: 1fr;
   }
 }
+
+.skill-modal-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 1000;
+  display: grid;
+  place-items: center;
+  padding: 24px;
+  background: rgb(15 23 42 / 48%);
+  backdrop-filter: blur(6px);
+}
+
+.new-skill-modal {
+  width: min(100%, 580px);
+  max-height: calc(100vh - 48px);
+  overflow-y: auto;
+  border: 1px solid #e5e7eb;
+  border-radius: 18px;
+  background: #ffffff;
+  box-shadow:
+    0 24px 70px rgb(15 23 42 / 20%),
+    0 8px 24px rgb(15 23 42 / 10%);
+}
+
+.new-skill-modal-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 24px;
+  padding: 24px 24px 18px;
+  border-bottom: 1px solid #eef0f3;
+}
+
+.new-skill-modal-header h2 {
+  margin: 3px 0 7px;
+  color: #111827;
+  font-size: 22px;
+  line-height: 1.25;
+}
+
+.new-skill-modal-header p:last-child {
+  max-width: 440px;
+  margin: 0;
+  color: #6b7280;
+  font-size: 14px;
+  line-height: 1.55;
+}
+
+.skill-modal-close {
+  display: grid;
+  flex: 0 0 auto;
+  width: 36px;
+  height: 36px;
+  place-items: center;
+  border: 1px solid #e5e7eb;
+  border-radius: 10px;
+  color: #4b5563;
+  background: #ffffff;
+  cursor: pointer;
+}
+
+.skill-modal-close:hover:not(:disabled) {
+  color: #111827;
+  background: #f9fafb;
+}
+
+.new-skill-form {
+  display: grid;
+  gap: 22px;
+  padding: 24px;
+}
+
+.new-skill-field {
+  display: grid;
+  gap: 9px;
+}
+
+.new-skill-label,
+.new-skill-targets legend {
+  color: #374151;
+  font-size: 13px;
+  font-weight: 650;
+}
+
+.new-skill-file-picker {
+  display: flex;
+  width: 100%;
+  min-height: 88px;
+  align-items: center;
+  gap: 14px;
+  padding: 16px;
+  border: 1px dashed #cbd5e1;
+  border-radius: 14px;
+  color: #4f46e5;
+  text-align: left;
+  background: #fafaff;
+  cursor: pointer;
+}
+
+.new-skill-file-picker:hover:not(:disabled) {
+  border-color: #818cf8;
+  background: #f7f7ff;
+}
+
+.new-skill-file-picker span {
+  display: grid;
+  min-width: 0;
+  gap: 5px;
+}
+
+.new-skill-file-picker strong {
+  color: #1f2937;
+  font-size: 14px;
+}
+
+.new-skill-file-picker small {
+  overflow: hidden;
+  color: #6b7280;
+  font-size: 12px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.new-skill-targets {
+  display: grid;
+  gap: 9px;
+  min-width: 0;
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+
+.new-skill-targets legend {
+  margin-bottom: 10px;
+}
+
+.new-skill-target {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  padding: 13px 14px;
+  border: 1px solid #e5e7eb;
+  border-radius: 12px;
+  background: #ffffff;
+  cursor: pointer;
+  transition:
+    border-color 150ms ease,
+    background-color 150ms ease;
+}
+
+.new-skill-target:hover {
+  border-color: #c7d2fe;
+}
+
+.new-skill-target.selected {
+  border-color: #818cf8;
+  background: #f7f7ff;
+}
+
+.new-skill-target[aria-disabled='true'] {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.new-skill-target input {
+  margin: 3px 0 0;
+  accent-color: #4f46e5;
+}
+
+.new-skill-target span {
+  display: grid;
+  gap: 3px;
+}
+
+.new-skill-target strong {
+  color: #1f2937;
+  font-size: 14px;
+}
+
+.new-skill-target small {
+  color: #6b7280;
+  font-size: 12px;
+}
+
+.new-skill-actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 10px;
+  padding-top: 4px;
+}
+
+.new-skill-cancel-button {
+  min-height: 40px;
+  padding: 0 16px;
+  border: 1px solid #d1d5db;
+  border-radius: 10px;
+  color: #374151;
+  font-weight: 600;
+  background: #ffffff;
+  cursor: pointer;
+}
+
+.new-skill-cancel-button:hover:not(:disabled) {
+  background: #f9fafb;
+}
+
+.new-skill-actions .skill-primary-button {
+  min-width: 126px;
+  justify-content: center;
+}
+
+.new-skill-actions .skills-spinner {
+  width: 15px;
+  height: 15px;
+}
+
+.skill-modal-close:disabled,
+.new-skill-file-picker:disabled,
+.new-skill-cancel-button:disabled {
+  cursor: not-allowed;
+  opacity: 0.6;
+}
+
+@media (max-width: 640px) {
+  .skill-modal-backdrop {
+    align-items: end;
+    padding: 0;
+  }
+
+  .new-skill-modal {
+    width: 100%;
+    max-height: 92vh;
+    border-radius: 18px 18px 0 0;
+  }
+
+  .new-skill-modal-header,
+  .new-skill-form {
+    padding-right: 18px;
+    padding-left: 18px;
+  }
+
+  .new-skill-actions {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+  }
+}

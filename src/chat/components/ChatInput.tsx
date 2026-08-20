@@ -14,12 +14,11 @@ import {
   useState,
 } from 'react';
 import { listAvailableSkills } from '../services/skillService';
-import { SkillMentionMenu } from './SkillMentionMenu';
+import { CommandMenu } from './CommandMenu';
 import {
   filterSkills,
-  findActiveSkillMention,
-  getSelectedSkills,
-  type ActiveSkillMention,
+  findActiveSlashCommand,
+  type ActiveSlashCommand,
 } from './skillMention';
 import type {
   AvailableSkill,
@@ -71,10 +70,14 @@ export function ChatInput({
     AvailableSkill[]
   >([]);
 
-  const [activeMention, setActiveMention] =
-    useState<ActiveSkillMention | null>(null);
+  const [activeCommand, setActiveCommand] =
+    useState<ActiveSlashCommand | null>(null);
 
-  const [selectedSkillIndex, setSelectedSkillIndex] = useState(0);
+  const [selectedSkills, setSelectedSkills] = useState<
+    SelectedSkill[]
+  >([]);
+
+  const [selectedItemIndex, setSelectedItemIndex] = useState(0);
   const [isLoadingSkills, setIsLoadingSkills] = useState(false);
   const [skillsError, setSkillsError] = useState<string | null>(
     null,
@@ -92,16 +95,36 @@ export function ChatInput({
   const canSend = safeValue.trim().length > 0 && !isLoading;
   const hasProjectPath = normalizedProjectPath !== null;
 
+  /*
+   * A bare "/" opens the command menu. Once the user types or selects
+   * "/skill", the menu switches to the skill list for the query after
+   * the command.
+   */
+  const commandMenuMode: 'commands' | 'skills' | null =
+    activeCommand === null
+      ? null
+      : activeCommand.command === 'skill'
+        ? 'skills'
+        : 'commands';
+
+  const activeCommandQuery =
+    (activeCommand?.command === 'skill'
+      ? activeCommand.query
+      : '') ?? '';
+
+  const isCommandMenuOpen =
+    activeCommand !== null && !isLoading;
+
   const filteredSkills = useMemo(() => {
-    if (!activeMention) {
+    if (commandMenuMode !== 'skills') {
       return [];
     }
 
-    return filterSkills(availableSkills, activeMention.query);
-  }, [activeMention, availableSkills]);
-
-  const isSkillMenuOpen =
-    activeMention !== null && !isLoading;
+    return filterSkills(
+      availableSkills,
+      activeCommandQuery,
+    );
+  }, [commandMenuMode, availableSkills, activeCommandQuery]);
 
   const loadSkills = useCallback(async () => {
     setIsLoadingSkills(true);
@@ -146,30 +169,35 @@ export function ChatInput({
   }, [safeValue]);
 
   useEffect(() => {
-    if (
-      selectedSkillIndex >= filteredSkills.length &&
-      filteredSkills.length > 0
-    ) {
-      setSelectedSkillIndex(filteredSkills.length - 1);
-    }
-  }, [filteredSkills.length, selectedSkillIndex]);
+    const menuItemCount =
+      commandMenuMode === 'skills'
+        ? filteredSkills.length
+        : 1;
 
-  const updateActiveMention = (
+    if (
+      selectedItemIndex >= menuItemCount &&
+      menuItemCount > 0
+    ) {
+      setSelectedItemIndex(menuItemCount - 1);
+    }
+  }, [filteredSkills.length, selectedItemIndex, commandMenuMode]);
+
+  const updateActiveCommand = (
     nextValue: string,
     caretPosition: number,
   ) => {
-    const mention = findActiveSkillMention(
+    const command = findActiveSlashCommand(
       nextValue,
       caretPosition,
     );
 
-    setActiveMention(mention);
-    setSelectedSkillIndex(0);
+    setActiveCommand(command);
+    setSelectedItemIndex(0);
   };
 
-  const closeSkillMenu = () => {
-    setActiveMention(null);
-    setSelectedSkillIndex(0);
+  const closeCommandMenu = () => {
+    setActiveCommand(null);
+    setSelectedItemIndex(0);
   };
 
   const setTextareaCaret = (position: number) => {
@@ -192,7 +220,7 @@ export function ChatInput({
     const caretPosition = event.target.selectionStart;
 
     onValueChange(nextValue);
-    updateActiveMention(nextValue, caretPosition);
+    updateActiveCommand(nextValue, caretPosition);
   };
 
   const handleTextareaSelection = (
@@ -200,7 +228,7 @@ export function ChatInput({
   ) => {
     const textarea = event.currentTarget;
 
-    updateActiveMention(
+    updateActiveCommand(
       textarea.value,
       textarea.selectionStart,
     );
@@ -212,28 +240,85 @@ export function ChatInput({
     onProjectPathChange(event.target.value);
   };
 
-  const handleSkillSelect = (skill: AvailableSkill) => {
-    if (!activeMention) {
+  /*
+   * Select the "/skill" command from the bare "/" command menu. This
+   * keeps the caret after "/skill " so the menu switches to the skill
+   * list and the user can keep typing the query.
+   */
+  const handleSelectCommand = (command: string) => {
+    if (!activeCommand || command !== 'skill') {
       return;
     }
 
     const textBeforeMention = safeValue.slice(
       0,
-      activeMention.start,
+      activeCommand.start,
     );
 
-    const textAfterMention = safeValue.slice(activeMention.end);
-    const insertedMention = `@${skill.name} `;
+    const textAfterMention = safeValue.slice(activeCommand.end);
+    const insertedToken = '/skill ';
 
     const nextValue =
-      textBeforeMention + insertedMention + textAfterMention;
+      textBeforeMention + insertedToken + textAfterMention;
 
     const nextCaretPosition =
-      textBeforeMention.length + insertedMention.length;
+      textBeforeMention.length + insertedToken.length;
 
     onValueChange(nextValue);
-    closeSkillMenu();
+    setActiveCommand({
+      start: textBeforeMention.length,
+      end: nextCaretPosition,
+      command: 'skill',
+      query: '',
+    });
+    setSelectedItemIndex(0);
     setTextareaCaret(nextCaretPosition);
+  };
+
+  /*
+   * Selecting a skill removes the "/skill <query>" command from the
+   * message text and records the skill as a removable tag instead.
+   */
+  const handleSkillSelect = (skill: AvailableSkill) => {
+    if (!activeCommand) {
+      return;
+    }
+
+    const textBeforeMention = safeValue.slice(
+      0,
+      activeCommand.start,
+    );
+
+    const textAfterMention = safeValue.slice(activeCommand.end);
+
+    const nextValue = textBeforeMention + textAfterMention;
+
+    const alreadySelected = selectedSkills.some(
+      (selected) => selected.name === skill.name,
+    );
+
+    if (!alreadySelected) {
+      setSelectedSkills((currentSkills) => [
+        ...currentSkills,
+        {
+          name: skill.name,
+          source: skill.source,
+          path: skill.path,
+        },
+      ]);
+    }
+
+    onValueChange(nextValue);
+    closeCommandMenu();
+    setTextareaCaret(textBeforeMention.length);
+  };
+
+  const handleRemoveSkill = (skill: SelectedSkill) => {
+    setSelectedSkills((currentSkills) =>
+      currentSkills.filter(
+        (selected) => selected.name !== skill.name,
+      ),
+    );
   };
 
   const handleSend = async () => {
@@ -243,25 +328,23 @@ export function ChatInput({
       return;
     }
 
-    const selectedSkills = getSelectedSkills(
-      message,
-      availableSkills,
-    );
+    const skillsToSend = [...selectedSkills];
 
-    closeSkillMenu();
+    closeCommandMenu();
+    setSelectedSkills([]);
     onValueChange('');
 
     try {
       await onSend(message, {
         projectPath: normalizedProjectPath,
-        selectedSkills,
+        selectedSkills: skillsToSend,
       });
     } catch (error) {
       /*
-       * Restore the message when sending fails. Remove this block if
-       * message restoration is already handled by the parent.
+       * Restore the message and the selected skills when sending fails.
        */
       onValueChange(message);
+      setSelectedSkills(skillsToSend);
       throw error;
     }
   };
@@ -269,13 +352,18 @@ export function ChatInput({
   const handleKeyDown = (
     event: React.KeyboardEvent<HTMLTextAreaElement>,
   ) => {
-    if (isSkillMenuOpen) {
+    if (isCommandMenuOpen) {
+      const menuItemCount =
+        commandMenuMode === 'skills'
+          ? filteredSkills.length
+          : 1;
+
       if (event.key === 'ArrowDown') {
         event.preventDefault();
 
-        if (filteredSkills.length > 0) {
-          setSelectedSkillIndex((currentIndex) =>
-            currentIndex >= filteredSkills.length - 1
+        if (menuItemCount > 0) {
+          setSelectedItemIndex((currentIndex) =>
+            currentIndex >= menuItemCount - 1
               ? 0
               : currentIndex + 1,
           );
@@ -287,10 +375,10 @@ export function ChatInput({
       if (event.key === 'ArrowUp') {
         event.preventDefault();
 
-        if (filteredSkills.length > 0) {
-          setSelectedSkillIndex((currentIndex) =>
+        if (menuItemCount > 0) {
+          setSelectedItemIndex((currentIndex) =>
             currentIndex <= 0
-              ? filteredSkills.length - 1
+              ? menuItemCount - 1
               : currentIndex - 1,
           );
         }
@@ -300,15 +388,19 @@ export function ChatInput({
 
       if (
         (event.key === 'Enter' || event.key === 'Tab') &&
-        filteredSkills.length > 0
+        menuItemCount > 0
       ) {
         event.preventDefault();
 
-        const selectedSkill =
-          filteredSkills[selectedSkillIndex];
+        if (commandMenuMode === 'skills') {
+          const selectedSkill =
+            filteredSkills[selectedItemIndex];
 
-        if (selectedSkill) {
-          handleSkillSelect(selectedSkill);
+          if (selectedSkill) {
+            handleSkillSelect(selectedSkill);
+          }
+        } else {
+          handleSelectCommand('skill');
         }
 
         return;
@@ -316,14 +408,17 @@ export function ChatInput({
 
       if (event.key === 'Escape') {
         event.preventDefault();
-        closeSkillMenu();
+        closeCommandMenu();
         return;
       }
     }
 
     if (event.key === 'Enter' && !event.shiftKey) {
       event.preventDefault();
-      void handleSend();
+
+      if (canSend) {
+        void handleSend();
+      }
     }
   };
 
@@ -422,15 +517,46 @@ export function ChatInput({
         </div>
 
         <div className="chat-composer">
-          {isSkillMenuOpen && (
-            <SkillMentionMenu
+          {isCommandMenuOpen && (
+            <CommandMenu
+              mode={commandMenuMode ?? 'commands'}
+              commandQuery={activeCommandQuery}
               skills={filteredSkills}
-              selectedIndex={selectedSkillIndex}
+              selectedIndex={selectedItemIndex}
               isLoading={isLoadingSkills}
               error={skillsError}
-              onSelect={handleSkillSelect}
-              onHover={setSelectedSkillIndex}
+              onSelectCommand={handleSelectCommand}
+              onSelectSkill={handleSkillSelect}
+              onHover={setSelectedItemIndex}
             />
+          )}
+
+          {selectedSkills.length > 0 && (
+            <div className="skill-tags-row" aria-label="Selected skills">
+              {selectedSkills.map((skill) => (
+                <span
+                  key={`${skill.source}:${skill.name}`}
+                  className="skill-tag"
+                  title={skill.name}
+                >
+                  <span className="skill-tag-name">
+                    {skill.source === 'project'
+                      ? '📁'
+                      : '📦'}{' '}
+                    {skill.name}
+                  </span>
+
+                  <button
+                    type="button"
+                    className="skill-tag-remove"
+                    onClick={() => handleRemoveSkill(skill)}
+                    aria-label={`Remove skill ${skill.name}`}
+                  >
+                    <X size={12} />
+                  </button>
+                </span>
+              ))}
+            </div>
           )}
 
           <textarea
@@ -454,10 +580,10 @@ export function ChatInput({
             rows={1}
             disabled={isLoading}
             aria-label={`Message ${agentName}`}
-            aria-expanded={isSkillMenuOpen}
+            aria-expanded={isCommandMenuOpen}
             aria-controls={
-              isSkillMenuOpen
-                ? 'skill-mention-list'
+              isCommandMenuOpen
+                ? 'command-menu-list'
                 : undefined
             }
           />
@@ -523,7 +649,7 @@ export function ChatInput({
         </div>
 
         <p className="chat-input-disclaimer">
-          Type @ to select a skill. Mocu can make mistakes. Check
+          Type /skill to select a skill. Mocu can make mistakes. Check
           important information.
         </p>
       </div>

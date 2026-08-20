@@ -38,11 +38,6 @@ export type LoadedSkill = {
 
 export type ResolveSkillsResult = {
   /*
-   * Original user text without selected @skill mentions.
-   */
-  userText: string;
-
-  /*
    * Skills successfully found and loaded.
    */
   skills: LoadedSkill[];
@@ -53,7 +48,7 @@ export type ResolveSkillsResult = {
   skillsPrompt: string;
 
   /*
-   * Mentions that could not be resolved.
+   * Selected skill names that could not be resolved.
    */
   missingSkills: string[];
 };
@@ -70,30 +65,57 @@ const normalizeDirectoryPath = (
 };
 
 /*
- * Normalizes a skill name for comparison.
+ * A whitespace-collapsed, lower-cased skill key.
  *
- * Example:
- *   React-Skill -> react-skill
+ * "React   Skill" -> "react skill"
  */
-const normalizeSkillName = (
+const collapseSkillName = (
   name: string,
 ): string => {
   return name
     .trim()
-    .replace(/^@+/, "")
+    .replace(/\s+/g, " ")
     .toLocaleLowerCase();
 };
 
 /*
- * Escapes a string before using it inside a regular expression.
+ * A slugified skill key that mirrors how the installer names skill
+ * directories.
+ *
+ * "React Skill"   -> "react-skill"
+ * "My.Skill"      -> "my.skill"
  */
-const escapeRegExp = (
-  value: string,
+const slugifySkillName = (
+  name: string,
 ): string => {
-  return value.replace(
-    /[.*+?^${}()|[\]\\]/g,
-    "\\$&",
-  );
+  return name
+    .trim()
+    .toLocaleLowerCase()
+    .replace(/[^a-z0-9._-]+/g, "-")
+    .replace(/^-+|-+$/g, "");
+};
+
+/*
+ * Produces every normalization variant used to match a skill, whether
+ * the incoming name is a frontmatter "name:" value or a folder name.
+ */
+const buildSkillAliases = (
+  name: string,
+): Set<string> => {
+  const collapsed = collapseSkillName(name);
+  const slugified = slugifySkillName(name);
+
+  const aliases = new Set<string>();
+
+  if (collapsed) {
+    aliases.add(collapsed);
+  }
+
+  if (slugified) {
+    aliases.add(slugified);
+  }
+
+  return aliases;
 };
 
 /*
@@ -124,32 +146,122 @@ const limitSkillContent = (
 };
 
 /*
- * Lists project skill directory names.
+ * Extracts the `name` field from YAML frontmatter without depending on
+ * a YAML parser.
  *
- * Project skills:
- * <projectPath>/.mocu/skills/<skill-name>/SKILL.md
+ * Returns null when the file has no valid name in its frontmatter.
  */
-const listProjectSkillNames = async (
-  projectPath?: string,
-): Promise<string[]> => {
-  const normalizedProjectPath =
-    normalizeDirectoryPath(
-      projectPath ?? "",
-    );
+const parseFrontmatterName = (
+  content: string,
+): string | null => {
+  const normalizedContent =
+    content.replace(/\r\n/g, "\n");
 
-  if (!normalizedProjectPath) {
-    return [];
+  if (
+    !normalizedContent.startsWith("---\n")
+  ) {
+    return null;
   }
 
-  const skillsDirectory =
-    await join(
-      normalizedProjectPath,
-      ...PROJECT_SKILLS_DIRECTORY,
+  const closingDelimiterIndex =
+    normalizedContent.indexOf(
+      "\n---",
+      4,
     );
+
+  if (closingDelimiterIndex === -1) {
+    return null;
+  }
+
+  const frontmatter = normalizedContent.slice(
+    4,
+    closingDelimiterIndex,
+  );
+
+  for (const line of frontmatter.split("\n")) {
+    const separatorIndex =
+      line.indexOf(":");
+
+    if (separatorIndex === -1) {
+      continue;
+    }
+
+    const key =
+      line
+        .slice(0, separatorIndex)
+        .trim();
+
+    if (key.toLowerCase() !== "name") {
+      continue;
+    }
+
+    const rawValue =
+      line
+        .slice(separatorIndex + 1)
+        .trim();
+
+    const value =
+      /^"(.*)"$/.test(rawValue)
+        ? rawValue.slice(1, -1)
+        : /^'(.*)'$/.test(rawValue)
+          ? rawValue.slice(1, -1)
+          : rawValue;
+
+    const normalizedValue = value.trim();
+
+    return normalizedValue
+      ? normalizedValue
+      : null;
+  }
+
+  return null;
+};
+
+/*
+ * A skill folder found by scanning a skills directory.
+ */
+type ScannedSkill = {
+  /*
+   * The on-disk folder name.
+   */
+  directoryName: string;
+
+  /*
+   * The `name:` value from SKILL.md frontmatter, when present.
+   */
+  frontmatterName: string | null;
+
+  /*
+   * Absolute path (project) or AppData-relative path (global) of the
+   * SKILL.md file.
+   */
+  skillFilePath: string;
+
+  source: SkillSource;
+};
+
+/*
+ * Scans one skills directory (global or project) for skill folders.
+ *
+ * Reading every skill's frontmatter lets the resolver match selected
+ * skills by either their displayed name or their folder name. This is
+ * required because the installer names folders from the ZIP, which does
+ * not always equal the `name:` field inside SKILL.md.
+ */
+const scanSkillsDirectory = async (
+  directoryPath: string,
+  baseDir: BaseDirectory | undefined,
+  source: SkillSource,
+): Promise<ScannedSkill[]> => {
+  const options =
+    baseDir === undefined
+      ? undefined
+      : { baseDir };
 
   const directoryExists =
     await exists(
-      skillsDirectory,
+      directoryPath,
+      options,
     );
 
   if (!directoryExists) {
@@ -158,397 +270,178 @@ const listProjectSkillNames = async (
 
   const entries =
     await readDir(
-      skillsDirectory,
+      directoryPath,
+      options,
     );
 
-  return entries
-    .filter(
-      (entry) =>
-        entry.isDirectory &&
-        Boolean(entry.name),
-    )
-    .map(
-      (entry) => entry.name,
-    );
-};
-
-/*
- * Lists global skill directory names.
- *
- * Global skills:
- * BaseDirectory.AppData/skills/<skill-name>/SKILL.md
- */
-const listGlobalSkillNames =
-  async (): Promise<string[]> => {
-    const directoryExists =
-      await exists(
-        GLOBAL_SKILLS_DIRECTORY,
-        {
-          baseDir:
-            BaseDirectory.AppData,
-        },
-      );
-
-    if (!directoryExists) {
-      return [];
-    }
-
-    const entries =
-      await readDir(
-        GLOBAL_SKILLS_DIRECTORY,
-        {
-          baseDir:
-            BaseDirectory.AppData,
-        },
-      );
-
-    return entries
-      .filter(
-        (entry) =>
-          entry.isDirectory &&
-          Boolean(entry.name),
-      )
-      .map(
-        (entry) => entry.name,
-      );
-  };
-
-/*
- * Returns all available skill names.
- *
- * Project skill names take priority over global skill names if both
- * have the same name.
- */
-const listAvailableSkillNames = async (
-  projectPath?: string,
-): Promise<string[]> => {
-  const [
-    projectSkillNames,
-    globalSkillNames,
-  ] = await Promise.all([
-    listProjectSkillNames(
-      projectPath,
-    ),
-    listGlobalSkillNames(),
-  ]);
-
-  const names =
-    new Map<string, string>();
-
-  /*
-   * Add project names first so project skills have priority.
-   */
-  for (
-    const name
-    of projectSkillNames
-  ) {
-    names.set(
-      normalizeSkillName(name),
-      name,
-    );
-  }
-
-  for (
-    const name
-    of globalSkillNames
-  ) {
-    const normalizedName =
-      normalizeSkillName(name);
-
-    if (
-      !names.has(normalizedName)
-    ) {
-      names.set(
-        normalizedName,
-        name,
-      );
-    }
-  }
-
-  /*
-   * Match longer names first.
-   *
-   * This prevents @react from matching before @react-typescript.
-   */
-  return Array.from(
-    names.values(),
-  ).sort(
-    (firstName, secondName) =>
-      secondName.length -
-      firstName.length,
-  );
-};
-
-/*
- * Finds selected skills from the user's text.
- *
- * Example:
- *   "@react-skill build a component"
- *
- * Result:
- *   ["react-skill"]
- */
-const findMentionedSkillNames = (
-  userText: string,
-  availableSkillNames: string[],
-): string[] => {
-  const selectedSkillNames: string[] =
-    [];
-
-  for (
-    const skillName
-    of availableSkillNames
-  ) {
-    const pattern =
-      new RegExp(
-        `(^|\\s)@${escapeRegExp(skillName)}(?=\\s|$|[.,!?;:])`,
-        "iu",
-      );
-
-    if (pattern.test(userText)) {
-      selectedSkillNames.push(
-        skillName,
-      );
-    }
-
-    if (
-      selectedSkillNames.length >=
-      MAX_SELECTED_SKILLS
-    ) {
-      break;
-    }
-  }
-
-  return selectedSkillNames;
-};
-
-/*
- * Extracts raw @mentions that do not match an available skill.
- *
- * Supported skill-name characters:
- * letters, numbers, underscore, and hyphen.
- */
-const findMissingSkillNames = (
-  userText: string,
-  selectedSkillNames: string[],
-): string[] => {
-  const mentionPattern =
-    /(^|\s)@([\p{L}\p{N}_-]+)/gu;
-
-  const selectedNames =
-    new Set(
-      selectedSkillNames.map(
-        normalizeSkillName,
-      ),
-    );
-
-  const missingNames =
-    new Set<string>();
-
-  let match:
-    RegExpExecArray | null;
-
-  while (
-    (
-      match =
-        mentionPattern.exec(
-          userText,
+  const scannedSkills =
+    await Promise.all(
+      entries
+        .filter(
+          (entry) =>
+            entry.isDirectory,
         )
-    ) !== null
-  ) {
-    const mentionedName =
-      match[2];
+        .map(
+          async (
+            entry,
+          ): Promise<ScannedSkill | null> => {
+            const skillFilePath =
+              await join(
+                directoryPath,
+                entry.name,
+                SKILL_FILE_NAME,
+              );
 
-    if (!mentionedName) {
-      continue;
-    }
+            const skillFileExists =
+              await exists(
+                skillFilePath,
+                options,
+              );
 
-    if (
-      !selectedNames.has(
-        normalizeSkillName(
-          mentionedName,
+            if (
+              !skillFileExists
+            ) {
+              return null;
+            }
+
+            try {
+              const content =
+                await readTextFile(
+                  skillFilePath,
+                  options,
+                );
+
+              return {
+                directoryName:
+                  entry.name,
+                frontmatterName:
+                  parseFrontmatterName(
+                    content,
+                  ),
+                skillFilePath:
+                  skillFilePath,
+                source,
+              };
+            } catch {
+              /*
+               * Skip any skill folder that cannot be read so it never
+               * blocks the rest of the request.
+               */
+              return null;
+            }
+          },
         ),
-      )
+    );
+
+  return scannedSkills.filter(
+    (
+      skill,
+    ): skill is ScannedSkill =>
+      skill !== null,
+  );
+};
+
+/*
+ * Reads a scanned skill's full content and shapes it for the prompt.
+ */
+const loadScannedSkill = async (
+  scannedSkill: ScannedSkill,
+): Promise<LoadedSkill | null> => {
+  const options =
+    scannedSkill.source ===
+      "global"
+      ? {
+          baseDir:
+            BaseDirectory.AppData,
+        }
+      : undefined;
+
+  try {
+    const content =
+      await readTextFile(
+        scannedSkill.skillFilePath,
+        options,
+      );
+
+    if (!content.trim()) {
+      return null;
+    }
+
+    return {
+      name:
+        scannedSkill.frontmatterName ||
+        scannedSkill.directoryName,
+      source:
+        scannedSkill.source,
+      path:
+        scannedSkill.skillFilePath,
+      content:
+        limitSkillContent(
+          content,
+        ),
+    };
+  } catch {
+    return null;
+  }
+};
+
+/*
+ * Builds a lookup of skill aliases -> scanned skill.
+ *
+ * Project skills are indexed first so a project skill overrides a
+ * global skill that matches the same alias.
+ */
+const buildSkillLookup = (
+  projectSkills: ScannedSkill[],
+  globalSkills: ScannedSkill[],
+): Map<string, ScannedSkill> => {
+  const lookup =
+    new Map<string, ScannedSkill>();
+
+  const storeAliases = (
+    scanned: ScannedSkill,
+  ): void => {
+    const aliasSources = [
+      scanned.directoryName,
+      ...(scanned.frontmatterName
+        ? [scanned.frontmatterName]
+        : []),
+    ];
+
+    const aliases =
+      new Set<string>();
+
+    for (
+      const sourceName
+      of aliasSources
     ) {
-      missingNames.add(
-        mentionedName,
+      for (
+        const alias
+        of buildSkillAliases(
+          sourceName,
+        )
+      ) {
+        aliases.add(alias);
+      }
+    }
+
+    for (const alias of aliases) {
+      lookup.set(
+        alias,
+        scanned,
       );
     }
-  }
-
-  return Array.from(
-    missingNames,
-  );
-};
-
-/*
- * Attempts to read a project skill.
- */
-const readProjectSkill = async (
-  skillName: string,
-  projectPath?: string,
-): Promise<LoadedSkill | null> => {
-  const normalizedProjectPath =
-    normalizeDirectoryPath(
-      projectPath ?? "",
-    );
-
-  if (!normalizedProjectPath) {
-    return null;
-  }
-
-  const skillPath =
-    await join(
-      normalizedProjectPath,
-      ...PROJECT_SKILLS_DIRECTORY,
-      skillName,
-      SKILL_FILE_NAME,
-    );
-
-  const skillExists =
-    await exists(
-      skillPath,
-    );
-
-  if (!skillExists) {
-    return null;
-  }
-
-  const content =
-    await readTextFile(
-      skillPath,
-    );
-
-  if (!content.trim()) {
-    return null;
-  }
-
-  return {
-    name:
-      skillName,
-    source:
-      "project",
-    path:
-      skillPath,
-    content:
-      limitSkillContent(
-        content,
-      ),
   };
-};
 
-/*
- * Attempts to read a global skill.
- */
-const readGlobalSkill = async (
-  skillName: string,
-): Promise<LoadedSkill | null> => {
-  /*
-   * Tauri BaseDirectory paths use forward slashes.
-   */
-  const skillPath = [
-    GLOBAL_SKILLS_DIRECTORY,
-    skillName,
-    SKILL_FILE_NAME,
-  ].join("/");
-
-  const skillExists =
-    await exists(
-      skillPath,
-      {
-        baseDir:
-          BaseDirectory.AppData,
-      },
-    );
-
-  if (!skillExists) {
-    return null;
-  }
-
-  const content =
-    await readTextFile(
-      skillPath,
-      {
-        baseDir:
-          BaseDirectory.AppData,
-      },
-    );
-
-  if (!content.trim()) {
-    return null;
-  }
-
-  return {
-    name:
-      skillName,
-    source:
-      "global",
-    path:
-      skillPath,
-    content:
-      limitSkillContent(
-        content,
-      ),
-  };
-};
-
-/*
- * Loads a skill by name.
- *
- * Search order:
- * 1. Project skill
- * 2. Global skill
- */
-const loadSkillByName = async (
-  skillName: string,
-  projectPath?: string,
-): Promise<LoadedSkill | null> => {
-  const projectSkill =
-    await readProjectSkill(
-      skillName,
-      projectPath,
-    );
-
-  if (projectSkill) {
-    return projectSkill;
-  }
-
-  return readGlobalSkill(
-    skillName,
+  projectSkills.forEach(
+    storeAliases,
   );
-};
 
-/*
- * Removes only the successfully resolved @skill mentions from user text.
- */
-const removeSkillMentions = (
-  userText: string,
-  skillNames: string[],
-): string => {
-  let cleanText =
-    userText;
+  globalSkills.forEach(
+    storeAliases,
+  );
 
-  for (
-    const skillName
-    of skillNames
-  ) {
-    const pattern =
-      new RegExp(
-        `(^|\\s)@${escapeRegExp(skillName)}(?=\\s|$|[.,!?;:])`,
-        "giu",
-      );
-
-    cleanText =
-      cleanText.replace(
-        pattern,
-        "$1",
-      );
-  }
-
-  return cleanText
-    .replace(/[ \t]{2,}/g, " ")
-    .replace(/\n{3,}/g, "\n\n")
-    .trim();
+  return lookup;
 };
 
 /*
@@ -587,28 +480,38 @@ const buildSkillsPrompt = (
   ].join("\n\n");
 };
 
-/**
- * Detects @skill mentions in a user message, reads their SKILL.md files,
- * and returns text ready to be added to the project-agent system prompt.
+/*
+ * Loads the SKILL.md files for a list of explicitly selected skill names
+ * and returns text ready to be added to the agent system prompt.
  *
- * Example:
- *
- * resolveSkillsFromUserText(
- *   "@react-skill create a settings page",
- *   "E:\\test\\ptest",
- * );
+ * Matching is content-based: a selected skill resolves if either its
+ * folder name or its frontmatter `name:` matches the selected name
+ * (ignoring case, spacing, and slug differences). This makes installed
+ * skills whose folder name differs from their display name loadable.
  */
-export const resolveSkillsFromUserText =
+export const resolveSelectedSkills =
   async (
-    userText: string,
+    requestedSkillNames: string[],
     projectPath?: string,
   ): Promise<ResolveSkillsResult> => {
-    const normalizedUserText =
-      userText.trim();
+    const normalizedNames =
+      requestedSkillNames
+        .map(
+          collapseSkillName,
+        )
+        .filter(
+          Boolean,
+        )
+        .slice(
+          0,
+          MAX_SELECTED_SKILLS,
+        );
 
-    if (!normalizedUserText) {
+    if (
+      normalizedNames.length ===
+      0
+    ) {
       return {
-        userText: "",
         skills: [],
         skillsPrompt: "",
         missingSkills: [],
@@ -616,114 +519,101 @@ export const resolveSkillsFromUserText =
     }
 
     try {
-      const availableSkillNames =
-        await listAvailableSkillNames(
-          projectPath,
-        );
-
-      const mentionedSkillNames =
-        findMentionedSkillNames(
-          normalizedUserText,
-          availableSkillNames,
-        );
-
-      const missingSkills =
-        findMissingSkillNames(
-          normalizedUserText,
-          mentionedSkillNames,
-        );
-
-      if (
-        mentionedSkillNames.length === 0
-      ) {
-        return {
-          userText:
-            normalizedUserText,
-          skills: [],
-          skillsPrompt: "",
-          missingSkills,
-        };
-      }
-
-      const loadedSkills =
-        await Promise.all(
-          mentionedSkillNames.map(
-            (skillName) =>
-              loadSkillByName(
-                skillName,
-                projectPath,
-              ),
-          ),
-        );
-
-      const skills =
-        loadedSkills.filter(
-          (
-            skill,
-          ): skill is LoadedSkill =>
-            skill !== null,
-        );
-
-      const successfullyLoadedNames =
-        skills.map(
-          (skill) => skill.name,
+      const normalizedProjectPath =
+        normalizeDirectoryPath(
+          projectPath ?? "",
         );
 
       /*
-       * A listed skill may have no readable SKILL.md.
+       * Scan project skills first so f they share a name with a global
+       * skill, the project copy wins in the lookup.
        */
-      for (
-        const skillName
-        of mentionedSkillNames
-      ) {
-        const wasLoaded =
-          successfullyLoadedNames.some(
-            (loadedName) =>
-              normalizeSkillName(
-                loadedName,
-              ) ===
-              normalizeSkillName(
-                skillName,
+      const projectSkills =
+        normalizedProjectPath
+          ? await scanSkillsDirectory(
+              await join(
+                normalizedProjectPath,
+                ...PROJECT_SKILLS_DIRECTORY,
               ),
+              undefined,
+              "project",
+            )
+          : [];
+
+      const globalSkills =
+        await scanSkillsDirectory(
+          GLOBAL_SKILLS_DIRECTORY,
+          BaseDirectory.AppData,
+          "global",
+        );
+
+      const lookup =
+        buildSkillLookup(
+          projectSkills,
+          globalSkills,
+        );
+
+      const skills: LoadedSkill[] = [];
+      const missingSkills: string[] = [];
+
+      for (
+        const requestedName
+        of normalizedNames
+      ) {
+        const requestedAliases =
+          buildSkillAliases(
+            requestedName,
           );
 
-        if (
-          !wasLoaded &&
-          !missingSkills.some(
-            (missingName) =>
-              normalizeSkillName(
-                missingName,
-              ) ===
-              normalizeSkillName(
-                skillName,
-              ),
-          )
+        let matchedSkill:
+          ScannedSkill | undefined;
+
+        for (
+          const alias
+          of requestedAliases
         ) {
+          const candidate =
+            lookup.get(alias);
+
+          if (candidate) {
+            matchedSkill =
+              candidate;
+            break;
+          }
+        }
+
+        if (!matchedSkill) {
           missingSkills.push(
-            skillName,
+            requestedName,
+          );
+          continue;
+        }
+
+        const loaded =
+          await loadScannedSkill(
+            matchedSkill,
+          );
+
+        if (loaded) {
+          skills.push(loaded);
+        } else {
+          missingSkills.push(
+            requestedName,
           );
         }
       }
 
       return {
-        userText:
-          removeSkillMentions(
-            normalizedUserText,
-            successfullyLoadedNames,
-          ),
-
         skills,
-
         skillsPrompt:
           buildSkillsPrompt(
             skills,
           ),
-
         missingSkills,
       };
     } catch (error) {
       console.error(
-        "[Skill Loader] Failed to resolve skills:",
+        "[Skill Loader] Failed to resolve selected skills:",
         error,
       );
 
@@ -732,11 +622,10 @@ export const resolveSkillsFromUserText =
        * from being sent to the model.
        */
       return {
-        userText:
-          normalizedUserText,
         skills: [],
         skillsPrompt: "",
-        missingSkills: [],
+        missingSkills:
+          normalizedNames,
       };
     }
   };
