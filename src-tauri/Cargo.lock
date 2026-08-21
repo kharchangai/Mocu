@@ -2391,6 +2391,7 @@ dependencies = [
  "tauri-plugin-opener",
  "tauri-plugin-shell",
  "tauri-plugin-store",
+ "uuid",
 ]
 
 [[package]]

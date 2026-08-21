@@ -1,0 +1,10 @@
+{
+  "name": "sysinfo-node",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Minimal Mocu text extension reporting system/OS information using the official Node.js SDK.",
+  "dependencies": {
+    "@mocu/extension-sdk": "0.1.0"
+  }
+}

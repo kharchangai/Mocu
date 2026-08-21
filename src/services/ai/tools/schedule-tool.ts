@@ -24,7 +24,7 @@ const internalDecisionSchema = z.object({
     type: z.enum(["TIMER", "PLANNER"]).describe("The type of the event to delete."),
     date: z.string().optional().describe("The target date of the event in YYYY-MM-DD format. Required if type is PLANNER."),
     allOnDate: z.boolean().optional().describe("Set to true if the user wants to cancel ALL plans/timers on this specific date, or conditionally cancel whatever exists."),
-    taskKeyword: z.string().optional().describe("A keyword to match the task description to delete (e.g., 'youtube' or 'یوتیوب') if deleting a specific task without an ID.")
+    taskKeyword: z.string().optional().describe("A keyword to match the task description to delete (e.g., 'youtube') if deleting a specific task without an ID.")
   }).optional()
 });
 
@@ -63,13 +63,13 @@ User Query: "{query}"
 Analyze the query and history carefully:
 1. If the user wants to set, create, make, or schedule a new timer, reminder, alarm, or plan, select "CREATE".
 2. If the user wants to check, read, view, or ask what plans/timers they have, select "READ".
-3. If the user wants to cancel, delete, or remove a timer or plan (e.g., "اون برنامه رو کنسل کن" or "اگر برنامه‌ای برای پس‌فردا دارم لغوش کن"), select "DELETE".
+3. If the user wants to cancel, delete, or remove a timer or plan (e.g., "cancel that program" or "if I have a plan for the day after tomorrow, cancel it"), select "DELETE".
    - If the request is conditional (e.g., "if I have plans on date X, cancel them"), set intent to "DELETE".
    - Fill "deleteData" fields:
      * "type": "PLANNER" or "TIMER".
      * "date": The calculated target date in YYYY-MM-DD format based on the query and Current Time.
      * "allOnDate": Set to true if they want to cancel all plans on that day, or if they want to clear any existing plans on that date.
-     * "taskKeyword": Extract a keyword if they specified a specific task to delete (e.g., "youtube" or "یوتیوب").
+     * "taskKeyword": Extract a keyword if they specified a specific task to delete (e.g., "youtube").
      * "id": Only fill this if you see an exact ID in the recent chat history that the user is explicitly referring to.
 
 You must output a JSON matching the requested schema.

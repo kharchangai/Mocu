@@ -22,6 +22,10 @@ import {
 } from './components/skills/SkillsPage';
 
 import {
+  ExtensionsPage,
+} from '../extensions/components/ExtensionsPage';
+
+import {
   useChatHistory,
   type EnsureChatResult,
 } from './hooks/useChatHistory';
@@ -469,9 +473,8 @@ function ChatPage() {
         );
 
       case 'extensions':
-        return renderPlaceholderPage(
-          'Extensions',
-          'Browse and manage Mocu extensions here.',
+        return (
+          <ExtensionsPage />
         );
 
       case 'packages':

@@ -2,6 +2,7 @@ import {
   FolderOpen,
   Mic,
   Paperclip,
+  Puzzle,
   SendHorizontal,
   Square,
   X,
@@ -14,21 +15,28 @@ import {
   useState,
 } from 'react';
 import { listAvailableSkills } from '../services/skillService';
+import { scanInstalledExtensions } from '../../extensions/services/extension-scanner';
 import { CommandMenu } from './CommandMenu';
 import {
   filterSkills,
   findActiveSlashCommand,
   type ActiveSlashCommand,
 } from './skillMention';
+import { filterExtensions } from './extensionMention';
 import type {
   AvailableSkill,
   SelectedSkill,
 } from './skillTypes';
+import type {
+  AvailableExtension,
+  SelectedExtension,
+} from './extensionTypes';
 import './ChatInput.css';
 
 export type SendOptions = {
   projectPath: string | null;
   selectedSkills: SelectedSkill[];
+  selectedExtensions: SelectedExtension[];
 };
 
 export type ChatInputProps = {
@@ -47,6 +55,8 @@ export type ChatInputProps = {
   ) => void | Promise<void>;
   onStop?: () => void;
 };
+
+type CommandMenuMode = 'commands' | 'skills' | 'extensions';
 
 export function ChatInput({
   value = '',
@@ -70,6 +80,10 @@ export function ChatInput({
     AvailableSkill[]
   >([]);
 
+  const [availableExtensions, setAvailableExtensions] = useState<
+    AvailableExtension[]
+  >([]);
+
   const [activeCommand, setActiveCommand] =
     useState<ActiveSlashCommand | null>(null);
 
@@ -77,11 +91,21 @@ export function ChatInput({
     SelectedSkill[]
   >([]);
 
+  const [selectedExtensions, setSelectedExtensions] = useState<
+    SelectedExtension[]
+  >([]);
+
   const [selectedItemIndex, setSelectedItemIndex] = useState(0);
   const [isLoadingSkills, setIsLoadingSkills] = useState(false);
   const [skillsError, setSkillsError] = useState<string | null>(
     null,
   );
+
+  const [isLoadingExtensions, setIsLoadingExtensions] =
+    useState(false);
+  const [extensionsError, setExtensionsError] = useState<
+    string | null
+  >(null);
 
   const safeValue = typeof value === 'string' ? value : '';
   const safeProjectPath =
@@ -97,18 +121,21 @@ export function ChatInput({
 
   /*
    * A bare "/" opens the command menu. Once the user types or selects
-   * "/skill", the menu switches to the skill list for the query after
-   * the command.
+   * "/skill" or "/extension", the menu switches to the matching list
+   * for the query after the command.
    */
-  const commandMenuMode: 'commands' | 'skills' | null =
+  const commandMenuMode: CommandMenuMode | null =
     activeCommand === null
       ? null
       : activeCommand.command === 'skill'
         ? 'skills'
-        : 'commands';
+        : activeCommand.command === 'extension'
+          ? 'extensions'
+          : 'commands';
 
   const activeCommandQuery =
-    (activeCommand?.command === 'skill'
+    (activeCommand?.command === 'skill' ||
+      activeCommand?.command === 'extension'
       ? activeCommand.query
       : '') ?? '';
 
@@ -125,6 +152,17 @@ export function ChatInput({
       activeCommandQuery,
     );
   }, [commandMenuMode, availableSkills, activeCommandQuery]);
+
+  const filteredExtensions = useMemo(() => {
+    if (commandMenuMode !== 'extensions') {
+      return [];
+    }
+
+    return filterExtensions(
+      availableExtensions,
+      activeCommandQuery,
+    );
+  }, [commandMenuMode, availableExtensions, activeCommandQuery]);
 
   const loadSkills = useCallback(async () => {
     setIsLoadingSkills(true);
@@ -150,9 +188,43 @@ export function ChatInput({
     }
   }, [normalizedProjectPath]);
 
+  const loadExtensions = useCallback(async () => {
+    setIsLoadingExtensions(true);
+    setExtensionsError(null);
+
+    try {
+      const installed = await scanInstalledExtensions();
+
+      setAvailableExtensions(
+        installed.map((extension) => ({
+          id: extension.manifest.id,
+          name: extension.manifest.name,
+          description: extension.manifest.description,
+          path: extension.path,
+          commands: extension.manifest.commands ?? [],
+        })),
+      );
+    } catch (error) {
+      console.error('Failed to load extensions:', error);
+
+      setAvailableExtensions([]);
+      setExtensionsError(
+        error instanceof Error
+          ? error.message
+          : 'Failed to load available extensions.',
+      );
+    } finally {
+      setIsLoadingExtensions(false);
+    }
+  }, []);
+
   useEffect(() => {
     void loadSkills();
   }, [loadSkills]);
+
+  useEffect(() => {
+    void loadExtensions();
+  }, [loadExtensions]);
 
   useEffect(() => {
     const textarea = textareaRef.current;
@@ -172,7 +244,9 @@ export function ChatInput({
     const menuItemCount =
       commandMenuMode === 'skills'
         ? filteredSkills.length
-        : 1;
+        : commandMenuMode === 'extensions'
+          ? filteredExtensions.length
+          : 2;
 
     if (
       selectedItemIndex >= menuItemCount &&
@@ -180,7 +254,12 @@ export function ChatInput({
     ) {
       setSelectedItemIndex(menuItemCount - 1);
     }
-  }, [filteredSkills.length, selectedItemIndex, commandMenuMode]);
+  }, [
+    filteredSkills.length,
+    filteredExtensions.length,
+    selectedItemIndex,
+    commandMenuMode,
+  ]);
 
   const updateActiveCommand = (
     nextValue: string,
@@ -241,12 +320,12 @@ export function ChatInput({
   };
 
   /*
-   * Select the "/skill" command from the bare "/" command menu. This
-   * keeps the caret after "/skill " so the menu switches to the skill
-   * list and the user can keep typing the query.
+   * Select the "/skill" or "/extension" command from the bare "/"
+   * command menu. This keeps the caret after "/<command> " so the menu
+   * switches to the matching list and the user can keep typing.
    */
   const handleSelectCommand = (command: string) => {
-    if (!activeCommand || command !== 'skill') {
+    if (!activeCommand || (command !== 'skill' && command !== 'extension')) {
       return;
     }
 
@@ -256,7 +335,7 @@ export function ChatInput({
     );
 
     const textAfterMention = safeValue.slice(activeCommand.end);
-    const insertedToken = '/skill ';
+    const insertedToken = `/${command} `;
 
     const nextValue =
       textBeforeMention + insertedToken + textAfterMention;
@@ -268,7 +347,7 @@ export function ChatInput({
     setActiveCommand({
       start: textBeforeMention.length,
       end: nextCaretPosition,
-      command: 'skill',
+      command,
       query: '',
     });
     setSelectedItemIndex(0);
@@ -313,10 +392,56 @@ export function ChatInput({
     setTextareaCaret(textBeforeMention.length);
   };
 
+  /*
+   * Selecting an extension removes the "/extension <query>" command from
+   * the message text and records the extension as a removable tag.
+   */
+  const handleExtensionSelect = (extension: AvailableExtension) => {
+    if (!activeCommand) {
+      return;
+    }
+
+    const textBeforeMention = safeValue.slice(
+      0,
+      activeCommand.start,
+    );
+
+    const textAfterMention = safeValue.slice(activeCommand.end);
+
+    const nextValue = textBeforeMention + textAfterMention;
+
+    const alreadySelected = selectedExtensions.some(
+      (selected) => selected.id === extension.id,
+    );
+
+    if (!alreadySelected) {
+      setSelectedExtensions((currentExtensions) => [
+        ...currentExtensions,
+        {
+          id: extension.id,
+          name: extension.name,
+          path: extension.path,
+        },
+      ]);
+    }
+
+    onValueChange(nextValue);
+    closeCommandMenu();
+    setTextareaCaret(textBeforeMention.length);
+  };
+
   const handleRemoveSkill = (skill: SelectedSkill) => {
     setSelectedSkills((currentSkills) =>
       currentSkills.filter(
         (selected) => selected.name !== skill.name,
+      ),
+    );
+  };
+
+  const handleRemoveExtension = (extension: SelectedExtension) => {
+    setSelectedExtensions((currentExtensions) =>
+      currentExtensions.filter(
+        (selected) => selected.id !== extension.id,
       ),
     );
   };
@@ -329,22 +454,27 @@ export function ChatInput({
     }
 
     const skillsToSend = [...selectedSkills];
+    const extensionsToSend = [...selectedExtensions];
 
     closeCommandMenu();
     setSelectedSkills([]);
+    setSelectedExtensions([]);
     onValueChange('');
 
     try {
       await onSend(message, {
         projectPath: normalizedProjectPath,
         selectedSkills: skillsToSend,
+        selectedExtensions: extensionsToSend,
       });
     } catch (error) {
       /*
-       * Restore the message and the selected skills when sending fails.
+       * Restore the message and the selected skills/extensions when
+       * sending fails.
        */
       onValueChange(message);
       setSelectedSkills(skillsToSend);
+      setSelectedExtensions(extensionsToSend);
       throw error;
     }
   };
@@ -356,7 +486,9 @@ export function ChatInput({
       const menuItemCount =
         commandMenuMode === 'skills'
           ? filteredSkills.length
-          : 1;
+          : commandMenuMode === 'extensions'
+            ? filteredExtensions.length
+            : 2;
 
       if (event.key === 'ArrowDown') {
         event.preventDefault();
@@ -399,8 +531,17 @@ export function ChatInput({
           if (selectedSkill) {
             handleSkillSelect(selectedSkill);
           }
+        } else if (commandMenuMode === 'extensions') {
+          const selectedExtension =
+            filteredExtensions[selectedItemIndex];
+
+          if (selectedExtension) {
+            handleExtensionSelect(selectedExtension);
+          }
         } else {
-          handleSelectCommand('skill');
+          const commandItem = selectedItemIndex === 0 ? 'skill' : 'extension';
+
+          handleSelectCommand(commandItem);
         }
 
         return;
@@ -429,6 +570,17 @@ export function ChatInput({
 
     await onChooseProjectFolder();
   };
+
+  const loadSuffix =
+    commandMenuMode === 'extensions'
+      ? {
+          isLoading: isLoadingExtensions,
+          error: extensionsError,
+        }
+      : {
+          isLoading: isLoadingSkills,
+          error: skillsError,
+        };
 
   return (
     <div className="chat-input-shell">
@@ -522,11 +674,13 @@ export function ChatInput({
               mode={commandMenuMode ?? 'commands'}
               commandQuery={activeCommandQuery}
               skills={filteredSkills}
+              extensions={filteredExtensions}
               selectedIndex={selectedItemIndex}
-              isLoading={isLoadingSkills}
-              error={skillsError}
+              isLoading={loadSuffix.isLoading}
+              error={loadSuffix.error}
               onSelectCommand={handleSelectCommand}
               onSelectSkill={handleSkillSelect}
+              onSelectExtension={handleExtensionSelect}
               onHover={setSelectedItemIndex}
             />
           )}
@@ -551,6 +705,34 @@ export function ChatInput({
                     className="skill-tag-remove"
                     onClick={() => handleRemoveSkill(skill)}
                     aria-label={`Remove skill ${skill.name}`}
+                  >
+                    <X size={12} />
+                  </button>
+                </span>
+              ))}
+            </div>
+          )}
+
+          {selectedExtensions.length > 0 && (
+            <div
+              className="skill-tags-row"
+              aria-label="Selected extensions"
+            >
+              {selectedExtensions.map((extension) => (
+                <span
+                  key={`extension:${extension.id}`}
+                  className="skill-tag"
+                  title={extension.name}
+                >
+                  <span className="skill-tag-name">
+                    <Puzzle size={12} /> {extension.name}
+                  </span>
+
+                  <button
+                    type="button"
+                    className="skill-tag-remove"
+                    onClick={() => handleRemoveExtension(extension)}
+                    aria-label={`Remove extension ${extension.name}`}
                   >
                     <X size={12} />
                   </button>
@@ -649,8 +831,8 @@ export function ChatInput({
         </div>
 
         <p className="chat-input-disclaimer">
-          Type /skill to select a skill. Mocu can make mistakes. Check
-          important information.
+          Type /skill to select a skill, or /extension to run an
+          extension. Mocu can make mistakes. Check important information.
         </p>
       </div>
     </div>

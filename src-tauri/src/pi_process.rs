@@ -43,7 +43,7 @@ impl PiProcess {
             .take()
             .ok_or("Failed to open Pi stderr")?;
 
-        // خواندن رویدادهای JSON
+        // Read JSON events
         let stdout_app = app.clone();
 
         std::thread::spawn(move || {

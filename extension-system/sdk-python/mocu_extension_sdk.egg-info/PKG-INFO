@@ -1,0 +1,7 @@
+Metadata-Version: 2.4
+Name: mocu-extension-sdk
+Version: 0.1.0
+Summary: Official Python SDK for Mocu extensions.
+Author: Mocu
+License: MIT
+Requires-Python: >=3.10

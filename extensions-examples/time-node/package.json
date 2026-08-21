@@ -1,0 +1,10 @@
+{
+  "name": "time-node",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Minimal Mocu text extension using the official Node.js SDK.",
+  "dependencies": {
+    "@mocu/extension-sdk": "0.1.0"
+  }
+}

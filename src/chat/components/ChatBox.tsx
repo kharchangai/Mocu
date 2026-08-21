@@ -28,6 +28,7 @@ import {
 import type { ChatMessage } from '../types/chat';
 
 import type { SelectedSkill } from './skillTypes';
+import type { SelectedExtension } from './extensionTypes';
 
 import './ChatBox.css';
 
@@ -43,6 +44,7 @@ type EnsureChatResult = {
 type SendOptions = {
   projectPath?: string | null;
   selectedSkills?: SelectedSkill[];
+  selectedExtensions?: SelectedExtension[];
 };
 
 type ChatBoxProps = {
@@ -463,6 +465,15 @@ export function ChatBox({
           selectedSkills:
             options?.selectedSkills?.map(
               (skill) => skill.name,
+            ) ?? [],
+          /*
+           * Extensions selected with the /extension command are run
+           * inside the agent and their output is added to the system
+           * prompt.
+           */
+          selectedExtensions:
+            options?.selectedExtensions?.map(
+              (extension) => extension.id,
             ) ?? [],
         },
       };

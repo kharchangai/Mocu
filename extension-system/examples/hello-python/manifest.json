@@ -1,0 +1,12 @@
+{
+  "id": "hello-python",
+  "name": "Hello Python Extension",
+  "description": "Demonstrates a Python Mocu extension that can call the host (use the LLM) through Rust.",
+  "version": "0.1.0",
+  "runtime": "python",
+  "entry": "main.py",
+  "commands": [
+    { "id": "hello", "title": "Say Hello", "description": "Echo back the input value." },
+    { "id": "llm", "title": "Ask Host LLM", "description": "Call mocu.llm.generate through the host." }
+  ]
+}

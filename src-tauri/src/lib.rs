@@ -13,7 +13,12 @@ mod commands;
 // Pi process management module
 mod pi_process;
 
+// Extension host module (manages Node.js / Python extension processes)
+mod extension_host;
+
 use pi_process::{PiProcess, PiState};
+
+use extension_host::manager::ExtensionManager;
 
 #[tauri::command]
 fn greet(name: &str) -> String {
@@ -192,6 +197,9 @@ pub fn run() {
         // Register the global Pi process state
         .manage(PiState::default())
 
+        // Register the extension manager state
+        .manage(ExtensionManager::default())
+
         // Register all Tauri commands
         .invoke_handler(tauri::generate_handler![
             greet,
@@ -199,7 +207,13 @@ pub fn run() {
             start_pi,
             prompt_pi,
             ping_pi,
-            stop_pi
+            stop_pi,
+            extension_host::extension_start,
+            extension_host::extension_send_request,
+            extension_host::extension_send_notification,
+            extension_host::extension_stop,
+            extension_host::extension_status,
+            extension_host::extension_respond
         ])
 
         .setup(|app| {

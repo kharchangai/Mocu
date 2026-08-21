@@ -93,7 +93,7 @@ If the user asks to inspect the screen, desktop, UI, or code visible on screen, 
 If the user asks to use the operating system terminal, execute commands, manage files, run scripts, or inspect system information, use terminal_intent_executor.
 
 [SEARCH RULES]
-Use perplexity_search by default for web searches, current information, news, facts, and requests such as search, find, latest, جستجو کن, پیدا کن, آخرین خبر را پیدا کن, and آخرین وضعیت.
+Use perplexity_search by default for web searches, current information, news, facts, and requests such as search, find, latest, search, find, latest news, and latest status.
 
 [DEPENDENT TOOL RULE]
 If screen information is needed before taking another action, first call desktop_vision_action and wait for the result. Then use the exact result in a later step.
