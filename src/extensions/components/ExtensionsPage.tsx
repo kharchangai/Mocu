@@ -40,13 +40,9 @@ function installEntry(
 export function ExtensionsPage() {
   const {
     extensions,
-    runningExtensions,
     loading,
     error,
     refresh,
-    activate,
-    deactivate,
-    execute,
     install,
     installBundled,
     uninstall,
@@ -152,7 +148,7 @@ export function ExtensionsPage() {
       <header className="extensions-header">
         <div className="extensions-heading">
           <h1>Extensions</h1>
-          <p>Browse, install and manage Mocu Python &amp; Node.js extensions.</p>
+          <p>Install, delete, and run Python &amp; Node.js extensions on demand from chat.</p>
         </div>
 
         <div className="extensions-header-actions">
@@ -285,18 +281,6 @@ export function ExtensionsPage() {
             <ExtensionCard
               key={extension.manifest.id}
               extension={extension}
-              running={runningExtensions.has(extension.manifest.id)}
-              onActivate={activate}
-              onDeactivate={deactivate}
-              onExecute={(selectedExtension, command) =>
-                execute(
-                  selectedExtension,
-                  command,
-                  {
-                    source: "extensions-page",
-                  },
-                )
-              }
               onUninstall={handleUninstall}
             />
           ))}

@@ -1,0 +1,10 @@
+{
+  "name": "hi-llm-node",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Minimal test extension that uses the Mocu host LLM to respond to 'hi'.",
+  "dependencies": {
+    "@mocu/extension-sdk": "0.1.0"
+  }
+}

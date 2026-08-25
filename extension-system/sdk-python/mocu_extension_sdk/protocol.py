@@ -1,7 +1,5 @@
 from __future__ import annotations
 
-import asyncio
-import inspect
 import json
 import sys
 import threading
@@ -13,6 +11,15 @@ RequestHandler = Callable[[Any], Any]
 
 
 class JsonRpcProtocol:
+    """
+    Minimal stdin/stdout JSON-RPC client.
+
+    Mocu writes `{ "method", "id", "params" }` lines to the extension's
+    stdin; the matching handler runs and its result (or error) is written
+    back on stdout. `request()` lets the extension call host methods (e.g.
+    `mocu.llm.generate`) and await the answer.
+    """
+
     def __init__(self) -> None:
         self._handlers: dict[str, RequestHandler] = {}
         self._pending: dict[int, Future[Any]] = {}
@@ -27,27 +34,13 @@ class JsonRpcProtocol:
     ) -> None:
         self._handlers[method] = handler
 
-    def notify(
-        self,
-        method: str,
-        params: Any = None,
-    ) -> None:
-        message: dict[str, Any] = {
-            "jsonrpc": "2.0",
-            "method": method,
-        }
-
-        if params is not None:
-            message["params"] = params
-
-        self._write_message(message)
-
     def request(
         self,
         method: str,
         params: Any = None,
-        timeout: float = 30.0,
+        timeout: float = 90.0,
     ) -> Any:
+        """Send a request to the host and wait for its response."""
         with self._pending_lock:
             request_id = self._next_request_id
             self._next_request_id += 1
@@ -68,9 +61,10 @@ class JsonRpcProtocol:
 
         try:
             return future.result(timeout=timeout)
-        finally:
+        except Exception:
             with self._pending_lock:
                 self._pending.pop(request_id, None)
+            raise
 
     def run(self) -> None:
         for line in sys.stdin:
@@ -81,10 +75,7 @@ class JsonRpcProtocol:
 
             self._handle_line(normalized_line)
 
-    def _handle_line(
-        self,
-        line: str,
-    ) -> None:
+    def _handle_line(self, line: str) -> None:
         try:
             message = json.loads(line)
         except json.JSONDecodeError as error:
@@ -104,13 +95,12 @@ class JsonRpcProtocol:
             )
             return
 
-        if "method" in message:
-            if "id" in message:
-                self._handle_request(message)
-            else:
-                self._handle_notification(message)
+        # A request from the host (e.g. extension.execute).
+        if "method" in message and "id" in message:
+            self._handle_request(message)
             return
 
+        # A response from the host to one of our requests.
         if "result" in message:
             self._handle_success(message)
             return
@@ -118,10 +108,7 @@ class JsonRpcProtocol:
         if "error" in message:
             self._handle_failure(message)
 
-    def _handle_request(
-        self,
-        request: dict[str, Any],
-    ) -> None:
+    def _handle_request(self, request: dict[str, Any]) -> None:
         request_id = request.get("id")
         method = request.get("method")
 
@@ -144,10 +131,7 @@ class JsonRpcProtocol:
             return
 
         try:
-            result = self._execute_handler(
-                handler,
-                request.get("params"),
-            )
+            result = handler(request.get("params"))
 
             self._write_message({
                 "jsonrpc": "2.0",
@@ -161,37 +145,7 @@ class JsonRpcProtocol:
                 str(error),
             )
 
-    def _handle_notification(
-        self,
-        notification: dict[str, Any],
-    ) -> None:
-        method = notification.get("method")
-
-        if not isinstance(method, str):
-            return
-
-        handler = self._handlers.get(method)
-
-        if handler is None:
-            return
-
-        try:
-            self._execute_handler(
-                handler,
-                notification.get("params"),
-            )
-        except Exception as error:
-            print(
-                f"[Mocu Extension SDK] "
-                f"Notification handler failed: {error}",
-                file=sys.stderr,
-                flush=True,
-            )
-
-    def _handle_success(
-        self,
-        response: dict[str, Any],
-    ) -> None:
+    def _handle_success(self, response: dict[str, Any]) -> None:
         request_id = response.get("id")
 
         with self._pending_lock:
@@ -200,10 +154,7 @@ class JsonRpcProtocol:
         if future is not None and not future.done():
             future.set_result(response.get("result"))
 
-    def _handle_failure(
-        self,
-        response: dict[str, Any],
-    ) -> None:
+    def _handle_failure(self, response: dict[str, Any]) -> None:
         request_id = response.get("id")
         error = response.get("error", {})
 
@@ -218,18 +169,6 @@ class JsonRpcProtocol:
 
         if future is not None and not future.done():
             future.set_exception(RuntimeError(message))
-
-    def _execute_handler(
-        self,
-        handler: RequestHandler,
-        params: Any,
-    ) -> Any:
-        result = handler(params)
-
-        if inspect.isawaitable(result):
-            return asyncio.run(result)
-
-        return result
 
     def _write_error(
         self,
@@ -252,10 +191,7 @@ class JsonRpcProtocol:
             "error": error,
         })
 
-    def _write_message(
-        self,
-        message: dict[str, Any],
-    ) -> None:
+    def _write_message(self, message: dict[str, Any]) -> None:
         serialized = json.dumps(
             message,
             ensure_ascii=False,

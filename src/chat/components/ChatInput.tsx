@@ -760,6 +760,7 @@ export function ChatInput({
             }}
             placeholder={`Message ${agentName}`}
             rows={1}
+            dir="auto"
             disabled={isLoading}
             aria-label={`Message ${agentName}`}
             aria-expanded={isCommandMenuOpen}

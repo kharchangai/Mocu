@@ -1,0 +1,15 @@
+{
+  "id": "hi-llm-node",
+  "name": "Hi LLM",
+  "description": "A minimal test extension that calls the Mocu LLM and asks it to say hi.",
+  "version": "0.1.0",
+  "runtime": "node",
+  "entry": "index.js",
+  "commands": [
+    {
+      "id": "hi",
+      "title": "Say hi via LLM",
+      "description": "Asks the Mocu LLM to respond to 'hi' and returns its reply."
+    }
+  ]
+}

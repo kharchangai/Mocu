@@ -4,19 +4,22 @@ import type {
   JsonRpcFailure,
   JsonRpcId,
   JsonRpcMessage,
-  JsonRpcNotification,
   JsonRpcRequest,
   JsonRpcSuccess,
 } from "@mocu/extension-contracts";
 
-import type {
-  PendingRequest,
-} from "./types.js";
+import type { PendingRequest } from "./types.js";
 
-type RequestHandler = (
-  params: unknown,
-) => Promise<unknown>;
+type RequestHandler = (params: unknown) => Promise<unknown>;
 
+/**
+ * Minimal stdin/stdout JSON-RPC client.
+ *
+ * Mocu writes `{ method, id, params }` to the extension's stdin; the SDK
+ * dispatches to the matching handler and writes `{ id, result/error }` back
+ * on stdout. In the reverse direction, `request()` lets the extension call
+ * host methods (e.g. `mocu.llm.generate`) and await the answer.
+ */
 export class JsonRpcProtocolClient {
   private nextRequestId = 1;
 
@@ -67,10 +70,13 @@ export class JsonRpcProtocolClient {
     process.stdin.resume();
   }
 
+  /**
+   * Send a request to the host and await its response.
+   */
   public async request<TResult = unknown>(
     method: string,
     params?: unknown,
-    timeoutMs = 30_000,
+    timeoutMs = 90_000,
   ): Promise<TResult> {
     const id = this.nextRequestId++;
 
@@ -104,22 +110,7 @@ export class JsonRpcProtocolClient {
     return result;
   }
 
-  public notify(
-    method: string,
-    params?: unknown,
-  ): void {
-    const notification: JsonRpcNotification = {
-      jsonrpc: "2.0",
-      method,
-      ...(params === undefined ? {} : { params }),
-    };
-
-    this.writeMessage(notification);
-  }
-
-  private async handleLine(
-    line: string,
-  ): Promise<void> {
+  private async handleLine(line: string): Promise<void> {
     let message: JsonRpcMessage;
 
     try {
@@ -129,42 +120,30 @@ export class JsonRpcProtocolClient {
         null,
         -32700,
         "Invalid JSON received.",
-        error instanceof Error
-          ? error.message
-          : String(error),
+        error instanceof Error ? error.message : String(error),
       );
-
       return;
     }
 
-    if (
-      "method" in message &&
-      "id" in message
-    ) {
-      await this.handleRequest(message);
+    // A request from the host (e.g. extension.execute).
+    if ("method" in message && "id" in message) {
+      await this.handleRequest(message as JsonRpcRequest);
       return;
     }
 
-    if ("method" in message) {
-      await this.handleNotification(message);
-      return;
-    }
-
+    // A response from the host to one of our requests.
     if ("result" in message) {
-      this.handleSuccess(message);
+      this.handleSuccess(message as JsonRpcSuccess);
       return;
     }
 
     if ("error" in message) {
-      this.handleFailure(message);
+      this.handleFailure(message as JsonRpcFailure);
     }
   }
 
-  private async handleRequest(
-    request: JsonRpcRequest,
-  ): Promise<void> {
-    const handler =
-      this.requestHandlers.get(request.method);
+  private async handleRequest(request: JsonRpcRequest): Promise<void> {
+    const handler = this.requestHandlers.get(request.method);
 
     if (!handler) {
       this.writeFailure(
@@ -172,7 +151,6 @@ export class JsonRpcProtocolClient {
         -32601,
         `Method not found: ${request.method}`,
       );
-
       return;
     }
 
@@ -190,41 +168,13 @@ export class JsonRpcProtocolClient {
       this.writeFailure(
         request.id,
         -32603,
-        error instanceof Error
-          ? error.message
-          : String(error),
+        error instanceof Error ? error.message : String(error),
       );
     }
   }
 
-  private async handleNotification(
-    notification: JsonRpcNotification,
-  ): Promise<void> {
-    const handler =
-      this.requestHandlers.get(notification.method);
-
-    if (!handler) {
-      return;
-    }
-
-    try {
-      await handler(notification.params);
-    } catch (error) {
-      console.error(
-        `[Mocu Extension SDK] Notification handler failed: ${
-          error instanceof Error
-            ? error.message
-            : String(error)
-        }`,
-      );
-    }
-  }
-
-  private handleSuccess(
-    response: JsonRpcSuccess,
-  ): void {
-    const pending =
-      this.pendingRequests.get(response.id);
+  private handleSuccess(response: JsonRpcSuccess): void {
+    const pending = this.pendingRequests.get(response.id);
 
     if (!pending) {
       return;
@@ -235,15 +185,12 @@ export class JsonRpcProtocolClient {
     pending.resolve(response.result);
   }
 
-  private handleFailure(
-    response: JsonRpcFailure,
-  ): void {
+  private handleFailure(response: JsonRpcFailure): void {
     if (response.id === null) {
       return;
     }
 
-    const pending =
-      this.pendingRequests.get(response.id);
+    const pending = this.pendingRequests.get(response.id);
 
     if (!pending) {
       return;
@@ -276,17 +223,11 @@ export class JsonRpcProtocolClient {
     this.writeMessage(failure);
   }
 
-  private writeMessage(
-    message: JsonRpcMessage,
-  ): void {
-    process.stdout.write(
-      `${JSON.stringify(message)}\n`,
-    );
+  private writeMessage(message: unknown): void {
+    process.stdout.write(`${JSON.stringify(message)}\n`);
   }
 
-  private rejectAllPendingRequests(
-    error: Error,
-  ): void {
+  private rejectAllPendingRequests(error: Error): void {
     for (const pending of this.pendingRequests.values()) {
       clearTimeout(pending.timeout);
       pending.reject(error);

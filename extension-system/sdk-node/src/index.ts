@@ -3,15 +3,17 @@ export {
   MocuExtension,
 } from "./extension.js";
 
+export { LlmApi } from "./llm.js";
+
 export type {
   ExtensionCommandHandler,
   MaybePromise,
   MocuExtensionDefinition,
+  PendingRequest,
 } from "./types.js";
 
 export type {
-  ExtensionActivateParams,
-  ExtensionDeactivateParams,
+  LlmGenerateParams,
+  LlmGenerateResult,
   ExtensionExecuteParams,
-  ExtensionInitializeParams,
 } from "@mocu/extension-contracts";

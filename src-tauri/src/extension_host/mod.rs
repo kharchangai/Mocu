@@ -1,106 +1,84 @@
 pub mod manager;
 pub mod manifest;
 pub mod process;
-pub mod protocol;
+
+use std::path::PathBuf;
 
 use serde::Deserialize;
 use serde_json::Value;
 use tauri::{AppHandle, State};
 
-use protocol::JsonRpcErrorObject;
+use manager::{ExtensionManager, JsonRpcErrorObject};
+use manifest::ExtensionManifest;
 
-use manager::{
-    ExtensionManager,
-    ExtensionStatus,
-    SendExtensionRequestInput,
-    SendExtensionRequestResult,
-    StartExtensionInput,
-    StartExtensionResult,
-};
-
+/// Execute an extension command. The extension is registered, spawned on
+/// demand (if not already running), invoked, and its output returned.
+///
+/// The command is `async` and runs the blocking wait on a background worker
+/// so the main thread stays free. That matters because an extension can call
+/// `mocu.llm.generate` mid-execution: the frontend must be able to run
+/// `extension_respond` (which needs the main thread) to reply *before* this
+/// command returns. Blocking the main thread here would deadlock the whole
+/// app.
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
-pub struct StopExtensionInput {
-    pub extension_id: String,
+pub struct ExtensionExecuteInput {
+    pub extension_path: String,
+    pub manifest: ExtensionManifest,
+    pub command: String,
+    pub input: Option<Value>,
+}
+
+#[tauri::command]
+pub async fn extension_execute(
+    app_handle: AppHandle,
+    manager: State<'_, ExtensionManager>,
+    input: ExtensionExecuteInput,
+) -> Result<Value, String> {
+    let manager = manager.inner().clone();
+    let path = PathBuf::from(&input.extension_path);
+    let manifest = input.manifest;
+    let command = input.command;
+    let input_value = input.input;
+
+    tauri::async_runtime::spawn_blocking(move || {
+        manager.execute(app_handle, path, manifest, command, input_value)
+    })
+    .await
+    .map_err(|error| format!("Extension execution task failed: {error}"))?
 }
 
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
-pub struct ExtensionStatusInput {
+pub struct ExtensionStopInput {
     pub extension_id: String,
 }
 
-#[derive(Debug, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct SendNotificationInput {
-    pub extension_id: String,
-    pub method: String,
-    pub params: Option<Value>,
+/// Stop a running extension process (used on uninstall or restart).
+#[tauri::command]
+pub fn extension_stop(
+    manager: State<'_, ExtensionManager>,
+    input: ExtensionStopInput,
+) -> Result<bool, String> {
+    manager.stop(&input.extension_id)
 }
 
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct RespondExtensionInput {
     pub extension_id: String,
-    pub request_id: String,
-
+    /// Preserve the id type (string or number) sent by the extension so the
+    /// SDK's pending-request lookup matches.
+    pub request_id: Value,
     #[serde(default)]
     pub result: Option<Value>,
-
     #[serde(default)]
     pub error: Option<JsonRpcErrorObject>,
 }
 
-#[tauri::command]
-pub fn extension_start(
-    app_handle: AppHandle,
-    manager: State<'_, ExtensionManager>,
-    input: StartExtensionInput,
-) -> Result<StartExtensionResult, String> {
-    manager.start(app_handle, input)
-}
-
-#[tauri::command]
-pub fn extension_send_request(
-    manager: State<'_, ExtensionManager>,
-    input: SendExtensionRequestInput,
-) -> Result<SendExtensionRequestResult, String> {
-    manager.send_request(input)
-}
-
-#[tauri::command]
-pub fn extension_send_notification(
-    manager: State<'_, ExtensionManager>,
-    input: SendNotificationInput,
-) -> Result<(), String> {
-    manager.send_notification(
-        &input.extension_id,
-        input.method,
-        input.params,
-    )
-}
-
-#[tauri::command]
-pub fn extension_stop(
-    manager: State<'_, ExtensionManager>,
-    input: StopExtensionInput,
-) -> Result<bool, String> {
-    manager.stop(&input.extension_id)
-}
-
-#[tauri::command]
-pub fn extension_status(
-    manager: State<'_, ExtensionManager>,
-    input: ExtensionStatusInput,
-) -> Result<ExtensionStatus, String> {
-    manager.status(&input.extension_id)
-}
-
-/// Sends a JSON-RPC response back to an extension request.
-///
-/// When an extension calls a host method (for example `mocu.llm.generate`
-/// or `mocu.getSettings`), the frontend resolves it and uses this command to
-/// send the result (or error) back through Rust into the extension.
+/// Send a JSON-RPC response back to an extension request. Used to resolve a
+/// host-bound request (e.g. `mocu.llm.generate`) that the extension sent to
+/// the frontend.
 #[tauri::command]
 pub fn extension_respond(
     manager: State<'_, ExtensionManager>,

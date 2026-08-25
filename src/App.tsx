@@ -19,6 +19,8 @@ import { useMocuWindowSize } from './hooks/useMocuWindowSize';
 
 import { runTest } from './test';
 
+import { startExtensionHost } from './extensions/services/host-service';
+
 type ActivityEvent = {
   text: string;
   isRunning: boolean;
@@ -256,6 +258,17 @@ function App() {
       throw error;
     }
   };
+
+  useEffect(() => {
+    /*
+     * Start the extension host bridge once. This is what lets extensions
+     * call Mocu host methods (currently the LLM) and receive answers back
+     * through Rust.
+     */
+    const stopHost = startExtensionHost();
+
+    return stopHost;
+  }, []);
 
   useEffect(() => {
     if (!isMocuWindow || hasRunAtomicMemoryTestRef.current) {

@@ -3,8 +3,6 @@ export { ExtensionsPage } from "./components/ExtensionsPage";
 export { ExtensionCard } from "./components/ExtensionCard";
 
 export {
-  activateExtension,
-  deactivateExtension,
   executeExtensionCommand,
 } from "./services/extension-service";
 
@@ -26,18 +24,12 @@ export {
   type ExtensionCatalogEntry,
 } from "./services/extension-catalog";
 
-export {
-  registerExtensionHost,
-} from "./services/host-service";
+export { startExtensionHost } from "./services/host-service";
 
 export {
-  startExtension,
+  executeExtension,
   stopExtension,
-  requestExtension,
-  notifyExtension,
-  getExtensionStatus,
   respondExtension,
-  setExtensionMessageHandler,
 } from "./services/extension-client";
 
 export type {

@@ -1,7 +1,11 @@
 // src/services/ai/index.ts
-import { HumanMessage } from "@langchain/core/messages";
+import {
+  HumanMessage,
+  SystemMessage,
+} from "@langchain/core/messages";
 import { MemorySaver } from "@langchain/langgraph";
 import { workflow } from "./graph";
+import { getAsyncLLM } from "./llm";
 
 /*
  * In-memory checkpointer keeps per-thread conversation history,
@@ -23,6 +27,79 @@ const throwIfAborted = (
       "AbortError",
     );
   }
+};
+
+/*
+ * Generate a quick, stateless text answer.
+ *
+ * Used by extension LLM calls (`mocu.llm.generate`). Unlike
+ * `chatWithMocu`, this is a single direct model completion with no
+ * agent loop, no tools, and no memory retrieval — so it stays well
+ * within the extension `extension.execute` timeout.
+ */
+export type SimpleAnswerOptions = {
+  systemPrompt?: string;
+  temperature?: number;
+  maxTokens?: number;
+};
+
+export const generateSimpleAnswer = async (
+  prompt: string,
+  signal?: AbortSignal,
+  options: SimpleAnswerOptions = {},
+): Promise<string> => {
+  throwIfAborted(signal);
+
+  const cleanPrompt = prompt.trim();
+
+  if (!cleanPrompt) {
+    throw new Error("User input cannot be empty.");
+  }
+
+  const llm = await getAsyncLLM("medium", {
+    temperature: options.temperature ?? 0.7,
+    maxTokens: options.maxTokens,
+  });
+
+  throwIfAborted(signal);
+
+  const messages = [
+    ...(options.systemPrompt
+      ? [new SystemMessage(options.systemPrompt)]
+      : []),
+    new HumanMessage(cleanPrompt),
+  ];
+
+  const response = await llm.invoke(
+    messages,
+    signal ? { signal } : undefined,
+  );
+
+  throwIfAborted(signal);
+
+  const content = response.content;
+
+  if (typeof content === "string") {
+    return content.trim();
+  }
+
+  if (Array.isArray(content)) {
+    return content
+      .map((block) =>
+        typeof block === "string"
+          ? block
+          : block &&
+              typeof block === "object" &&
+              "text" in block &&
+              typeof block.text === "string"
+            ? block.text
+            : "",
+      )
+      .join("")
+      .trim();
+  }
+
+  return content == null ? "" : String(content);
 };
 
 export const chatWithMocu = async (

@@ -1,7 +1,8 @@
 use std::{
     collections::HashMap,
     path::PathBuf,
-    sync::{Arc, Mutex},
+    sync::{mpsc, Arc, Mutex, MutexGuard},
+    time::Duration,
 };
 
 use serde::{Deserialize, Serialize};
@@ -12,237 +13,268 @@ use uuid::Uuid;
 use super::{
     manifest::ExtensionManifest,
     process::{spawn_extension, RunningExtension},
-    protocol::{JsonRpcErrorObject, JsonRpcRequest, JsonRpcResponse},
 };
 
-#[derive(Default, Clone)]
-pub struct ExtensionManager {
-    processes: Arc<Mutex<HashMap<String, RunningExtension>>>,
+/// JSON-RPC error object, as sent back to an extension (frontend -> host).
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct JsonRpcErrorObject {
+    pub code: i64,
+    pub message: String,
+    #[serde(default)]
+    pub data: Option<Value>,
 }
 
-#[derive(Debug, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct StartExtensionInput {
-    pub extension_path: String,
+/// Hard cap for a single `extension.execute` call. Extensions that take longer
+/// than this report a timeout so the calling thread is never blocked forever.
+const EXECUTE_TIMEOUT: Duration = Duration::from_secs(90);
+
+/// A registered (installed) extension that is ready to be spawned on demand.
+#[derive(Clone)]
+pub struct RegisteredExtension {
+    pub path: PathBuf,
     pub manifest: ExtensionManifest,
 }
 
-#[derive(Debug, Serialize)]
-#[serde(rename_all = "camelCase")]
-pub struct StartExtensionResult {
-    pub extension_id: String,
-    pub started: bool,
+/*
+ * Lazy request/response bridge.
+ *
+ * When `execute` is called, a channel sender is stored keyed by the JSON-RPC
+ * request id. The extension's stdout reader (`process.rs`) resolves the
+ * matching id when the child writes back. This is what lets the manager spawn
+ * an extension on first use, route the command and synchronously return the
+ * output without any frontend/event round-trip.
+ */
+#[derive(Default)]
+pub struct PendingRpc {
+    senders: Mutex<HashMap<String, mpsc::Sender<Value>>>,
 }
 
-#[derive(Debug, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct SendExtensionRequestInput {
-    pub extension_id: String,
-    pub request_id: Option<String>,
-    pub method: String,
-    pub params: Option<Value>,
+impl PendingRpc {
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    /// Reserve a fresh request id and hand back the receiver that will be
+    /// fulfilled once the extension responds.
+    pub fn create(&self) -> (String, mpsc::Receiver<Value>) {
+        let id = Uuid::new_v4().to_string();
+        let (sender, receiver) = mpsc::channel();
+
+        if let Ok(mut senders) = self.senders.lock() {
+            senders.insert(id.clone(), sender);
+        }
+
+        (id, receiver)
+    }
+
+    /// Called by the stdout reader when a response matching `id` arrives.
+    pub fn resolve(&self, id: &str, result: Value) {
+        let sender = match self.senders.lock() {
+            Ok(mut senders) => senders.remove(id),
+            Err(_) => None,
+        };
+
+        if let Some(sender) = sender {
+            let _ = sender.send(result);
+        }
+    }
 }
 
-#[derive(Debug, Serialize)]
-#[serde(rename_all = "camelCase")]
-pub struct SendExtensionRequestResult {
-    pub request_id: String,
+/// Owns every installed extension and its (optionally running) process.
+///
+/// The whole lifecycle is *automatic*: extensions are never started by the
+/// user or the frontend explicitly. `execute` registers the extension if
+/// needed, spawns a process only when none is running (lazy activation),
+/// routes the command, and returns the extension's output.
+#[derive(Clone)]
+pub struct ExtensionManager {
+    registry: Arc<Mutex<HashMap<String, RegisteredExtension>>>,
+    processes: Arc<Mutex<HashMap<String, RunningExtension>>>,
+    rpc: Arc<PendingRpc>,
 }
 
-#[derive(Debug, Serialize)]
-#[serde(rename_all = "camelCase")]
-pub struct ExtensionStatus {
-    pub extension_id: String,
-    pub running: bool,
+impl Default for ExtensionManager {
+    fn default() -> Self {
+        Self {
+            registry: Arc::new(Mutex::new(HashMap::new())),
+            processes: Arc::new(Mutex::new(HashMap::new())),
+            rpc: Arc::new(PendingRpc::new()),
+        }
+    }
 }
 
 impl ExtensionManager {
-    pub fn start(
+    /// Load / register an installed extension so it can be spawned on demand.
+    ///
+    /// Re-registering the same extension at the same path is a no-op (keeps a
+    /// running process alive). Registering a *different* path for an existing
+    /// id stops the old process so the next call starts from the new files.
+    pub fn register(
         &self,
-        app_handle: AppHandle,
-        input: StartExtensionInput,
-    ) -> Result<StartExtensionResult, String> {
-        let extension_id = input.manifest.id.trim().to_string();
+        path: PathBuf,
+        manifest: ExtensionManifest,
+    ) -> Result<(), String> {
+        let id = manifest.id.trim().to_string();
 
-        if extension_id.is_empty() {
+        if id.is_empty() {
             return Err("Extension ID cannot be empty".to_string());
         }
 
-        let extension_path = PathBuf::from(&input.extension_path);
-
-        if !extension_path.exists() {
+        if !path.exists() {
             return Err(format!(
                 "Extension directory does not exist: {}",
-                extension_path.display()
+                path.display()
             ));
         }
 
-        if !extension_path.is_dir() {
+        if !path.is_dir() {
             return Err("Extension path is not a directory".to_string());
         }
 
-        let mut processes = self
-            .processes
-            .lock()
-            .map_err(|_| "Extension manager lock is poisoned".to_string())?;
+        {
+            let registry = self.lock_registry()?;
 
-        if let Some(existing) = processes.get(&extension_id) {
-            if existing.is_running() {
-                return Ok(StartExtensionResult {
-                    extension_id,
-                    started: false,
-                });
+            if let Some(existing) = registry.get(&id) {
+                if existing.path == path {
+                    // Same location as before: nothing to reload.
+                    return Ok(());
+                }
             }
         }
 
-        processes.remove(&extension_id);
+        // A stale/old installation: tear the process down so the next spawn
+        // uses the freshly registered files.
+        let _ = self.stop(&id);
 
-        let process = spawn_extension(
-            app_handle,
-            extension_path,
-            input.manifest,
-        )?;
+        let mut registry = self.lock_registry()?;
 
-        processes.insert(extension_id.clone(), process);
-
-        Ok(StartExtensionResult {
-            extension_id,
-            started: true,
-        })
-    }
-
-    pub fn send_request(
-        &self,
-        input: SendExtensionRequestInput,
-    ) -> Result<SendExtensionRequestResult, String> {
-        let request_id = input
-            .request_id
-            .unwrap_or_else(|| Uuid::new_v4().to_string());
-
-        let request = JsonRpcRequest {
-            jsonrpc: "2.0".to_string(),
-            id: request_id.clone(),
-            method: input.method,
-            params: input.params,
-        };
-
-        let value = serde_json::to_value(request)
-            .map_err(|error| format!("Failed to build JSON-RPC request: {error}"))?;
-
-        let processes = self
-            .processes
-            .lock()
-            .map_err(|_| "Extension manager lock is poisoned".to_string())?;
-
-        let process = processes
-            .get(&input.extension_id)
-            .ok_or_else(|| format!("Extension '{}' is not running", input.extension_id))?;
-
-        if !process.is_running() {
-            return Err(format!(
-                "Extension '{}' process has already exited",
-                input.extension_id
-            ));
-        }
-
-        process.send_json(&value)?;
-
-        Ok(SendExtensionRequestResult { request_id })
-    }
-
-    pub fn send_notification(
-        &self,
-        extension_id: &str,
-        method: String,
-        params: Option<Value>,
-    ) -> Result<(), String> {
-        let message = json!({
-            "jsonrpc": "2.0",
-            "method": method,
-            "params": params
-        });
-
-        let processes = self
-            .processes
-            .lock()
-            .map_err(|_| "Extension manager lock is poisoned".to_string())?;
-
-        let process = processes
-            .get(extension_id)
-            .ok_or_else(|| format!("Extension '{extension_id}' is not running"))?;
-
-        process.send_json(&message)
-    }
-
-    pub fn stop(&self, extension_id: &str) -> Result<bool, String> {
-        let mut processes = self
-            .processes
-            .lock()
-            .map_err(|_| "Extension manager lock is poisoned".to_string())?;
-
-        let Some(process) = processes.remove(extension_id) else {
-            return Ok(false);
-        };
-
-        process.stop()?;
-
-        Ok(true)
-    }
-
-    pub fn respond(
-        &self,
-        extension_id: &str,
-        request_id: String,
-        result: Option<Value>,
-        error: Option<JsonRpcErrorObject>,
-    ) -> Result<(), String> {
-        let response = JsonRpcResponse {
-            jsonrpc: "2.0".to_string(),
-            id: request_id,
-            result,
-            error,
-        };
-
-        let value = serde_json::to_value(response)
-            .map_err(|error| format!("Failed to build JSON-RPC response: {error}"))?;
-
-        let processes = self
-            .processes
-            .lock()
-            .map_err(|_| "Extension manager lock is poisoned".to_string())?;
-
-        let process = processes
-            .get(extension_id)
-            .ok_or_else(|| format!("Extension '{extension_id}' is not running"))?;
-
-        if !process.is_running() {
-            return Err(format!(
-                "Extension '{extension_id}' process has already exited"
-            ));
-        }
-
-        process.send_json(&value)?;
+        registry.insert(
+            id,
+            RegisteredExtension { path, manifest },
+        );
 
         Ok(())
     }
 
-    pub fn status(&self, extension_id: &str) -> Result<ExtensionStatus, String> {
-        let processes = self
-            .processes
-            .lock()
-            .map_err(|_| "Extension manager lock is poisoned".to_string())?;
+    /// Run an extension command, spawning the process lazily if needed.
+    ///
+    /// This is the only execution entry point. It returns the JSON-RPC result
+    /// written by the extension as a structured value:
+    /// `{ "success": true, "output": ... }` or `{ "success": false, "error": ... }`.
+    pub fn execute(
+        &self,
+        app_handle: AppHandle,
+        path: PathBuf,
+        manifest: ExtensionManifest,
+        command: String,
+        input: Option<Value>,
+    ) -> Result<Value, String> {
+        let id = manifest.id.trim().to_string();
 
-        let running = processes
-            .get(extension_id)
-            .map(|process| process.is_running())
-            .unwrap_or(false);
+        self.register(path.clone(), manifest.clone())?;
 
-        Ok(ExtensionStatus {
-            extension_id: extension_id.to_string(),
-            running,
-        })
+        let (request_id, receiver) = self.rpc.create();
+
+        // Start (lazily) if absent or already exited, then send the command.
+        let request = json!({
+            "jsonrpc": "2.0",
+            "id": request_id,
+            "method": "extension.execute",
+            "params": {
+                "command": command,
+                "input": input.unwrap_or(Value::Null),
+            }
+        });
+
+        {
+            let mut processes = self.lock_processes()?;
+
+            let running = match processes.get(&id) {
+                Some(process) => process.is_running(),
+                None => false,
+            };
+
+            if !running {
+                let registry = self.lock_registry()?;
+                let entry = registry.get(&id).cloned().ok_or_else(|| {
+                    format!("Extension '{id}' is not registered")
+                })?;
+
+                let process = spawn_extension(
+                    app_handle,
+                    entry.path,
+                    entry.manifest,
+                    self.rpc.clone(),
+                )?;
+
+                processes.insert(id.clone(), process);
+            }
+
+            let process = processes.get(&id).ok_or_else(|| {
+                format!("Extension '{id}' process is missing")
+            })?;
+
+            process.send_json(&request)?;
+        }
+
+        // Wait (without holding any manager lock) for the extension to answer.
+        match receiver.recv_timeout(EXECUTE_TIMEOUT) {
+            Ok(result) => Ok(result),
+            Err(_) => Err(format!(
+                "Extension '{id}' timed out while handling command '{command}'"
+            )),
+        }
     }
 
+    /// Write a JSON-RPC response back into an extension's stdin.
+    ///
+    /// Used to resolve a host-bound request (e.g. `mocu.llm.generate`) that
+    /// the extension sent to the frontend.
+    pub fn respond(
+        &self,
+        extension_id: &str,
+        request_id: Value,
+        result: Option<Value>,
+        error: Option<JsonRpcErrorObject>,
+    ) -> Result<(), String> {
+        let mut response = serde_json::Map::new();
+        response.insert("jsonrpc".into(), Value::String("2.0".into()));
+        response.insert("id".into(), request_id);
+
+        if let Some(result) = result {
+            response.insert("result".into(), result);
+        } else if let Some(error) = error {
+            response.insert(
+                "error".into(),
+                serde_json::to_value(error)
+                    .map_err(|e| format!("Failed to serialize error: {e}"))?,
+            );
+        }
+
+        let processes = self.lock_processes()?;
+
+        let process = processes.get(extension_id).ok_or_else(|| {
+            format!("Extension '{extension_id}' is not running")
+        })?;
+
+        process.send_json(&Value::Object(response))
+    }
+
+    /// Stop a running extension process (used on uninstall / shutdown).
+    pub fn stop(&self, id: &str) -> Result<bool, String> {
+        let mut processes = self.lock_processes()?;
+
+        match processes.remove(id) {
+            Some(process) => {
+                process.stop()?;
+                Ok(true)
+            }
+            None => Ok(false),
+        }
+    }
+
+    /// Stop every running extension. Called once during application shutdown.
     pub fn stop_all(&self) {
         let Ok(mut processes) = self.processes.lock() else {
             return;
@@ -251,5 +283,21 @@ impl ExtensionManager {
         for (_, process) in processes.drain() {
             let _ = process.stop();
         }
+    }
+
+    fn lock_registry<'a>(
+        &'a self,
+    ) -> Result<MutexGuard<'a, HashMap<String, RegisteredExtension>>, String> {
+        self.registry
+            .lock()
+            .map_err(|_| "Extension registry lock is poisoned".to_string())
+    }
+
+    fn lock_processes<'a>(
+        &'a self,
+    ) -> Result<MutexGuard<'a, HashMap<String, RunningExtension>>, String> {
+        self.processes
+            .lock()
+            .map_err(|_| "Extension process lock is poisoned".to_string())
     }
 }

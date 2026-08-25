@@ -1,187 +1,22 @@
 use rdev::{listen, EventType};
-use serde_json::json;
-use std::{path::PathBuf, thread};
+use std::thread;
 use tauri::{
     menu::{Menu, MenuItem},
     tray::TrayIconBuilder,
-    AppHandle, Emitter, Manager, State, WebviewUrl, WebviewWindowBuilder,
+    Emitter, Manager, WebviewUrl, WebviewWindowBuilder,
 };
 
 // Module for the previous Mocu commands
 mod commands;
 
-// Pi process management module
-mod pi_process;
-
 // Extension host module (manages Node.js / Python extension processes)
 mod extension_host;
-
-use pi_process::{PiProcess, PiState};
 
 use extension_host::manager::ExtensionManager;
 
 #[tauri::command]
 fn greet(name: &str) -> String {
     format!("Hello, {}! You've been greeted from Rust!", name)
-}
-
-/// Find the index.mjs file in development mode.
-///
-/// Depending on whether Tauri is run from the project root or from the
-/// src-tauri directory, the current directory may differ; therefore several
-/// paths are checked.
-fn find_pi_script() -> Result<PathBuf, String> {
-    let current_directory = std::env::current_dir()
-        .map_err(|error| format!("Failed to read current directory: {error}"))?;
-
-    let candidates = [
-        // If the current directory is the project root:
-        // E:\mocube\mocu\pi-sidecar\index.mjs
-        current_directory.join("pi-sidecar").join("index.mjs"),
-
-        // If the current directory is src-tauri:
-        // E:\mocube\mocu\src-tauri\..\pi-sidecar\index.mjs
-        current_directory
-            .join("..")
-            .join("pi-sidecar")
-            .join("index.mjs"),
-
-        // Another possible case
-        current_directory
-            .join("..")
-            .join("..")
-            .join("pi-sidecar")
-            .join("index.mjs"),
-    ];
-
-    for candidate in candidates {
-        if candidate.is_file() {
-            return candidate.canonicalize().map_err(|error| {
-                format!(
-                    "Failed to resolve Pi script path '{}': {error}",
-                    candidate.display()
-                )
-            });
-        }
-    }
-
-    Err(format!(
-        concat!(
-            "Pi script was not found.\n",
-            "Current directory: {}\n",
-            "Expected file: pi-sidecar/index.mjs"
-        ),
-        current_directory.display()
-    ))
-}
-
-/// Start the Pi process.
-///
-/// This command is usually called once from the frontend.
-/// If Pi is already running, it does nothing.
-#[tauri::command]
-fn start_pi(
-    app: AppHandle,
-    state: State<'_, PiState>,
-) -> Result<(), String> {
-    let mut process = state
-        .0
-        .lock()
-        .map_err(|error| format!("Failed to lock Pi state: {error}"))?;
-
-    // Prevents multiple concurrent processes.
-    if process.is_some() {
-        return Ok(());
-    }
-
-    let script_path = find_pi_script()?;
-
-    println!(
-        "[mocu] Starting Pi sidecar from: {}",
-        script_path.display()
-    );
-
-    let pi_process = PiProcess::start(app, script_path)?;
-
-    *process = Some(pi_process);
-
-    Ok(())
-}
-
-/// Send a user message to Pi.
-#[tauri::command]
-fn prompt_pi(
-    state: State<'_, PiState>,
-    request_id: String,
-    message: String,
-) -> Result<(), String> {
-    let trimmed_message = message.trim();
-
-    if trimmed_message.is_empty() {
-        return Err("Message cannot be empty.".to_string());
-    }
-
-    if request_id.trim().is_empty() {
-        return Err("Request ID cannot be empty.".to_string());
-    }
-
-    let mut process = state
-        .0
-        .lock()
-        .map_err(|error| format!("Failed to lock Pi state: {error}"))?;
-
-    let process = process
-        .as_mut()
-        .ok_or_else(|| "Pi is not running. Call start_pi first.".to_string())?;
-
-    process.send(json!({
-        "type": "prompt",
-        "requestId": request_id,
-        "message": trimmed_message
-    }))
-}
-
-/// Check the connection between Tauri and Pi.
-#[tauri::command]
-fn ping_pi(
-    state: State<'_, PiState>,
-    request_id: String,
-) -> Result<(), String> {
-    if request_id.trim().is_empty() {
-        return Err("Request ID cannot be empty.".to_string());
-    }
-
-    let mut process = state
-        .0
-        .lock()
-        .map_err(|error| format!("Failed to lock Pi state: {error}"))?;
-
-    let process = process
-        .as_mut()
-        .ok_or_else(|| "Pi is not running. Call start_pi first.".to_string())?;
-
-    process.send(json!({
-        "type": "ping",
-        "requestId": request_id
-    }))
-}
-
-/// Stop the Pi process.
-///
-/// When PiProcess becomes None, the Drop method in pi_process.rs runs
-/// and the Node process is closed as well.
-#[tauri::command]
-fn stop_pi(state: State<'_, PiState>) -> Result<(), String> {
-    let mut process = state
-        .0
-        .lock()
-        .map_err(|error| format!("Failed to lock Pi state: {error}"))?;
-
-    *process = None;
-
-    println!("[mocu] Pi sidecar stopped.");
-
-    Ok(())
 }
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
@@ -194,9 +29,6 @@ pub fn run() {
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_store::Builder::new().build())
 
-        // Register the global Pi process state
-        .manage(PiState::default())
-
         // Register the extension manager state
         .manage(ExtensionManager::default())
 
@@ -204,16 +36,9 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             greet,
             commands::desktop::capture_desktop,
-            start_pi,
-            prompt_pi,
-            ping_pi,
-            stop_pi,
-            extension_host::extension_start,
-            extension_host::extension_send_request,
-            extension_host::extension_send_notification,
-            extension_host::extension_stop,
-            extension_host::extension_status,
-            extension_host::extension_respond
+            extension_host::extension_execute,
+            extension_host::extension_respond,
+            extension_host::extension_stop
         ])
 
         .setup(|app| {
@@ -337,6 +162,13 @@ pub fn run() {
             Ok(())
         })
 
-        .run(tauri::generate_context!())
-        .expect("error while running Tauri application");
+        .build(tauri::generate_context!())
+        .expect("error while building Tauri application")
+        .run(|app_handle, event| {
+            // On shutdown, terminate every extension process cleanly.
+            if let tauri::RunEvent::Exit = event {
+                use tauri::Manager;
+                app_handle.state::<ExtensionManager>().stop_all();
+            }
+        });
 }

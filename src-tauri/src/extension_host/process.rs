@@ -10,19 +10,18 @@ use serde_json::Value;
 use tauri::{AppHandle, Emitter};
 
 use super::{
+    manager::PendingRpc,
     manifest::{ExtensionManifest, ExtensionRuntime},
-    protocol::{ExtensionLogEvent, ExtensionOutputEvent},
 };
 
+/// A live extension child process plus its (lazily started) stdin/stdout.
 pub struct RunningExtension {
-    pub id: String,
-    pub root_path: PathBuf,
-    pub manifest: ExtensionManifest,
-    pub child: Arc<Mutex<Child>>,
-    pub stdin: Arc<Mutex<ChildStdin>>,
+    child: Arc<Mutex<Child>>,
+    stdin: Arc<Mutex<ChildStdin>>,
 }
 
 impl RunningExtension {
+    /// Write one JSON-RPC message followed by a newline to the child's stdin.
     pub fn send_json(&self, message: &Value) -> Result<(), String> {
         let serialized = serde_json::to_string(message)
             .map_err(|error| format!("Failed to serialize JSON-RPC message: {error}"))?;
@@ -47,6 +46,7 @@ impl RunningExtension {
         Ok(())
     }
 
+    /// Terminate the process if it is still alive.
     pub fn stop(&self) -> Result<(), String> {
         let mut child = self
             .child
@@ -54,7 +54,7 @@ impl RunningExtension {
             .map_err(|_| "Extension process lock is poisoned".to_string())?;
 
         match child.try_wait() {
-            Ok(Some(_)) => Ok(()),
+            Ok(Some(_)) => Ok(()), // already exited
             Ok(None) => child
                 .kill()
                 .map_err(|error| format!("Failed to stop extension process: {error}")),
@@ -143,10 +143,17 @@ fn build_command(
     Ok(command)
 }
 
+/// Start the extension process and wire its stdout back into the manager's
+/// synchronous request/response bus (`PendingRpc`).
+///
+/// Host-bound requests from the extension (e.g. `mocu.llm.generate`) are
+/// forwarded to the frontend as `extension://message` events so the frontend
+/// can resolve them (run the LLM) and reply through `extension_respond`.
 pub fn spawn_extension(
     app_handle: AppHandle,
     root_path: PathBuf,
     manifest: ExtensionManifest,
+    rpc: Arc<PendingRpc>,
 ) -> Result<RunningExtension, String> {
     let mut command = build_command(&root_path, &manifest)?;
 
@@ -169,105 +176,78 @@ pub fn spawn_extension(
         .take()
         .ok_or_else(|| "Could not access extension stderr".to_string())?;
 
-    let extension_id_for_stdout = manifest.id.clone();
+    // stdout: responses resolve pending manager requests; requests from the
+    // extension (`method` present) are forwarded to the frontend as events.
+    let stdout_rpc = rpc.clone();
+    let id_for_stdout = manifest.id.clone();
     let stdout_app_handle = app_handle.clone();
-
     std::thread::spawn(move || {
         let reader = BufReader::new(stdout);
 
-        for line_result in reader.lines() {
-            match line_result {
-                Ok(line) => {
-                    if line.trim().is_empty() {
-                        continue;
-                    }
+        for line in reader.lines() {
+            let Ok(line) = line else { break };
 
-                    match serde_json::from_str::<Value>(&line) {
-                        Ok(message) => {
-                            let event = ExtensionOutputEvent {
-                                extension_id: extension_id_for_stdout.clone(),
-                                message,
-                            };
-
-                            let _ = stdout_app_handle.emit("extension://message", event);
-                        }
-
-                        Err(error) => {
-                            let event = ExtensionLogEvent {
-                                extension_id: extension_id_for_stdout.clone(),
-                                level: "error".to_string(),
-                                message: format!(
-                                    "Invalid JSON received from extension stdout: {error}. Output: {line}"
-                                ),
-                            };
-
-                            let _ = stdout_app_handle.emit("extension://log", event);
-                        }
-                    }
-                }
-
-                Err(error) => {
-                    let event = ExtensionLogEvent {
-                        extension_id: extension_id_for_stdout.clone(),
-                        level: "error".to_string(),
-                        message: format!("Failed to read extension stdout: {error}"),
-                    };
-
-                    let _ = stdout_app_handle.emit("extension://log", event);
-                    break;
-                }
+            let trimmed = line.trim();
+            if trimmed.is_empty() {
+                continue;
             }
-        }
 
-        let _ = stdout_app_handle.emit(
-            "extension://exit",
-            serde_json::json!({
-                "extensionId": extension_id_for_stdout
-            }),
-        );
+            let Ok(message) = serde_json::from_str::<Value>(trimmed) else {
+                // Non-JSON line on stdout: extensions may log here in raw form.
+                eprintln!("[extension stdout] {trimmed}");
+                continue;
+            };
+
+            // A request/notification initiated by the extension toward the host.
+            if message.get("method").is_some() {
+                let _ = stdout_app_handle.emit(
+                    "extension://message",
+                    serde_json::json!({
+                        "extensionId": id_for_stdout,
+                        "message": message,
+                    }),
+                );
+                continue;
+            }
+
+            // Otherwise it is a response to one of the manager's own requests.
+            resolve_response(&stdout_rpc, &message);
+        }
     });
 
-    let extension_id_for_stderr = manifest.id.clone();
-    let stderr_app_handle = app_handle;
-
+    // stderr: surface diagnostics on this host's console.
+    let id_for_stderr = manifest.id;
     std::thread::spawn(move || {
         let reader = BufReader::new(stderr);
 
-        for line_result in reader.lines() {
-            match line_result {
-                Ok(line) => {
-                    if line.trim().is_empty() {
-                        continue;
-                    }
+        for line in reader.lines() {
+            let Ok(line) = line else { break };
 
-                    let event = ExtensionLogEvent {
-                        extension_id: extension_id_for_stderr.clone(),
-                        level: "error".to_string(),
-                        message: line,
-                    };
-
-                    let _ = stderr_app_handle.emit("extension://log", event);
-                }
-
-                Err(error) => {
-                    let event = ExtensionLogEvent {
-                        extension_id: extension_id_for_stderr.clone(),
-                        level: "error".to_string(),
-                        message: format!("Failed to read extension stderr: {error}"),
-                    };
-
-                    let _ = stderr_app_handle.emit("extension://log", event);
-                    break;
-                }
+            if !line.trim().is_empty() {
+                eprintln!("[extension:{}] {}", id_for_stderr, line.trim_end());
             }
         }
     });
 
     Ok(RunningExtension {
-        id: manifest.id.clone(),
-        root_path,
-        manifest,
         child: Arc::new(Mutex::new(child)),
         stdin: Arc::new(Mutex::new(stdin)),
     })
+}
+
+/// If `message` is a JSON-RPC response (`id` + `result`/`error`), hand it to
+/// the matching pending request in the manager.
+fn resolve_response(rpc: &PendingRpc, message: &Value) {
+    let has_result = message.get("result").is_some();
+    let has_error = message.get("error").is_some();
+
+    if !has_result && !has_error {
+        return;
+    }
+
+    let Some(id) = message.get("id").and_then(Value::as_str) else {
+        return;
+    };
+
+    rpc.resolve(id, message.clone());
 }

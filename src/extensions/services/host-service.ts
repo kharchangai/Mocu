@@ -1,41 +1,29 @@
-import {
-  message,
-} from "@tauri-apps/plugin-dialog";
+import { listen } from "@tauri-apps/api/event";
 
-import {
-  readSettings,
-  saveSettings,
-} from "../../store";
+import { generateSimpleAnswer } from "../../services/ai";
 
-import {
-  chatWithMocu,
-} from "../../services/ai";
+import { respondExtension } from "./extension-client";
 
-import type {
-  JsonRpcMessage,
-} from "../types/extension";
-
-import {
-  respondExtension,
-  setExtensionMessageHandler,
-} from "./extension-client";
-
-type HostMessageRecord = Record<
-  string,
-  unknown
->;
+const MAX_LLM_PROMPT_LENGTH = 100_000;
+const MAX_LLM_SYSTEM_PROMPT_LENGTH = 20_000;
 
 /**
- * Routes host-bound JSON-RPC messages that extensions send toward
- * Mocu. Rust forwards them as events; the frontend owns the actual
- * Mocu capabilities (LLM, settings, dialogs, events), so it resolves
- * the request and replies through the `extension_respond` Rust command.
+ * Handle host-bound JSON-RPC requests that extensions send toward Mocu.
+ *
+ * Rust forwards these as `extension://message` events. The only host method
+ * currently supported is `mocu.llm.generate`, which lets an extension call
+ * Mocu's configured model from inside a command. The result (or error) is
+ * written back into the extension via Rust.
  */
-function handleHostMessage(
+async function handleHostMessage(
   extensionId: string,
-  message: JsonRpcMessage,
-): void {
-  const record = message as unknown as HostMessageRecord;
+  message: unknown,
+): Promise<void> {
+  if (!message || typeof message !== "object") {
+    return;
+  }
+
+  const record = message as Record<string, unknown>;
 
   if (typeof record.method !== "string") {
     return;
@@ -48,170 +36,120 @@ function handleHostMessage(
       : {};
 
   const hasId = "id" in record;
-  const requestId = hasId
-    ? String(record.id)
-    : null;
 
-  void dispatchHostMethod(method, params)
-    .then((result) => {
-      if (requestId) {
-        void respondExtension(
-          extensionId,
-          requestId,
-          result,
-          null,
-        );
-      }
-    })
-    .catch((error) => {
-      const errorMessage =
-        error instanceof Error
-          ? error.message
-          : String(error);
+  /*
+   * Preserve the original id type (number or string). The SDKs key their
+   * pending host requests by the exact id they sent, so stringifying a
+   * numeric id would hang the extension's call.
+   */
+  const requestId =
+    hasId &&
+    (typeof record.id === "string" || typeof record.id === "number")
+      ? (record.id as string | number)
+      : null;
 
-      if (requestId) {
-        void respondExtension(
-          extensionId,
-          requestId,
-          null,
-          {
-            code: -32603,
-            message: errorMessage,
-            data: null,
-          },
-        );
-      } else {
-        console.error(
-          `[Mocu Extension] ${method} failed:`,
-          error,
-        );
-      }
-    });
-}
-
-async function dispatchHostMethod(
-  method: string,
-  params: Record<string, unknown>,
-): Promise<unknown> {
-  switch (method) {
-    case "mocu.log": {
-      const level =
-        typeof params.level === "string"
-          ? params.level
-          : "info";
-      const logMessage =
-        typeof params.message === "string"
-          ? params.message
-          : "";
-
-      if (level === "error") {
-        console.error(
-          `[Mocu Extension] ${logMessage}`,
-        );
-      } else if (level === "warn") {
-        console.warn(
-          `[Mocu Extension] ${logMessage}`,
-        );
-      } else {
-        console.log(
-          `[Mocu Extension] ${logMessage}`,
-        );
-      }
-
-      return null;
-    }
-
-    case "mocu.showMessage": {
-      const messageText =
-        typeof params.message === "string"
-          ? params.message
-          : "Extension message";
-      const type =
-        typeof params.type === "string"
-          ? params.type
-          : "info";
-
-      const kind: "info" | "warning" | "error" =
-        type === "warning"
-          ? "warning"
-          : type === "error"
-            ? "error"
-            : "info";
-
-      await message(messageText, {
-        kind,
+  if (method !== "mocu.llm.generate") {
+    if (requestId !== null) {
+      await respondExtension(extensionId, requestId, null, {
+        code: -32601,
+        message: `Unknown Mocu host method: ${method}`,
+        data: null,
       });
-
-      return null;
     }
+    return;
+  }
 
-    case "mocu.emitEvent": {
-      const event =
-        typeof params.event === "string"
-          ? params.event
-          : "";
+  try {
+    const prompt =
+      typeof params.prompt === "string" ? params.prompt.trim() : "";
 
-      if (event) {
-        window.dispatchEvent(
-          new CustomEvent(event, {
-            detail: params.payload,
-          }),
-        );
-      }
-
-      return null;
-    }
-
-    case "mocu.getSettings": {
-      return await readSettings();
-    }
-
-    case "mocu.updateSettings": {
-      const current = await readSettings();
-      const incoming =
-        params.settings &&
-        typeof params.settings === "object"
-          ? (params.settings as Record<string, unknown>)
-          : {};
-
-      await saveSettings({
-        ...current,
-        ...incoming,
-      });
-
-      return null;
-    }
-
-    /*
-     * Expose the LLM to extensions through Rust:
-     * reservation = call `mocu.llm.generate` with a text prompt.
-     */
-    case "mocu.llm.generate": {
-      const prompt =
-        typeof params.prompt === "string"
-          ? params.prompt.trim()
-          : "";
-
-      if (!prompt) {
-        throw new Error(
-          "mocu.llm.generate requires a 'prompt' parameter.",
-        );
-      }
-
-      return await chatWithMocu(prompt);
-    }
-
-    default:
+    if (!prompt) {
       throw new Error(
-        `Unknown Mocu host method: ${method}`,
+        "mocu.llm.generate requires a non-empty 'prompt' parameter.",
       );
+    }
+
+    if (prompt.length > MAX_LLM_PROMPT_LENGTH) {
+      throw new Error(
+        `mocu.llm.generate prompt is too long (maximum ${MAX_LLM_PROMPT_LENGTH} characters).`,
+      );
+    }
+
+    const systemPrompt =
+      typeof params.systemPrompt === "string" && params.systemPrompt.trim()
+        ? params.systemPrompt.trim().slice(0, MAX_LLM_SYSTEM_PROMPT_LENGTH)
+        : undefined;
+
+    const temperature =
+      typeof params.temperature === "number" &&
+      Number.isFinite(params.temperature)
+        ? Math.max(0, Math.min(2, params.temperature))
+        : undefined;
+
+    const maxTokens =
+      typeof params.maxTokens === "number" &&
+      Number.isInteger(params.maxTokens) &&
+      params.maxTokens > 0
+        ? params.maxTokens
+        : undefined;
+
+    const text = await generateSimpleAnswer(prompt, undefined, {
+      systemPrompt,
+      temperature,
+      maxTokens,
+    });
+
+    if (requestId !== null) {
+      await respondExtension(extensionId, requestId, { text }, null);
+    }
+  } catch (error) {
+    const errorMessage =
+      error instanceof Error ? error.message : String(error);
+
+    console.error(
+      `[Mocu Extension] ${method} failed for '${extensionId}':`,
+      error,
+    );
+
+    if (requestId !== null) {
+      await respondExtension(extensionId, requestId, null, {
+        code: -32603,
+        message: errorMessage,
+        data: null,
+      });
+    }
   }
 }
 
 /**
- * Register the app-side host handler so extension-initiated requests
- * (like using the LLM model) are handled and answered.
+ * Start the app-side host bridge. This must run once for the lifetime of the
+ * app so extensions can call Mocu host methods (currently the LLM). Returns
+ * a cleanup function.
  */
-export function registerExtensionHost(): void {
-  setExtensionMessageHandler(handleHostMessage);
+export function startExtensionHost(): () => void {
+  let disposed = false;
+  let unlisten: (() => void) | undefined;
+
+  void listen<{
+    extensionId: string;
+    message: unknown;
+  }>("extension://message", (event) => {
+    void handleHostMessage(
+      event.payload.extensionId,
+      event.payload.message,
+    );
+  }).then((unwrap) => {
+    if (disposed) {
+      unwrap();
+    } else {
+      unlisten = unwrap;
+    }
+  }).catch((error) => {
+    console.error("[Mocu Extension] Failed to register host bridge:", error);
+  });
+
+  return () => {
+    disposed = true;
+    unlisten?.();
+  };
 }

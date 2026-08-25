@@ -217,6 +217,9 @@
   font: inherit;
   font-size: 14px;
   line-height: 1.55;
+  /* Match the direction of the first strong character (Arabic/Hebrew or Latin). */
+  unicode-bidi: plaintext;
+  text-align: start;
 }
 
 .chat-composer textarea::placeholder {

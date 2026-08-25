@@ -16,6 +16,8 @@ import {
   writeFile,
 } from "@tauri-apps/plugin-fs";
 
+import { stopExtension } from "./extension-client";
+
 type ArchiveFile = {
   relativePath: string;
   data: Uint8Array;
@@ -543,6 +545,15 @@ export async function uninstallExtension(
   extensionId: string,
 ): Promise<void> {
   const safeId = sanitizeExtensionName(extensionId);
+
+  // Stop any running process for this extension first.
+  try {
+    await stopExtension(safeId);
+  } catch (error) {
+    console.warn(
+      `Failed to stop extension '${safeId}' during uninstall:`, error,
+    );
+  }
 
   const extensionsRoot =
     await getExtensionsRoot();

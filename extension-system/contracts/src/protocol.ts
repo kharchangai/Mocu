@@ -1,27 +1,21 @@
-export type JsonRpcId =
-  | string
-  | number;
+import { LLM_GENERATE_METHOD } from "./llm.js";
 
-export interface JsonRpcRequest<
-  TParams = unknown,
-> {
+export type JsonRpcId = string | number;
+
+export interface JsonRpcRequest<TParams = unknown> {
   jsonrpc: "2.0";
   id: JsonRpcId;
   method: string;
   params?: TParams;
 }
 
-export interface JsonRpcNotification<
-  TParams = unknown,
-> {
+export interface JsonRpcNotification<TParams = unknown> {
   jsonrpc: "2.0";
   method: string;
   params?: TParams;
 }
 
-export interface JsonRpcSuccess<
-  TResult = unknown,
-> {
+export interface JsonRpcSuccess<TResult = unknown> {
   jsonrpc: "2.0";
   id: JsonRpcId;
   result: TResult;
@@ -45,89 +39,36 @@ export type JsonRpcMessage =
   | JsonRpcSuccess
   | JsonRpcFailure;
 
-export interface ExtensionInitializeParams {
-  extensionId: string;
-  extensionPath: string;
-  appDataPath: string;
-  appVersion: string;
-  platform: string;
-  architecture: string;
-  configuration: Record<string, unknown>;
-}
-
-export interface ExtensionInitializeResult {
-  initialized: boolean;
-}
-
-export interface ExtensionActivateParams {
-  reason: "startup" | "manual" | "reload";
-}
-
-export interface ExtensionActivateResult {
-  activated: boolean;
-}
-
-export interface ExtensionDeactivateParams {
-  reason:
-    | "shutdown"
-    | "disable"
-    | "reload"
-    | "uninstall";
-}
-
-export interface ExtensionDeactivateResult {
-  deactivated: boolean;
-}
-
+/**
+ * Parameters sent every time Mocu calls an extension.
+ */
 export interface ExtensionExecuteParams {
   command: string;
   input?: unknown;
-  context?: Record<string, unknown>;
 }
 
+/**
+ * The response an extension writes after handling an invocation.
+ */
 export interface ExtensionExecuteResult {
   success: boolean;
   output?: unknown;
   error?: string;
 }
 
-export interface MocuLogParams {
-  level:
-    | "debug"
-    | "info"
-    | "warn"
-    | "error";
-
-  message: string;
-  data?: unknown;
-}
-
-export interface MocuShowMessageParams {
-  type:
-    | "info"
-    | "warning"
-    | "error";
-
-  message: string;
-}
-
-export interface MocuEmitEventParams {
-  event: string;
-  payload?: unknown;
-}
-
+/**
+ * The single JSON-RPC method the extension system understands: run a command
+ * with an input payload and return a result. There is no manual activate /
+ * deactivate or initialize stage — extensions are simply called on demand.
+ */
 export const EXTENSION_METHODS = {
-  initialize: "extension.initialize",
-  activate: "extension.activate",
-  deactivate: "extension.deactivate",
   execute: "extension.execute",
-  ping: "extension.ping",
 } as const;
 
+/**
+ * Host-side methods extensions may call back into. The host (Rust + frontend)
+ * resolves these and returns a result.
+ */
 export const HOST_METHODS = {
-  log: "mocu.log",
-  showMessage: "mocu.showMessage",
-  emitEvent: "mocu.emitEvent",
-  getSettings: "mocu.getSettings",
-  updateSettings: "mocu.updateSettings",
+  llmGenerate: LLM_GENERATE_METHOD,
 } as const;

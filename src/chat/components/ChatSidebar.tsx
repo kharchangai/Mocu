@@ -10,7 +10,8 @@ export type ChatSidebarItemId =
   | 'projects'
   | 'skills'
   | 'extensions'
-  | 'packages'
+  | 'mcp'
+  | 'agents'
   | 'settings';
 
 type ChatSidebarProps = {
@@ -452,9 +453,9 @@ export function ChatSidebar({
         />
 
         <NavButton
-          label="Packages"
-          active={activeItem === 'packages'}
-          onClick={() => onSelect('packages')}
+          label="MCP"
+          active={activeItem === 'mcp'}
+          onClick={() => onSelect('mcp')}
           icon={
             <svg
               viewBox="0 0 24 24"
@@ -467,10 +468,36 @@ export function ChatSidebar({
               strokeLinejoin="round"
               aria-hidden="true"
             >
-              <path d="m12 3 8 4.5v9L12 21l-8-4.5v-9Z" />
-              <path d="m4.3 7.7 7.7 4.4 7.7-4.4" />
-              <path d="M12 12.1V21" />
-              <path d="m8 5.3 8 4.5" />
+              <path d="M4 13V6a2 2 0 0 1 2-2h4" />
+              <path d="M4 13h4a1 1 0 0 1 1 1v2a1 1 0 0 1-1 1H4z" />
+              <path d="M20 13V8a2 2 0 0 0-2-2h-4" />
+              <path d="M20 13h-4a1 1 0 0 0-1 1v2a1 1 0 0 0 1 1h4z" />
+              <path d="M5 17v3" />
+              <path d="M19 17v3" />
+              <path d="M5 20h14" />
+            </svg>
+          }
+        />
+
+        <NavButton
+          label="Agents"
+          active={activeItem === 'agents'}
+          onClick={() => onSelect('agents')}
+          icon={
+            <svg
+              viewBox="0 0 24 24"
+              width="16"
+              height="16"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="1.8"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              aria-hidden="true"
+            >
+              <circle cx="12" cy="8" r="4" />
+              <path d="M4 21c0-4.4 3.6-8 8-8s8 3.6 8 8" />
+              <path d="m15.5 6.5 1 1 2-2" />
             </svg>
           }
         />

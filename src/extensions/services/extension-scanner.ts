@@ -64,12 +64,6 @@ function parseManifest(
     );
   }
 
-  if ("activationEvents" in manifest) {
-    console.warn(
-      `Ignoring unsupported activationEvents in ${manifestPath}`,
-    );
-  }
-
   return {
     id: manifest.id as string,
     name: manifest.name as string,
