@@ -31,4 +31,5 @@ image = { version = "0.25.1", default-features = false, features = ["jpeg"] }
 tauri-plugin-shell = "2"
 tauri-plugin-dialog = "2"
 uuid = { version = "1", features = ["v4"] }
+tauri-plugin-sql = { version = "2.4.0", features = ["sqlite"] }
 

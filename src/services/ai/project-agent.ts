@@ -56,14 +56,25 @@ import {
   perplexitySearchTool,
 } from "./tools/perplexity_search_tool";
 
-/*
- * File and folder management tool.
- *
- * Change only this import path if your tool is stored elsewhere.
- */
 import {
-  fileManagerTool,
-} from "./tools/filesystem/file-manager-tool";
+  saveProjectMemory,
+} from "../../chat/project/memory/saveProjectMemory";
+
+import {
+  databaseManager,
+} from "../../chat/project/memory/storage/databaseManager";
+
+import type {
+  Turn,
+} from "../../chat/project/memory/createTurn";
+
+import type {
+  MemoryWindow,
+} from "../../chat/project/memory/window/types";
+
+import type {
+  MemoryEpisode,
+} from "../../chat/project/memory/episode/types";
 
 const MAX_TOOL_STEPS = 3;
 
@@ -126,6 +137,118 @@ const getCurrentUserText = (
   return getTextContent(
     lastMessage.content,
   ).trim();
+};
+
+/*
+ * Processes one user message + agent response through the complete
+ * memory hierarchy (Turn -> Window -> Episode) and saves the resulting
+ * record in the project storage folder:
+ *
+ * <projectPath>/.mocu/storage/memory.json
+ *
+ * This operation never blocks the final agent response.
+ *
+ * For debugging, the persisted Turn, Window, and Episode records are
+ * printed to the console after every processed turn.
+ */
+const saveProjectMemoryInBackground = (
+  userMessage: string,
+  agentResponse: string,
+  projectPath: string,
+): void => {
+  void saveProjectMemory({
+    userMessage,
+
+    agentResponse,
+
+    projectPath,
+  })
+    .then(
+      async (
+        result,
+      ) => {
+        /*
+         * Debug output: read the persisted Turn, Window, and Episode
+         * records from the SQLite database and print them after every
+         * processed turn.
+         */
+        const turnRecord =
+          await databaseManager.get<Turn>(
+            result.processResult.turnId,
+          );
+
+        const windowRecord =
+          await databaseManager.get<MemoryWindow>(
+            result.processResult.windowId,
+          );
+
+        const episodeRecord =
+          result.processResult.episodeId
+            ? await databaseManager.get<MemoryEpisode>(
+                result.processResult.episodeId,
+              )
+            : null;
+
+        console.log(
+          "[Project Memory] Turn:",
+          turnRecord?.data,
+        );
+
+        console.log(
+          "[Project Memory] Window:",
+          windowRecord?.data,
+        );
+
+        console.log(
+          "[Project Memory] Episode:",
+          episodeRecord?.data,
+        );
+
+        if (
+          result.processResult.closedEpisodeId
+        ) {
+          const closedEpisodeRecord =
+            await databaseManager.get<MemoryEpisode>(
+              result.processResult.closedEpisodeId,
+            );
+
+          console.log(
+            "[Project Memory] Closed Episode:",
+            closedEpisodeRecord?.data,
+          );
+        }
+
+        console.log(
+          "[Project Memory] Turn processed successfully:",
+          {
+            storageType:
+              result.storageType,
+
+            databasePath:
+              result.databasePath,
+
+            turnId:
+              result.processResult.turnId,
+
+            windowId:
+              result.processResult.windowId,
+
+            episodeId:
+              result.processResult.episodeId,
+          },
+        );
+      },
+    )
+    .catch(
+      (
+        error: unknown,
+      ) => {
+        console.error(
+          "[Project Memory] Failed to save turn:",
+          error,
+        );
+      },
+    );
 };
 
 /*
@@ -220,20 +343,14 @@ const buildProjectAgentSystemPrompt = (
     "",
     "AVAILABLE TOOLS",
     "",
-    `1. ${fileManagerTool.name}`,
-    "Use this tool for file and folder operations such as creating, reading, listing, searching, modifying, moving, copying, renaming, or deleting files and folders.",
-    "Pass the requested filesystem location in location and describe the complete operation in task.",
-    "",
-    "2. terminal_intent_executor",
+    "1. terminal_intent_executor",
     "Use this tool for project filesystem operations, source-code inspection, dependency management, builds, tests, Git commands, and other terminal tasks.",
     "",
-    "3. perplexity_search",
+    "2. perplexity_search",
     "Use this tool when current or external web information is needed.",
     "",
     "TOOL RULES",
     "",
-    "Use the file manager when the user requests a file or folder operation.",
-    "Use the location requested by the user or available in the current request.",
     "Use the terminal tool when the task requires terminal commands, dependency management, builds, tests, Git, or another terminal operation.",
     "When calling the terminal tool for the active project, clearly state that the operation must be performed inside the active project folder.",
     "Do not claim that an operation succeeded unless its tool result confirms it.",
@@ -257,8 +374,7 @@ const buildProjectAgentSystemPrompt = (
 /*
  * Adds the active project path to a terminal intent.
  *
- * This behavior belongs only to the terminal tool and has not been added
- * to the file-manager tool.
+ * This behavior belongs only to the terminal tool.
  */
 const buildProjectTerminalIntent = (
   projectPath: string,
@@ -343,44 +459,6 @@ const createProjectToolExecutor = (
             getStringArg(
               toolArgs,
               "query",
-            ),
-        },
-        config,
-      );
-    },
-  });
-
-  /*
-   * File-manager registration.
-   *
-   * No project-path override or extra restriction is applied here.
-   * Both location and task are passed directly from the model call.
-   */
-  toolExecutor.registerTool({
-    name:
-      fileManagerTool.name,
-
-    description:
-      fileManagerTool.description,
-
-    execute: async (
-      args,
-    ) => {
-      const toolArgs =
-        args as ToolArgs;
-
-      return fileManagerTool.invoke(
-        {
-          location:
-            getStringArg(
-              toolArgs,
-              "location",
-            ),
-
-          task:
-            getStringArg(
-              toolArgs,
-              "task",
             ),
         },
         config,
@@ -729,17 +807,16 @@ export const callProjectAgent =
       ) as TerminalTool;
 
     /*
-     * Expose all three tools to the model.
+     * Expose the tools to the model.
      */
     const llmWithTools =
       llm.bindTools([
         terminalTool,
         perplexitySearchTool,
-        fileManagerTool,
       ]);
 
     /*
-     * Register all three tools for actual execution.
+     * Register the tools for actual execution.
      */
     const toolExecutor =
       createProjectToolExecutor(
@@ -979,6 +1056,12 @@ export const callProjectAgent =
 
     response.content =
       finalAssistantContent;
+
+    saveProjectMemoryInBackground(
+      userText,
+      finalAssistantContent,
+      normalizedProjectPath,
+    );
 
     return {
       messages: [

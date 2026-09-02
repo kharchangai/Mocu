@@ -29,6 +29,7 @@ pub fn run() {
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_store::Builder::new().build())
 
+        .plugin(tauri_plugin_sql::Builder::default().build())
         // Register the extension manager state
         .manage(ExtensionManager::default())
 

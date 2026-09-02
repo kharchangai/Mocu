@@ -27,6 +27,11 @@
 
     "fs:default",
 
+    "sql:default",
+    "sql:allow-load",
+    "sql:allow-execute",
+    "sql:allow-select",
+
     {
       "identifier": "fs:allow-exists",
       "allow": [
