@@ -141,13 +141,64 @@ export class DatabaseManager {
     | null = null;
 
   /**
+   * Serializes all public database operations.
+   *
+   * Every public method runs through this promise chain so that a
+   * connection can never be closed while another operation is still
+   * using it. Without this, useProjectDatabase could close the active
+   * connection between getDatabase() and the actual query, which makes
+   * the Tauri SQL plugin throw "attempted to acquire a connection on
+   * a closed pool".
+   */
+  private operationQueue: Promise<void> = Promise.resolve();
+
+  /**
+   * Runs an operation exclusively.
+   *
+   * The operation waits for all previously queued operations and
+   * blocks later operations until it finishes. Errors never break
+   * the queue.
+   */
+  private runExclusive<T>(
+    operation: () => Promise<T>,
+  ): Promise<T> {
+    const result =
+      this.operationQueue.then(
+        operation,
+        operation,
+      );
+
+    this.operationQueue =
+      result.then(
+        () => undefined,
+        () => undefined,
+      );
+
+    return result;
+  }
+
+  /**
    * Initializes the database once.
    *
    * Simultaneous callers share the same initialization promise.
    */
   public async initialize(): Promise<void> {
     if (this.database) {
-      return;
+      /*
+       * The Tauri SQL plugin keeps one pool per connection string and
+       * Database.close() without a database name closes every pool.
+       * External code can therefore close the active pool behind this
+       * manager's back. Verify the cached connection before reusing
+       * it, and re-initialize when its pool is gone.
+       */
+      const isConnectionAlive =
+        await this.isConnectionAlive(this.database);
+
+      if (isConnectionAlive) {
+        return;
+      }
+
+      this.database = null;
     }
 
     if (this.closingPromise) {
@@ -190,7 +241,15 @@ export class DatabaseManager {
    *
    * Returns the file path of the active database.
    */
-  public async useProjectDatabase(
+  public useProjectDatabase(
+    projectPath: string | null,
+  ): Promise<string> {
+    return this.runExclusive(() =>
+      this.useProjectDatabaseInternal(projectPath),
+    );
+  }
+
+  private async useProjectDatabaseInternal(
     projectPath: string | null,
   ): Promise<string> {
     const normalizedProjectPath =
@@ -212,7 +271,7 @@ export class DatabaseManager {
       return this.getDatabaseFilePath();
     }
 
-    await this.close();
+    await this.closeDatabase();
 
     if (normalizedProjectPath) {
       const storageDirectory = [
@@ -235,7 +294,13 @@ export class DatabaseManager {
    *
    * A later database operation can initialize it again.
    */
-  public async close(): Promise<void> {
+  public close(): Promise<void> {
+    return this.runExclusive(() =>
+      this.closeInternal(),
+    );
+  }
+
+  private async closeInternal(): Promise<void> {
     if (this.closingPromise) {
       return this.closingPromise;
     }
@@ -263,7 +328,15 @@ export class DatabaseManager {
    *
    * This method throws if the record key already exists.
    */
-  public async save<T>(
+  public save<T>(
+    input: SaveRecordInput<T>,
+  ): Promise<StoredRecord<T>> {
+    return this.runExclusive(() =>
+      this.saveInternal(input),
+    );
+  }
+
+  private async saveInternal<T>(
     input: SaveRecordInput<T>,
   ): Promise<StoredRecord<T>> {
     this.assertValidSaveInput(input);
@@ -348,7 +421,16 @@ export class DatabaseManager {
   /**
    * Updates only the payload of an existing record.
    */
-  public async update<T>(
+  public update<T>(
+    key: string,
+    data: T,
+  ): Promise<StoredRecord<T> | null> {
+    return this.runExclusive(() =>
+      this.updateInternal(key, data),
+    );
+  }
+
+  private async updateInternal<T>(
     key: string,
     data: T,
   ): Promise<StoredRecord<T> | null> {
@@ -383,7 +465,7 @@ export class DatabaseManager {
       return null;
     }
 
-    return this.get<T>(normalizedKey);
+    return this.getInternal<T>(normalizedKey);
   }
 
   /**
@@ -392,7 +474,16 @@ export class DatabaseManager {
    * Passing null explicitly clears a nullable field.
    * Passing undefined preserves the existing field.
    */
-  public async updateRecord<T>(
+  public updateRecord<T>(
+    key: string,
+    changes: UpdateRecordInput<T>,
+  ): Promise<StoredRecord<T> | null> {
+    return this.runExclusive(() =>
+      this.updateRecordInternal(key, changes),
+    );
+  }
+
+  private async updateRecordInternal<T>(
     key: string,
     changes: UpdateRecordInput<T>,
   ): Promise<StoredRecord<T> | null> {
@@ -494,7 +585,17 @@ export class DatabaseManager {
    * - updated_at is replaced;
    * - type, metadata, and payload are replaced.
    */
-  public async upsert<T>(
+  public upsert<T>(
+    input: SaveRecordInput<T> & {
+      key: string;
+    },
+  ): Promise<StoredRecord<T>> {
+    return this.runExclusive(() =>
+      this.upsertInternal(input),
+    );
+  }
+
+  private async upsertInternal<T>(
     input: SaveRecordInput<T> & {
       key: string;
     },
@@ -589,7 +690,15 @@ export class DatabaseManager {
   /**
    * Returns a single record by its primary key.
    */
-  public async get<T>(
+  public get<T>(
+    key: string,
+  ): Promise<StoredRecord<T> | null> {
+    return this.runExclusive(() =>
+      this.getInternal(key),
+    );
+  }
+
+  private async getInternal<T>(
     key: string,
   ): Promise<StoredRecord<T> | null> {
     const normalizedKey =
@@ -610,7 +719,15 @@ export class DatabaseManager {
   /**
    * Returns all records with the specified type.
    */
-  public async getByType<T>(
+  public getByType<T>(
+    type: RecordType,
+  ): Promise<Array<StoredRecord<T>>> {
+    return this.runExclusive(() =>
+      this.getByTypeInternal(type),
+    );
+  }
+
+  private async getByTypeInternal<T>(
     type: RecordType,
   ): Promise<Array<StoredRecord<T>>> {
     const normalizedType =
@@ -649,7 +766,16 @@ export class DatabaseManager {
    *
    * An optional record type can be supplied.
    */
-  public async getBySession<T>(
+  public getBySession<T>(
+    sessionKey: string,
+    type?: RecordType,
+  ): Promise<Array<StoredRecord<T>>> {
+    return this.runExclusive(() =>
+      this.getBySessionInternal(sessionKey, type),
+    );
+  }
+
+  private async getBySessionInternal<T>(
     sessionKey: string,
     type?: RecordType,
   ): Promise<Array<StoredRecord<T>>> {
@@ -722,7 +848,16 @@ export class DatabaseManager {
    *
    * An optional record type can be supplied.
    */
-  public async getByParent<T>(
+  public getByParent<T>(
+    parentKey: string,
+    type?: RecordType,
+  ): Promise<Array<StoredRecord<T>>> {
+    return this.runExclusive(() =>
+      this.getByParentInternal(parentKey, type),
+    );
+  }
+
+  private async getByParentInternal<T>(
     parentKey: string,
     type?: RecordType,
   ): Promise<Array<StoredRecord<T>>> {
@@ -796,7 +931,17 @@ export class DatabaseManager {
    * SQLite first selects the newest records. The result is then
    * reversed so callers receive oldest-to-newest order.
    */
-  public async getRecent<T>(
+  public getRecent<T>(
+    type: RecordType,
+    limit = 10,
+    sessionKey?: string,
+  ): Promise<Array<StoredRecord<T>>> {
+    return this.runExclusive(() =>
+      this.getRecentInternal(type, limit, sessionKey),
+    );
+  }
+
+  private async getRecentInternal<T>(
     type: RecordType,
     limit = 10,
     sessionKey?: string,
@@ -871,7 +1016,15 @@ export class DatabaseManager {
   /**
    * Deletes one record by key.
    */
-  public async delete(
+  public delete(
+    key: string,
+  ): Promise<boolean> {
+    return this.runExclusive(() =>
+      this.deleteInternal(key),
+    );
+  }
+
+  private async deleteInternal(
     key: string,
   ): Promise<boolean> {
     const normalizedKey =
@@ -897,7 +1050,15 @@ export class DatabaseManager {
   /**
    * Deletes all records of one type.
    */
-  public async deleteByType(
+  public deleteByType(
+    type: RecordType,
+  ): Promise<number> {
+    return this.runExclusive(() =>
+      this.deleteByTypeInternal(type),
+    );
+  }
+
+  private async deleteByTypeInternal(
     type: RecordType,
   ): Promise<number> {
     const normalizedType =
@@ -923,7 +1084,15 @@ export class DatabaseManager {
   /**
    * Deletes all records associated with a session.
    */
-  public async deleteBySession(
+  public deleteBySession(
+    sessionKey: string,
+  ): Promise<number> {
+    return this.runExclusive(() =>
+      this.deleteBySessionInternal(sessionKey),
+    );
+  }
+
+  private async deleteBySessionInternal(
     sessionKey: string,
   ): Promise<number> {
     const normalizedSessionKey =
@@ -949,7 +1118,15 @@ export class DatabaseManager {
   /**
    * Deletes all records associated with a parent.
    */
-  public async deleteByParent(
+  public deleteByParent(
+    parentKey: string,
+  ): Promise<number> {
+    return this.runExclusive(() =>
+      this.deleteByParentInternal(parentKey),
+    );
+  }
+
+  private async deleteByParentInternal(
     parentKey: string,
   ): Promise<number> {
     const normalizedParentKey =
@@ -975,7 +1152,16 @@ export class DatabaseManager {
   /**
    * Counts records using optional type and session filters.
    */
-  public async count(
+  public count(
+    type?: RecordType,
+    sessionKey?: string,
+  ): Promise<number> {
+    return this.runExclusive(() =>
+      this.countInternal(type, sessionKey),
+    );
+  }
+
+  private async countInternal(
     type?: RecordType,
     sessionKey?: string,
   ): Promise<number> {
@@ -1195,7 +1381,11 @@ export class DatabaseManager {
     }
 
     try {
-      await database.close();
+      /*
+       * Close only this manager's pool. close() without a database
+       * name would close every pool of the whole application.
+       */
+      await database.close(database.path);
     } catch (error) {
       const message =
         error instanceof Error
@@ -1281,6 +1471,26 @@ export class DatabaseManager {
     }
 
     return this.database;
+  }
+
+  /**
+   * Returns true when the pool of the given database instance can
+   * still acquire a connection.
+   *
+   * The Tauri SQL plugin does not remove a closed pool from its
+   * registry, so a cached instance can silently point at a closed
+   * pool. A cheap SELECT 1 detects that case.
+   */
+  private async isConnectionAlive(
+    database: Database,
+  ): Promise<boolean> {
+    try {
+      await database.select("SELECT 1");
+
+      return true;
+    } catch {
+      return false;
+    }
   }
 
   /* ------------------------------------------------------------------------ */

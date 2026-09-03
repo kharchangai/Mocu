@@ -1,5 +1,3 @@
-// memory-retrieval/memoryQuery.ts
-
 import { getAsyncLLM } from "../../../../services/ai/llm";
 import {
   extractJSONObject,
@@ -7,8 +5,19 @@ import {
 } from "../window/llmResponse";
 import {
   MEMORY_QUERY_SYSTEM_PROMPT,
+  PREVIOUS_TURN_AND_MEMORY_QUERY_SYSTEM_PROMPT,
   createMemoryQueryUserPrompt,
-} from "./memoryQuery.prompt.js";
+  createPreviousTurnAndMemoryQueryUserPrompt,
+} from "./memoryQuery.prompt";
+
+/* -------------------------------------------------------------------------- */
+/* Constants                                                                  */
+/* -------------------------------------------------------------------------- */
+
+export const MEMORY_QUERY_MODES = [
+  "MEMORY",
+  "PREVIOUS_TURN_AND_MEMORY",
+] as const;
 
 export const MEMORY_ENTITY_TYPES = [
   "PERSON",
@@ -27,22 +36,15 @@ export const MEMORY_ENTITY_TYPES = [
   "OTHER",
 ] as const;
 
+/* -------------------------------------------------------------------------- */
+/* Types                                                                      */
+/* -------------------------------------------------------------------------- */
+
+export type MemoryQueryMode =
+  (typeof MEMORY_QUERY_MODES)[number];
+
 export type MemoryEntityType =
   (typeof MEMORY_ENTITY_TYPES)[number];
-
-export const TEMPORAL_RELATIONS = [
-  "EXACT",
-  "BEFORE",
-  "AFTER",
-  "BETWEEN",
-  "RECENT",
-  "FIRST",
-  "LAST",
-  "UNKNOWN",
-] as const;
-
-export type TemporalRelation =
-  (typeof TEMPORAL_RELATIONS)[number];
 
 export interface MemoryQueryEntity {
   name: string;
@@ -50,26 +52,39 @@ export interface MemoryQueryEntity {
   type: MemoryEntityType;
 }
 
-export interface MemoryTemporalConstraint {
-  expression: string;
-  relation: TemporalRelation;
-  startDate: string | null;
-  endDate: string | null;
-}
-
 export interface MemoryRetrievalQuery {
   semanticQuery: string;
   keywords: string[];
   entities: MemoryQueryEntity[];
-  temporalConstraints: MemoryTemporalConstraint[];
 }
 
-export interface BuildMemoryQueryOptions {
-  currentDate?: Date;
+export interface PreviousTurn {
+  userMessage: string;
+  agentResponse: string;
+}
+
+export interface MemoryOnlyQueryInput {
+  mode: "MEMORY";
+  userMessage: string;
+}
+
+export interface PreviousTurnAndMemoryQueryInput {
+  mode: "PREVIOUS_TURN_AND_MEMORY";
+  userMessage: string;
+  previousTurn: PreviousTurn;
+}
+
+export type BuildMemoryQueryInput =
+  | MemoryOnlyQueryInput
+  | PreviousTurnAndMemoryQueryInput;
+
+interface MemoryQueryPrompts {
+  systemPrompt: string;
+  userPrompt: string;
 }
 
 /* -------------------------------------------------------------------------- */
-/* Helpers                                                                    */
+/* General helpers                                                            */
 /* -------------------------------------------------------------------------- */
 
 function isRecord(
@@ -81,6 +96,23 @@ function isRecord(
     !Array.isArray(value)
   );
 }
+
+function normalizeRequiredText(
+  value: string,
+  fieldName: string,
+): string {
+  const normalizedValue = value.trim();
+
+  if (!normalizedValue) {
+    throw new Error(`${fieldName} cannot be empty.`);
+  }
+
+  return normalizedValue;
+}
+
+/* -------------------------------------------------------------------------- */
+/* Result normalization                                                       */
+/* -------------------------------------------------------------------------- */
 
 function normalizeKeywords(
   keywords: unknown,
@@ -174,61 +206,6 @@ function normalizeEntities(
   return result;
 }
 
-function normalizeDate(
-  value: unknown,
-): string | null {
-  return typeof value === "string" &&
-    value.trim()
-    ? value.trim()
-    : null;
-}
-
-function normalizeTemporalConstraints(
-  constraints: unknown,
-): MemoryTemporalConstraint[] {
-  if (!Array.isArray(constraints)) {
-    return [];
-  }
-
-  const relations: readonly string[] =
-    TEMPORAL_RELATIONS;
-  const result: MemoryTemporalConstraint[] = [];
-
-  for (const constraint of constraints) {
-    if (!isRecord(constraint)) {
-      continue;
-    }
-
-    const expression =
-      typeof constraint.expression === "string"
-        ? constraint.expression.trim()
-        : "";
-
-    if (!expression) {
-      continue;
-    }
-
-    const relation =
-      typeof constraint.relation === "string" &&
-      relations.includes(constraint.relation)
-        ? (constraint.relation as TemporalRelation)
-        : "UNKNOWN";
-
-    result.push({
-      expression,
-      relation,
-      startDate: normalizeDate(
-        constraint.startDate,
-      ),
-      endDate: normalizeDate(
-        constraint.endDate,
-      ),
-    });
-  }
-
-  return result;
-}
-
 function validateResult(
   value: unknown,
 ): MemoryRetrievalQuery {
@@ -253,56 +230,102 @@ function validateResult(
     semanticQuery,
     keywords: normalizeKeywords(value.keywords),
     entities: normalizeEntities(value.entities),
-    temporalConstraints:
-      normalizeTemporalConstraints(
-        value.temporalConstraints,
-      ),
   };
 }
 
 /* -------------------------------------------------------------------------- */
-/* Memory Query                                                               */
+/* Prompt creation                                                            */
 /* -------------------------------------------------------------------------- */
 
 /**
- * Builds a retrieval query for the MEMORY route.
- *
- * This function analyzes only the current user message.
- * It does not use the previous turn and does not perform retrieval.
+ * Creates prompts for a query that only uses the current user message.
  */
-export async function buildMemoryQuery(
+function createMemoryOnlyPrompts(
   userMessage: string,
-  options: BuildMemoryQueryOptions = {},
-): Promise<MemoryRetrievalQuery> {
-  const normalizedMessage = userMessage.trim();
+): MemoryQueryPrompts {
+  return {
+    systemPrompt: MEMORY_QUERY_SYSTEM_PROMPT,
+    userPrompt:
+      createMemoryQueryUserPrompt(userMessage),
+  };
+}
 
-  if (!normalizedMessage) {
-    throw new Error(
-      "userMessage cannot be empty.",
+/**
+ * Creates prompts for a query that uses both the previous turn and the
+ * current user message.
+ *
+ * The previous turn is used to resolve references and omitted context.
+ * The current user message remains the source of the retrieval goal.
+ */
+function createPreviousTurnAndMemoryPrompts(
+  previousTurn: PreviousTurn,
+  userMessage: string,
+): MemoryQueryPrompts {
+  const previousUserMessage =
+    normalizeRequiredText(
+      previousTurn.userMessage,
+      "previousTurn.userMessage",
     );
-  }
 
-  const currentDate =
-    options.currentDate ?? new Date();
+  const previousAgentResponse =
+    normalizeRequiredText(
+      previousTurn.agentResponse,
+      "previousTurn.agentResponse",
+    );
 
-  const llm = await getAsyncLLM("expensive", {
-    temperature: 0,
-  });
+  return {
+    systemPrompt:
+      PREVIOUS_TURN_AND_MEMORY_QUERY_SYSTEM_PROMPT,
 
-  const response = await llm.invoke([
-    {
-      role: "system",
-      content: MEMORY_QUERY_SYSTEM_PROMPT,
-    },
-    {
-      role: "user",
-      content: createMemoryQueryUserPrompt(
-        normalizedMessage,
-        currentDate.toISOString(),
+    userPrompt:
+      createPreviousTurnAndMemoryQueryUserPrompt(
+        {
+          userMessage: previousUserMessage,
+          agentResponse: previousAgentResponse,
+        },
+        userMessage,
       ),
-    },
-  ]);
+  };
+}
 
+/**
+ * Selects the correct prompt strategy based on the query mode.
+ */
+function createQueryPrompts(
+  input: BuildMemoryQueryInput,
+  normalizedUserMessage: string,
+): MemoryQueryPrompts {
+  switch (input.mode) {
+    case "MEMORY":
+      return createMemoryOnlyPrompts(
+        normalizedUserMessage,
+      );
+
+    case "PREVIOUS_TURN_AND_MEMORY":
+      return createPreviousTurnAndMemoryPrompts(
+        input.previousTurn,
+        normalizedUserMessage,
+      );
+
+    default: {
+      const exhaustiveCheck: never = input;
+
+      throw new Error(
+        `Unsupported memory query input: ${String(
+          exhaustiveCheck,
+        )}`,
+      );
+    }
+  }
+}
+
+/* -------------------------------------------------------------------------- */
+/* LLM response parsing                                                       */
+/* -------------------------------------------------------------------------- */
+
+function parseMemoryQueryResponse(
+  response: unknown,
+): MemoryRetrievalQuery {
   const responseText =
     getLLMResponseText(response);
 
@@ -326,4 +349,56 @@ export async function buildMemoryQuery(
   }
 
   return validateResult(parsed);
+}
+
+/* -------------------------------------------------------------------------- */
+/* Memory Query                                                               */
+/* -------------------------------------------------------------------------- */
+
+/**
+ * Builds a query for long-term memory retrieval.
+ *
+ * MEMORY:
+ * Uses only the current user message.
+ *
+ * PREVIOUS_TURN_AND_MEMORY:
+ * Uses the previous user message, previous agent response, and current user
+ * message. The previous turn supplies only the context required to understand
+ * the current retrieval request.
+ *
+ * This function builds the query but does not perform memory retrieval.
+ */
+export async function buildMemoryQuery(
+  input: BuildMemoryQueryInput,
+): Promise<MemoryRetrievalQuery> {
+  const normalizedUserMessage =
+    normalizeRequiredText(
+      input.userMessage,
+      "userMessage",
+    );
+
+  const {
+    systemPrompt,
+    userPrompt,
+  } = createQueryPrompts(
+    input,
+    normalizedUserMessage,
+  );
+
+  const llm = await getAsyncLLM("expensive", {
+    temperature: 0,
+  });
+
+  const response = await llm.invoke([
+    {
+      role: "system",
+      content: systemPrompt,
+    },
+    {
+      role: "user",
+      content: userPrompt,
+    },
+  ]);
+
+  return parseMemoryQueryResponse(response);
 }

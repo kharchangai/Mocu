@@ -3,11 +3,29 @@
 import Database from "@tauri-apps/plugin-sql";
 
 import { getAsyncLLM } from "../../../../services/ai/llm";
+import {
+  extractJSONObject,
+  getLLMResponseText,
+} from "../window/llmResponse";
 import { CONTEXT_GATE_PROMPT } from "./prompts";
 
 /* -------------------------------------------------------------------------- */
 /* Types                                                                      */
 /* -------------------------------------------------------------------------- */
+
+/**
+ * Context routes the LLM gate can select for the current user
+ * message (see CONTEXT_GATE_PROMPT).
+ */
+export const CONTEXT_REQUIREMENTS = [
+  "NONE",
+  "PREVIOUS_TURN",
+  "MEMORY",
+  "PREVIOUS_TURN_AND_MEMORY",
+] as const;
+
+export type ContextRequirement =
+  (typeof CONTEXT_REQUIREMENTS)[number];
 
 interface TurnRecordRow {
   record_key: string;
@@ -44,7 +62,7 @@ function normalizeDatabasePath(
     .replace(/\/+$/, "");
 }
 
-interface ConversationTurn {
+export interface ConversationTurn {
   userMessage: string;
   agentResponse: string;
 }
@@ -62,8 +80,18 @@ export interface ContinuityAnalysis {
   lastTurn: ConversationTurn | null;
 
   /**
+   * Parsed context requirement chosen by the LLM gate.
+   */
+  contextRequirement: ContextRequirement;
+
+  /**
+   * Confidence of the classification (0 to 1).
+   */
+  confidence: number;
+
+  /**
    * Raw LLM response text (JSON string: context_requirement +
-   * confidence + memory_query).
+   * confidence).
    */
   llmResponse: string;
 }
@@ -75,7 +103,7 @@ export interface ContinuityAnalysis {
  * Returns the last turn (user message + agent response), or null
  * when the database contains no turn records yet.
  */
-async function readLastTurn(
+export async function readLastTurn(
   databasePath: string,
 ): Promise<ConversationTurn | null> {
   const normalizedPath =
@@ -84,7 +112,14 @@ async function readLastTurn(
   const database =
     await Database.load(`sqlite:${normalizedPath}`);
 
-  try {
+  /*
+   * No database.close() here: the Tauri SQL plugin keeps one pool per
+   * connection string, and close() without a database name closes
+   * every pool — including the shared databaseManager's pool.
+   * Database.load always replaces the pool, so leaving it open is
+   * safe.
+   */
+  {
     const rows =
       await database.select<TurnRecordRow[]>(`
         SELECT
@@ -136,12 +171,6 @@ async function readLastTurn(
     }
 
     return { userMessage, agentResponse };
-  } finally {
-    try {
-      await database.close();
-    } catch {
-      // Ignore close errors; the read result is already available.
-    }
   }
 }
 
@@ -150,15 +179,94 @@ async function readLastTurn(
 /* -------------------------------------------------------------------------- */
 
 /**
+ * Parses the raw LLM gate response (JSON object with
+ * "context_requirement" and "confidence") and validates both fields.
+ */
+function parseContextRequirement(
+  llmResponse: string,
+): {
+  contextRequirement: ContextRequirement;
+  confidence: number;
+} {
+  const responseText = llmResponse.trim();
+
+  if (!responseText) {
+    throw new Error(
+      "The LLM returned an empty response.",
+    );
+  }
+
+  const jsonText = extractJSONObject(responseText);
+
+  let parsed: unknown;
+
+  try {
+    parsed = JSON.parse(jsonText);
+  } catch {
+    throw new Error(
+      "The LLM response could not be parsed as JSON.",
+    );
+  }
+
+  if (
+    typeof parsed !== "object" ||
+    parsed === null ||
+    Array.isArray(parsed)
+  ) {
+    throw new Error(
+      "The LLM gate response is not an object.",
+    );
+  }
+
+  const record = parsed as Record<string, unknown>;
+
+  const requirement = record.context_requirement;
+
+  if (
+    typeof requirement !== "string" ||
+    !CONTEXT_REQUIREMENTS.includes(
+      requirement as ContextRequirement,
+    )
+  ) {
+    throw new Error(
+      `The LLM returned an unknown context_requirement: ${String(
+        requirement,
+      )}`,
+    );
+  }
+
+  const confidence = record.confidence;
+
+  if (
+    typeof confidence !== "number" ||
+    !Number.isFinite(confidence) ||
+    confidence < 0 ||
+    confidence > 1
+  ) {
+    throw new Error(
+      `The LLM returned an invalid confidence: ${String(
+        confidence,
+      )}`,
+    );
+  }
+
+  return {
+    contextRequirement:
+      requirement as ContextRequirement,
+    confidence,
+  };
+}
+
+/**
  * Classifies the current user message using the LLM
  * (CONTEXT_GATE_PROMPT): the message is sent as "current_message"
  * and the last turn read from the SQLite database at the given
  * location is sent as "previous_turn" (user message + agent
  * response, null when the database has no turns yet).
  *
- * Returns the current user message, the last turn, and the raw
- * LLM response text (JSON string: context_requirement +
- * confidence + memory_query).
+ * Returns the current user message, the last turn, the parsed
+ * context requirement with its confidence, and the raw LLM response
+ * text (JSON string: context_requirement + confidence).
  */
 export async function analyzeContinuity(
   userMessage: string,
@@ -201,37 +309,16 @@ export async function analyzeContinuity(
     },
   ]);
 
-  const llmResponse = extractResponseText(response);
+  const llmResponse = getLLMResponseText(response);
+
+  const { contextRequirement, confidence } =
+    parseContextRequirement(llmResponse);
 
   return {
     userMessage: normalizedUserMessage,
     lastTurn,
+    contextRequirement,
+    confidence,
     llmResponse,
   };
-}
-
-function extractResponseText(
-  response: { content: unknown },
-): string {
-  const content = response.content;
-
-  if (typeof content === "string") {
-    return content;
-  }
-
-  if (Array.isArray(content)) {
-    return content
-      .map((block) =>
-        typeof block === "string"
-          ? block
-          : typeof (block as { text?: unknown })?.text ===
-              "string"
-            ? (block as { text: string }).text
-            : "",
-      )
-      .filter(Boolean)
-      .join("\n");
-  }
-
-  return "";
 }

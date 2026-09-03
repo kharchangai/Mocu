@@ -61,20 +61,11 @@ import {
 } from "../../chat/project/memory/saveProjectMemory";
 
 import {
-  databaseManager,
-} from "../../chat/project/memory/storage/databaseManager";
-
-import type {
-  Turn,
-} from "../../chat/project/memory/createTurn";
-
-import type {
-  MemoryWindow,
-} from "../../chat/project/memory/window/types";
-
-import type {
-  MemoryEpisode,
-} from "../../chat/project/memory/episode/types";
+  buildRelatedMemoryPrompt,
+  getProjectDatabasePath,
+  retrieveRelatedMemory,
+  type RelatedMemory,
+} from "../../chat/project/memory/memory-retrieval/memoryRetrievalPipeline";
 
 const MAX_TOOL_STEPS = 3;
 
@@ -144,12 +135,9 @@ const getCurrentUserText = (
  * memory hierarchy (Turn -> Window -> Episode) and saves the resulting
  * record in the project storage folder:
  *
- * <projectPath>/.mocu/storage/memory.json
+ * <projectPath>/.mocu/storage/memory.db
  *
  * This operation never blocks the final agent response.
- *
- * For debugging, the persisted Turn, Window, and Episode records are
- * printed to the console after every processed turn.
  */
 const saveProjectMemoryInBackground = (
   userMessage: string,
@@ -164,60 +152,9 @@ const saveProjectMemoryInBackground = (
     projectPath,
   })
     .then(
-      async (
+      (
         result,
       ) => {
-        /*
-         * Debug output: read the persisted Turn, Window, and Episode
-         * records from the SQLite database and print them after every
-         * processed turn.
-         */
-        const turnRecord =
-          await databaseManager.get<Turn>(
-            result.processResult.turnId,
-          );
-
-        const windowRecord =
-          await databaseManager.get<MemoryWindow>(
-            result.processResult.windowId,
-          );
-
-        const episodeRecord =
-          result.processResult.episodeId
-            ? await databaseManager.get<MemoryEpisode>(
-                result.processResult.episodeId,
-              )
-            : null;
-
-        console.log(
-          "[Project Memory] Turn:",
-          turnRecord?.data,
-        );
-
-        console.log(
-          "[Project Memory] Window:",
-          windowRecord?.data,
-        );
-
-        console.log(
-          "[Project Memory] Episode:",
-          episodeRecord?.data,
-        );
-
-        if (
-          result.processResult.closedEpisodeId
-        ) {
-          const closedEpisodeRecord =
-            await databaseManager.get<MemoryEpisode>(
-              result.processResult.closedEpisodeId,
-            );
-
-          console.log(
-            "[Project Memory] Closed Episode:",
-            closedEpisodeRecord?.data,
-          );
-        }
-
         console.log(
           "[Project Memory] Turn processed successfully:",
           {
@@ -287,6 +224,7 @@ const buildProjectAgentSystemPrompt = (
   projectPath: string,
   skillsPrompt: string,
   extensionsPrompt: string,
+  relatedMemoryPrompt: string,
 ): string => {
   const promptParts: string[] = [
     "You are Mocu's project agent.",
@@ -339,6 +277,18 @@ const buildProjectAgentSystemPrompt = (
     );
   }
 
+  /*
+   * Related long-term memory retrieved from past project sessions.
+   */
+  if (
+    relatedMemoryPrompt.trim()
+  ) {
+    promptParts.push(
+      "",
+      relatedMemoryPrompt.trim(),
+    );
+  }
+
   promptParts.push(
     "",
     "AVAILABLE TOOLS",
@@ -359,9 +309,11 @@ const buildProjectAgentSystemPrompt = (
     "",
     "CONVERSATION RULES",
     "",
-    "You only receive the current user request.",
-    "Do not assume access to any previous conversation.",
-    "If the current request depends on missing previous context, ask the user to provide that context again.",
+    "You only receive the current user request as the live conversation.",
+    "The RELATED MEMORY section above (when present) contains real context retrieved from previous conversations of this project.",
+    "When related memory exists, treat it as valid previous context and use it to answer questions about earlier messages and decisions.",
+    "Do not claim that you have no access to previous conversations when related memory is present.",
+    "If the current request depends on previous context that is neither in the live conversation nor in the related memory, ask the user to provide that context again.",
     "",
     `Current date and time: ${getCurrentDateTime()}`,
   );
@@ -758,6 +710,62 @@ export const callProjectAgent =
       signal,
     );
 
+    /*
+     * Run the memory retrieval pipeline on every user message.
+     *
+     * Each project owns its own SQLite database file, so the
+     * pipeline reads from the database of the active project folder.
+     * When related memory is found, it is added to the agent context
+     * (system prompt). A retrieval failure never blocks the agent.
+     */
+    let relatedMemory:
+      RelatedMemory | null = null;
+
+    try {
+      relatedMemory =
+        await retrieveRelatedMemory(
+          userText,
+          getProjectDatabasePath(
+            normalizedProjectPath,
+          ),
+        );
+    } catch (
+      error: unknown
+    ) {
+      console.warn(
+        "[Project Agent] Memory retrieval failed:",
+        error,
+      );
+    }
+
+    const relatedMemoryPrompt =
+      buildRelatedMemoryPrompt(
+        relatedMemory,
+      );
+
+    if (relatedMemory) {
+      console.log(
+        "[Project Agent] Related memory found:",
+        {
+          episodeId:
+            relatedMemory.episode.episodeId,
+
+          windowId:
+            relatedMemory.window.windowId,
+
+          turns:
+            relatedMemory.turns.length,
+
+          estimatedTokens:
+            relatedMemory.estimatedTokens,
+        },
+      );
+    } else {
+      console.log(
+        "[Project Agent] No related memory found.",
+      );
+    }
+
     console.log(
       "[Project Agent] Running for project:",
       normalizedProjectPath,
@@ -830,6 +838,7 @@ export const callProjectAgent =
         normalizedProjectPath,
         skillResolution.skillsPrompt,
         extensionResolution.extensionsPrompt,
+        relatedMemoryPrompt,
       );
 
     let messagesToRun:
