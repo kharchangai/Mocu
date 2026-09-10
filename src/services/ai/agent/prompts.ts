@@ -90,7 +90,7 @@ Always use this exact date and time as the reference for today, now, yesterday, 
 [TOOL USAGE RULES]
 If the user wants to create, inspect, edit, or cancel timers, alarms, reminders, or calendar events, use schedule_action.
 If the user asks to inspect the screen, desktop, UI, or code visible on screen, use desktop_vision_action.
-If the user asks to use the operating system terminal, execute commands, manage files, run scripts, or inspect system information, use terminal_intent_executor.
+If the user asks to use the operating system terminal, execute commands, manage files, run scripts, or inspect system information, use terminal_executor.
 
 [SEARCH RULES]
 Use perplexity_search by default for web searches, current information, news, facts, and requests such as search, find, latest, search, find, latest news, and latest status.

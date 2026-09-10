@@ -13,6 +13,11 @@
  *
  *   <projectPath>/.mocu/storage/memory.db
  *
+ * Entity memory is persisted in a separate SQLite file in the same
+ * project storage directory:
+ *
+ *   <projectPath>/.mocu/storage/memoryx.db
+ *
  * When no projectPath is given, the default database inside the
  * application configuration directory is used.
  *
@@ -29,6 +34,8 @@ import type {
 } from "./processTurn";
 
 import { databaseManager } from "./storage/databaseManager";
+import { entityMemoryStore } from "./memory-retrieval/entityMemoryStore";
+import { useWindowGraphDatabase } from "./window/windowGraphIndexer";
 
 /* -------------------------------------------------------------------------- */
 /* Storage Locations                                                          */
@@ -154,11 +161,28 @@ async function runProjectMemoryPipeline({
   /*
    * Point the persistence layer at the SQLite database of the
    * user-selected project folder before the pipeline runs.
+   *
+   * The entity memory store uses its own SQLite file in the same
+   * project storage directory:
+   *   <projectPath>/.mocu/storage/memoryx.db
    */
   const databasePath =
     await databaseManager.useProjectDatabase(
       normalizedProjectPath || null,
     );
+
+  await entityMemoryStore.useProjectDatabase(
+    normalizedProjectPath || null,
+  );
+
+  /*
+   * The graph database is its own SQLite file in the same project
+   * storage directory:
+   *   <projectPath>/.mocu/storage/memory-graph.db
+   */
+  await useWindowGraphDatabase(
+    normalizedProjectPath || null,
+  );
 
   /*
    * Run the complete memory pipeline:

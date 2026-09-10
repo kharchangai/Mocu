@@ -88,7 +88,7 @@ export const buildChatAgentSystemPrompt = ({
     "- Prefer the smallest sufficient set of tool calls.",
     "- Use schedule_action for creating, updating, or managing schedules.",
     "- Use desktop_vision_action when the task requires seeing or interacting with the desktop.",
-    "- Use terminal_intent_executor for terminal, file-system, project, package, build, or development operations.",
+    "- Use terminal_executor for terminal, file-system, project, package, build, or development operations.",
     "- Use perplexity_search when current, external, or web-based information is required.",
     "- Do not fabricate tool results.",
     "- If a tool fails, explain the limitation naturally and continue with any reliable information that remains available.",

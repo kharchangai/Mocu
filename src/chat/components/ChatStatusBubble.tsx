@@ -24,7 +24,7 @@ const STATUS_LABELS: Record<string, string> = {
   perplexity_search: 'Searching the web…',
   execute_research_pipeline: 'Running a research pipeline…',
   memory_action: 'Accessing long-term memory…',
-  terminal_intent_executor: 'Running a terminal command…',
+  terminal_executor: 'Running a terminal command…',
   desktop_vision_action: 'Looking at your screen…',
   schedule_action: 'Checking the schedule…',
   generate_personalized_prompt: 'Crafting a personalized prompt…',

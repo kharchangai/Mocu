@@ -118,7 +118,7 @@ type TerminalTool = {
 
   invoke: (
     args: {
-      intent: string;
+      command: string;
     },
     config?: RunnableConfig,
   ) => Promise<unknown>;
@@ -301,7 +301,7 @@ const addFileManagerRulesToSystemPrompt = (
     "Put the complete requested filesystem operation in task.",
     "Do not invent a filesystem location.",
     "If the user did not provide a usable location and no trusted location exists in the current context, ask the user for it.",
-    "Do not use terminal_intent_executor for ordinary file management when file_manager can perform the operation.",
+    "Do not use terminal_executor for ordinary file management when file_manager can perform the operation.",
     "Never claim that a file operation succeeded unless file_manager reports success.",
   ].join(
     "\n",
@@ -657,10 +657,10 @@ const createToolExecutor = (
 
   toolExecutor.registerTool({
     name:
-      "terminal_intent_executor",
+      "terminal_executor",
 
     description:
-      "Executes a terminal task based on a user intent.",
+      "Executes a single terminal command based on a user request.",
 
     execute: async (
       args,
@@ -670,11 +670,11 @@ const createToolExecutor = (
 
       return terminalTool.invoke(
         {
-          intent:
+          command:
             requireStringArg(
               toolArgs,
-              "intent",
-              "terminal_intent_executor",
+              "command",
+              "terminal_executor",
             ),
         },
         config,
@@ -1031,9 +1031,7 @@ export const callChatAgent =
     );
 
     const terminalTool =
-      terminalExecutionTool(
-        llm,
-      ) as TerminalTool;
+      terminalExecutionTool() as TerminalTool;
 
     /*
      * fileManagerTool is exposed to the main model here.

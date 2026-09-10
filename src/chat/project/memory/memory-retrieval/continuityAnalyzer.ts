@@ -294,7 +294,7 @@ export async function analyzeContinuity(
       : null,
   });
 
-  const llm = await getAsyncLLM("expensive", {
+  const llm = await getAsyncLLM("cheap", {
     temperature: 0,
   });
 

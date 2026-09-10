@@ -16,7 +16,7 @@ const ACCENT_COLORS: Record<string, string> = {
   perplexity_search: '#22d3ee',
   execute_research_pipeline: '#818cf8',
   memory_action: '#c084fc',
-  terminal_intent_executor: '#fbbf24',
+  terminal_executor: '#fbbf24',
   desktop_vision_action: '#60a5fa',
   schedule_action: '#fb923c',
   generate_personalized_prompt: '#f472b6',
@@ -145,7 +145,7 @@ export const AgentStatusIcon: React.FC<{ state: string }> = ({ state }) => {
         </motion.svg>
       );
 
-    case 'terminal_intent_executor':
+    case 'terminal_executor':
       return (
         <div className="flex items-center text-amber-400 font-mono text-sm font-bold">
           <span>&gt;</span>

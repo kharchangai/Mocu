@@ -29,6 +29,7 @@ import {
 } from "./windowLifecycle";
 import { detectBoundary } from "./boundaryDetection";
 import { getLimitBoundaryReason } from "./windowLimits";
+import { indexWindowGraph } from "./windowGraphIndexer";
 
 /* -------------------------------------------------------------------------- */
 /* Configuration                                                              */
@@ -291,6 +292,27 @@ export class WindowManager {
   ): Promise<MemoryWindow> {
     const newWindow =
       await createWindow(turn);
+
+    /*
+     * Every new Window is created here, and it already contains its
+     * first Turn. So this is the moment where the graph database for
+     * the new Window is created:
+     *
+     * Window --WINDOW_CONTAINS_TURN--> Turn
+     * Turn   --TURN_MENTIONS_ENTITY--> Entity
+     *
+     * Graph indexing is best effort: a graph error must never break
+     * the Window persistence itself.
+     */
+    try {
+      await indexWindowGraph(newWindow);
+    } catch (error) {
+      // Graph errors must never break the Window persistence itself.
+      console.warn(
+        "[GraphDB] Window graph indexing failed:",
+        error,
+      );
+    }
 
     if (
       turn.estimatedTokens >

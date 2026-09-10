@@ -4,6 +4,7 @@ import { createTurnIndexPrompt } from "./prompts/turnIndexPrompt";
 import { getAsyncLLM } from "../../../services/ai/llm";
 import { textSimilarity } from "../../../services/ai/tools/textSimilarity";
 import { databaseManager } from "./storage/databaseManager";
+import { entityMemoryStore } from "./memory-retrieval/entityMemoryStore";
 
 export type TurnType =
   | "question"
@@ -39,7 +40,7 @@ export interface TurnEntity {
   type: EntityType;
 }
 
-interface ExtractedTurnMetadata {
+export interface ExtractedTurnMetadata {
   subject: string;
   keywords: string[];
   entities: TurnEntity[];
@@ -67,14 +68,11 @@ export interface TurnIndexes {
 
   /**
    * Semantic type of the Turn.
-   *
-   * Required by WindowManager.assertValidTurn.
    */
   type: TurnType;
 
   /**
    * Kept for compatibility with existing index consumers.
-   * Mirrors `type`.
    */
   turnType: TurnType;
 
@@ -112,15 +110,11 @@ export interface Turn {
 
   /**
    * Approximate token count of the complete Turn.
-   *
-   * Required by WindowManager.assertValidTurn.
    */
   estimatedTokens: number;
 
   /**
    * Creation time of the Turn.
-   *
-   * WindowManager reads this field directly from the Turn.
    */
   createdAt: string;
 }
@@ -185,25 +179,22 @@ export async function createTurn(
     createAgentSpans(cleanAgentResponse),
   );
 
-  const [
-    metadata,
-    embedding,
-    spanEmbeddings,
-  ] = await Promise.all([
-    extractTurnMetadata(
-      cleanUserMessage,
-      cleanAgentResponse,
-    ),
-
-    createEmbedding(
-      createTurnEmbeddingText(
+  const [metadata, embedding, spanEmbeddings] =
+    await Promise.all([
+      extractTurnMetadata(
         cleanUserMessage,
         cleanAgentResponse,
       ),
-    ),
 
-    createSpanEmbeddings(spans),
-  ]);
+      createEmbedding(
+        createTurnEmbeddingText(
+          cleanUserMessage,
+          cleanAgentResponse,
+        ),
+      ),
+
+      createSpanEmbeddings(spans),
+    ]);
 
   const estimatedTokenCount = estimateTokenCount(
     `${cleanUserMessage}\n\n${cleanAgentResponse}`,
@@ -214,28 +205,24 @@ export async function createTurn(
     userMessage: cleanUserMessage,
     agentResponse: cleanAgentResponse,
     spans,
-
-    /**
-     * This field must exist at the Turn root because
-     * WindowManager validates turn.createdAt.
-     */
     createdAt,
-
     estimatedTokens: estimatedTokenCount,
 
     indexes: {
       subject: metadata.subject,
       keywords: metadata.keywords,
+
+      /**
+       * These entities have already been resolved against
+       * the SQLite entity memory.
+       */
       entities: metadata.entities,
+
       type: metadata.turnType,
       turnType: metadata.turnType,
       embedding,
       spanEmbeddings,
       estimatedTokenCount,
-
-      /**
-       * This duplicate is kept temporarily for compatibility.
-       */
       createdAt,
     },
   };
@@ -244,13 +231,7 @@ export async function createTurn(
 
   await databaseManager.save<Turn>({
     type: "turn",
-
-    /**
-     * The Turn id is used as the record key so the Turn can be read
-     * back by id, exactly like Windows and Episodes.
-     */
     key: turnId,
-
     data: turn,
   });
 
@@ -302,36 +283,132 @@ function assertValidCreatedTurn(
 
   if (!isValidIsoDateString(turn.createdAt)) {
     throw new Error(
-      "Turn createdAt must be a non-empty ISO date string.",
-    );
-  }
-
-  if (!isValidIsoDateString(turn.indexes.createdAt)) {
-    throw new Error(
-      "Turn indexes.createdAt must be a non-empty ISO date string.",
-    );
-  }
-
-  if (typeof turn.indexes.type !== "string" || !turn.indexes.type.trim()) {
-    throw new Error(
-      "Turn indexes.type must be a non-empty string.",
+      "Turn createdAt must be a valid ISO date string.",
     );
   }
 
   if (
-    !Number.isFinite(turn.estimatedTokens) ||
+    !isValidIsoDateString(
+      turn.indexes.createdAt,
+    )
+  ) {
+    throw new Error(
+      "Turn indexes.createdAt must be a valid ISO date string.",
+    );
+  }
+
+  if (
+    !ALLOWED_TURN_TYPES.has(
+      turn.indexes.type,
+    )
+  ) {
+    throw new Error(
+      "Turn indexes.type is invalid.",
+    );
+  }
+
+  if (
+    turn.indexes.turnType !==
+    turn.indexes.type
+  ) {
+    throw new Error(
+      "Turn indexes.turnType must match indexes.type.",
+    );
+  }
+
+  if (
+    !Number.isFinite(
+      turn.estimatedTokens,
+    ) ||
     turn.estimatedTokens < 0
   ) {
     throw new Error(
       "Turn estimatedTokens must be a non-negative finite number.",
     );
   }
+
+  if (
+    !Number.isFinite(
+      turn.indexes.estimatedTokenCount,
+    ) ||
+    turn.indexes.estimatedTokenCount < 0
+  ) {
+    throw new Error(
+      "Turn indexes.estimatedTokenCount must be a non-negative finite number.",
+    );
+  }
+
+  assertValidEmbedding(
+    turn.indexes.embedding,
+    "Turn embedding",
+  );
+
+  for (
+    let index = 0;
+    index < turn.indexes.spanEmbeddings.length;
+    index += 1
+  ) {
+    const spanEmbedding =
+      turn.indexes.spanEmbeddings[index];
+
+    if (
+      !Number.isInteger(
+        spanEmbedding.spanIndex,
+      ) ||
+      spanEmbedding.spanIndex < 0 ||
+      spanEmbedding.spanIndex >=
+        turn.spans.length
+    ) {
+      throw new Error(
+        `Span embedding at index ${index} has an invalid spanIndex.`,
+      );
+    }
+
+    assertValidEmbedding(
+      spanEmbedding.embedding,
+      `Span embedding at index ${index}`,
+    );
+  }
+
+  for (
+    let index = 0;
+    index < turn.indexes.entities.length;
+    index += 1
+  ) {
+    const entity =
+      turn.indexes.entities[index];
+
+    if (!entity.text.trim()) {
+      throw new Error(
+        `Entity at index ${index} has an empty text value.`,
+      );
+    }
+
+    if (!entity.normalized.trim()) {
+      throw new Error(
+        `Entity at index ${index} has an empty normalized value.`,
+      );
+    }
+
+    if (
+      !ALLOWED_ENTITY_TYPES.has(
+        entity.type,
+      )
+    ) {
+      throw new Error(
+        `Entity at index ${index} has an invalid type.`,
+      );
+    }
+  }
 }
 
 /**
  * Extracts searchable metadata from the complete Turn.
+ *
+ * The entities returned by the LLM are normalized first and then
+ * resolved against the SQLite entity memory.
  */
-async function extractTurnMetadata(
+export async function extractTurnMetadata(
   userMessage: string,
   agentResponse: string,
 ): Promise<ExtractedTurnMetadata> {
@@ -340,15 +417,20 @@ async function extractTurnMetadata(
     agentResponse,
   );
 
-  const llm = await getAsyncLLM("cheap", {
-    temperature: 0,
-  });
-
-  const response = await llm.invoke(prompt);
-
-  const responseText = extractMessageText(
-    response.content,
+  const llm = await getAsyncLLM(
+    "cheap",
+    {
+      temperature: 0,
+    },
   );
+
+  const response =
+    await llm.invoke(prompt);
+
+  const responseText =
+    extractMessageText(
+      response.content,
+    );
 
   if (!responseText) {
     throw new Error(
@@ -356,11 +438,38 @@ async function extractTurnMetadata(
     );
   }
 
-  const parsedResponse = parseLLMJson(
-    responseText,
-  );
+  const parsedResponse =
+    parseLLMJson(responseText);
 
-  return parseTurnMetadata(parsedResponse);
+  /**
+   * First parse and validate the complete model response.
+   */
+  const metadata =
+    parseTurnMetadata(
+      parsedResponse,
+    );
+
+  /**
+   * Compare model entities with the entities stored in SQLite.
+   *
+   * If a matching stored entity has a similarity score greater
+   * than 0.90, its canonical normalized value replaces the new
+   * normalized value.
+   *
+   * Otherwise, the new normalized entity and its embedding
+   * are stored in SQLite.
+   */
+  const resolvedEntities =
+    await entityMemoryStore.processEntities(
+      metadata.entities,
+    );
+
+  return {
+    ...metadata,
+    entities: uniqueEntities(
+      resolvedEntities,
+    ),
+  };
 }
 
 /**
@@ -392,7 +501,10 @@ function extractMessageText(
 
       return "";
     })
-    .filter((text) => text.trim().length > 0)
+    .filter(
+      (text) =>
+        text.trim().length > 0,
+    )
     .join("\n")
     .trim();
 }
@@ -407,8 +519,14 @@ function parseLLMJson(
 ): unknown {
   const cleanedResponse = response
     .trim()
-    .replace(/^```(?:json)?\s*/i, "")
-    .replace(/\s*```$/i, "")
+    .replace(
+      /^```(?:json)?\s*/i,
+      "",
+    )
+    .replace(
+      /\s*```$/i,
+      "",
+    )
     .trim();
 
   if (!cleanedResponse) {
@@ -418,11 +536,14 @@ function parseLLMJson(
   }
 
   try {
-    return JSON.parse(cleanedResponse);
-  } catch {
-    const jsonText = extractFirstJsonObject(
+    return JSON.parse(
       cleanedResponse,
     );
+  } catch {
+    const jsonText =
+      extractFirstJsonObject(
+        cleanedResponse,
+      );
 
     if (!jsonText) {
       throw new Error(
@@ -431,7 +552,9 @@ function parseLLMJson(
     }
 
     try {
-      return JSON.parse(jsonText);
+      return JSON.parse(
+        jsonText,
+      );
     } catch {
       throw new Error(
         "The LLM returned malformed JSON.",
@@ -578,21 +701,29 @@ function normalizeEntities(
       continue;
     }
 
-    if (typeof item.text !== "string") {
+    if (
+      typeof item.text !== "string"
+    ) {
       continue;
     }
 
-    const text = item.text.trim();
+    const text =
+      item.text.trim();
 
     if (!text) {
       continue;
     }
 
     const normalized =
-      typeof item.normalized === "string" &&
+      typeof item.normalized ===
+        "string" &&
       item.normalized.trim()
-        ? normalizeEntityText(item.normalized)
-        : normalizeEntityText(text);
+        ? normalizeEntityText(
+            item.normalized,
+          )
+        : normalizeEntityText(
+            text,
+          );
 
     if (!normalized) {
       continue;
@@ -601,11 +732,15 @@ function normalizeEntities(
     entities.push({
       text,
       normalized,
-      type: normalizeEntityType(item.type),
+      type: normalizeEntityType(
+        item.type,
+      ),
     });
   }
 
-  return uniqueEntities(entities);
+  return uniqueEntities(
+    entities,
+  );
 }
 
 function normalizeTurnType(
@@ -618,7 +753,10 @@ function normalizeTurnType(
   const normalized = value
     .trim()
     .toLowerCase()
-    .replace(/[\s-]+/g, "_");
+    .replace(
+      /[\s-]+/g,
+      "_",
+    );
 
   if (
     !ALLOWED_TURN_TYPES.has(
@@ -641,7 +779,10 @@ function normalizeEntityType(
   const normalized = value
     .trim()
     .toLowerCase()
-    .replace(/[\s-]+/g, "_");
+    .replace(
+      /[\s-]+/g,
+      "_",
+    );
 
   if (
     !ALLOWED_ENTITY_TYPES.has(
@@ -660,7 +801,8 @@ function normalizeEntityType(
 async function createEmbedding(
   text: string,
 ): Promise<number[]> {
-  const cleanText = text.trim();
+  const cleanText =
+    text.trim();
 
   if (!cleanText) {
     throw new Error(
@@ -669,21 +811,14 @@ async function createEmbedding(
   }
 
   const embedding =
-    await textSimilarity.embedText(cleanText);
-
-  if (
-    !Array.isArray(embedding) ||
-    embedding.length === 0 ||
-    embedding.some(
-      (value) =>
-        typeof value !== "number" ||
-        !Number.isFinite(value),
-    )
-  ) {
-    throw new Error(
-      "The embedding service returned an invalid embedding.",
+    await textSimilarity.embedText(
+      cleanText,
     );
-  }
+
+  assertValidEmbedding(
+    embedding,
+    "Embedding service result",
+  );
 
   return embedding;
 }
@@ -695,17 +830,25 @@ async function createSpanEmbeddings(
   spans: TurnSpan[],
 ): Promise<SpanEmbedding[]> {
   return Promise.all(
-    spans.map(async (span, spanIndex) => {
-      const embedding = await createEmbedding(
-        createSpanEmbeddingText(span),
-      );
-
-      return {
+    spans.map(
+      async (
+        span,
         spanIndex,
-        tag: span.tag,
-        embedding,
-      };
-    }),
+      ) => {
+        const embedding =
+          await createEmbedding(
+            createSpanEmbeddingText(
+              span,
+            ),
+          );
+
+        return {
+          spanIndex,
+          tag: span.tag,
+          embedding,
+        };
+      },
+    ),
   );
 }
 
@@ -744,49 +887,63 @@ function normalizeSpans(
     );
   }
 
-  return value.map((item, index) => {
-    if (!isRecord(item)) {
-      throw new Error(
-        `Span at index ${index} must be an object.`,
-      );
-    }
+  return value.map(
+    (item, index) => {
+      if (!isRecord(item)) {
+        throw new Error(
+          `Span at index ${index} must be an object.`,
+        );
+      }
 
-    const tag = readRequiredString(
-      item.tag,
-      `spans[${index}].tag`,
-    );
+      const tag =
+        readRequiredString(
+          item.tag,
+          `spans[${index}].tag`,
+        );
 
-    const type = readRequiredString(
-      item.type,
-      `spans[${index}].type`,
-    );
+      const type =
+        readRequiredString(
+          item.type,
+          `spans[${index}].type`,
+        );
 
-    const content = readRequiredString(
-      item.content,
-      `spans[${index}].content`,
-    );
+      const content =
+        readRequiredString(
+          item.content,
+          `spans[${index}].content`,
+        );
 
-    const estimatedTokenCount =
-      typeof item.estimatedTokenCount === "number" &&
-      Number.isFinite(item.estimatedTokenCount) &&
-      item.estimatedTokenCount >= 0
-        ? Math.ceil(item.estimatedTokenCount)
-        : estimateTokenCount(content);
+      const estimatedTokenCount =
+        typeof item.estimatedTokenCount ===
+          "number" &&
+        Number.isFinite(
+          item.estimatedTokenCount,
+        ) &&
+        item.estimatedTokenCount >= 0
+          ? Math.ceil(
+              item.estimatedTokenCount,
+            )
+          : estimateTokenCount(
+              content,
+            );
 
-    const languages = normalizeLanguages(
-      item.languages,
-    );
+      const languages =
+        normalizeLanguages(
+          item.languages,
+        );
 
-    return {
-      tag,
-      type,
-      content,
-      estimatedTokenCount,
-      ...(languages.length > 0
-        ? { languages }
-        : {}),
-    };
-  });
+      return {
+        tag,
+        type,
+        content,
+        estimatedTokenCount,
+
+        ...(languages.length > 0
+          ? { languages }
+          : {}),
+      };
+    },
+  );
 }
 
 function normalizeLanguages(
@@ -804,7 +961,9 @@ function normalizeLanguages(
     .map((item) => item.trim())
     .filter(Boolean);
 
-  return uniqueCaseInsensitive(languages);
+  return uniqueCaseInsensitive(
+    languages,
+  );
 }
 
 /**
@@ -813,7 +972,8 @@ function normalizeLanguages(
 function estimateTokenCount(
   text: string,
 ): number {
-  const normalized = text.trim();
+  const normalized =
+    text.trim();
 
   if (!normalized) {
     return 0;
@@ -835,7 +995,9 @@ function estimateTokenCount(
     ) ?? [];
 
   const lineBreaks =
-    normalized.match(/\n/g) ?? [];
+    normalized.match(
+      /\n/g,
+    ) ?? [];
 
   const estimate =
     latinWords.length * 1.25 +
@@ -862,21 +1024,28 @@ function normalizeEntityText(
 function uniqueCaseInsensitive(
   values: string[],
 ): string[] {
-  const seen = new Set<string>();
+  const seen =
+    new Set<string>();
+
   const result: string[] = [];
 
   for (const value of values) {
-    const key = value
+    const cleanValue =
+      value.trim();
+
+    const key = cleanValue
       .normalize("NFKC")
-      .trim()
       .toLowerCase();
 
-    if (!key || seen.has(key)) {
+    if (
+      !key ||
+      seen.has(key)
+    ) {
       continue;
     }
 
     seen.add(key);
-    result.push(value);
+    result.push(cleanValue);
   }
 
   return result;
@@ -885,12 +1054,23 @@ function uniqueCaseInsensitive(
 function uniqueEntities(
   entities: TurnEntity[],
 ): TurnEntity[] {
-  const seen = new Set<string>();
+  const seen =
+    new Set<string>();
+
   const result: TurnEntity[] = [];
 
   for (const entity of entities) {
+    const normalized =
+      normalizeEntityText(
+        entity.normalized,
+      );
+
+    if (!normalized) {
+      continue;
+    }
+
     const key = [
-      entity.normalized.toLowerCase(),
+      normalized,
       entity.type,
     ].join(":");
 
@@ -899,7 +1079,12 @@ function uniqueEntities(
     }
 
     seen.add(key);
-    result.push(entity);
+
+    result.push({
+      ...entity,
+      text: entity.text.trim(),
+      normalized,
+    });
   }
 
   return result;
@@ -915,7 +1100,8 @@ function normalizeRequiredInput(
     );
   }
 
-  const normalized = value.trim();
+  const normalized =
+    value.trim();
 
   if (!normalized) {
     throw new Error(
@@ -942,6 +1128,28 @@ function readRequiredString(
   return value.trim();
 }
 
+function assertValidEmbedding(
+  value: unknown,
+  fieldName: string,
+): asserts value is number[] {
+  if (
+    !Array.isArray(value) ||
+    value.length === 0 ||
+    value.some(
+      (item) =>
+        typeof item !== "number" ||
+        !Number.isFinite(item),
+    )
+  ) {
+    throw new Error(
+      `${fieldName} must be a non-empty array of finite numbers.`,
+    );
+  }
+}
+
+/**
+ * Validates the exact ISO format created by Date.toISOString().
+ */
 function isValidIsoDateString(
   value: unknown,
 ): value is string {
@@ -952,14 +1160,30 @@ function isValidIsoDateString(
     return false;
   }
 
-  const timestamp = Date.parse(value);
+  const isoDatePattern =
+    /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/;
 
-  if (!Number.isFinite(timestamp)) {
+  if (
+    !isoDatePattern.test(value)
+  ) {
+    return false;
+  }
+
+  const timestamp =
+    Date.parse(value);
+
+  if (
+    !Number.isFinite(timestamp)
+  ) {
     return false;
   }
 
   try {
-    return new Date(timestamp).toISOString() === value;
+    return (
+      new Date(
+        timestamp,
+      ).toISOString() === value
+    );
   } catch {
     return false;
   }

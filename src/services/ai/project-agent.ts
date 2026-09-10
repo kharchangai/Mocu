@@ -61,10 +61,10 @@ import {
 } from "../../chat/project/memory/saveProjectMemory";
 
 import {
-  buildRelatedMemoryPrompt,
-  getProjectDatabasePath,
-  retrieveRelatedMemory,
-  type RelatedMemory,
+  buildProjectMemoryPrompt,
+  retrieveProjectMemory,
+  type PreviousConversationTurn,
+  type ProjectMemoryRetrievalResult,
 } from "../../chat/project/memory/memory-retrieval/memoryRetrievalPipeline";
 
 const MAX_TOOL_STEPS = 3;
@@ -75,7 +75,7 @@ type ToolArgs =
 type TerminalTool = {
   invoke: (
     args: {
-      intent: string;
+      command: string;
     },
     config?: RunnableConfig,
   ) => Promise<unknown>;
@@ -128,6 +128,79 @@ const getCurrentUserText = (
   return getTextContent(
     lastMessage.content,
   ).trim();
+};
+
+/*
+ * Extracts the immediately previous live conversation turn (previous
+ * user message + previous agent response) from the state messages:
+ * the most recent assistant message together with the nearest human
+ * message before it, ignoring the trailing current user message.
+ *
+ * Returns null when the conversation has no previous turn yet.
+ */
+const getPreviousConversationTurn = (
+  messages: BaseMessage[],
+): PreviousConversationTurn | null => {
+  for (
+    let index = messages.length - 1;
+    index >= 0;
+    index -= 1
+  ) {
+    const message =
+      messages[index];
+
+    if (
+      message.getType() !==
+      "ai"
+    ) {
+      continue;
+    }
+
+    const agentResponse =
+      getTextContent(
+        message.content,
+      ).trim();
+
+    for (
+      let previousIndex = index - 1;
+      previousIndex >= 0;
+      previousIndex -= 1
+    ) {
+      const previousMessage =
+        messages[
+          previousIndex
+        ];
+
+      if (
+        previousMessage.getType() !==
+        "human"
+      ) {
+        continue;
+      }
+
+      const userMessage =
+        getTextContent(
+          previousMessage.content,
+        ).trim();
+
+      if (
+        !userMessage ||
+        !agentResponse
+      ) {
+        return null;
+      }
+
+      return {
+        userMessage,
+
+        agentResponse,
+      };
+    }
+
+    return null;
+  }
+
+  return null;
 };
 
 /*
@@ -293,7 +366,9 @@ const buildProjectAgentSystemPrompt = (
     "",
     "AVAILABLE TOOLS",
     "",
-    "1. terminal_intent_executor",
+    "1. terminal_executor",
+    "Executes a single terminal command inside the active project folder.",
+    "Provide the exact command compatible with the user's operating system shell in the command argument.",
     "Use this tool for project filesystem operations, source-code inspection, dependency management, builds, tests, Git commands, and other terminal tasks.",
     "",
     "2. perplexity_search",
@@ -301,8 +376,8 @@ const buildProjectAgentSystemPrompt = (
     "",
     "TOOL RULES",
     "",
-    "Use the terminal tool when the task requires terminal commands, dependency management, builds, tests, Git, or another terminal operation.",
-    "When calling the terminal tool for the active project, clearly state that the operation must be performed inside the active project folder.",
+    "Use the terminal_executor tool when the task requires terminal commands, dependency management, builds, tests, Git, or another terminal operation.",
+    "All terminal_executor commands must run against the active project folder; commands already start inside the project directory.",
     "Do not claim that an operation succeeded unless its tool result confirms it.",
     "Use web search only when external or current information is required.",
     "After using tools, provide a clear user-facing answer without exposing internal tool names or internal reasoning.",
@@ -324,37 +399,10 @@ const buildProjectAgentSystemPrompt = (
 };
 
 /*
- * Adds the active project path to a terminal intent.
- *
- * This behavior belongs only to the terminal tool.
- */
-const buildProjectTerminalIntent = (
-  projectPath: string,
-  intent: string,
-): string => {
-  const normalizedIntent =
-    intent.trim();
-
-  return [
-    `Active project root: ${projectPath}`,
-    "",
-    "Perform the following task inside the active project root.",
-    "Do not use another folder as the project root unless the task explicitly requires it.",
-    "",
-    "Task:",
-    normalizedIntent ||
-      "Inspect the active project and determine the appropriate action.",
-  ].join(
-    "\n",
-  );
-};
-
-/*
  * Builds the executor for tools available to the project agent.
  */
 const createProjectToolExecutor = (
   terminalTool: TerminalTool,
-  projectPath: string,
   config: RunnableConfig,
 ): ToolExecutor => {
   const toolExecutor =
@@ -362,10 +410,10 @@ const createProjectToolExecutor = (
 
   toolExecutor.registerTool({
     name:
-      "terminal_intent_executor",
+      "terminal_executor",
 
     description:
-      "Executes terminal tasks inside the active project folder.",
+      "Executes a single terminal command inside the active project folder.",
 
     execute: async (
       args,
@@ -373,18 +421,12 @@ const createProjectToolExecutor = (
       const toolArgs =
         args as ToolArgs;
 
-      const intent =
-        getStringArg(
-          toolArgs,
-          "intent",
-        );
-
       return terminalTool.invoke(
         {
-          intent:
-            buildProjectTerminalIntent(
-              projectPath,
-              intent,
+          command:
+            getStringArg(
+              toolArgs,
+              "command",
             ),
         },
         config,
@@ -713,22 +755,29 @@ export const callProjectAgent =
     /*
      * Run the memory retrieval pipeline on every user message.
      *
-     * Each project owns its own SQLite database file, so the
-     * pipeline reads from the database of the active project folder.
-     * When related memory is found, it is added to the agent context
-     * (system prompt). A retrieval failure never blocks the agent.
+     * A memory gate LLM decides from the previous live conversation
+     * turn and the current user message whether stored memory is
+     * required. When required, the temporal and graph retrievers run
+     * concurrently and an evidence selector LLM builds the final
+     * memory context. A retrieval failure never blocks the agent.
      */
-    let relatedMemory:
-      RelatedMemory | null = null;
+    let memoryResult:
+      | ProjectMemoryRetrievalResult
+      | null = null;
 
     try {
-      relatedMemory =
-        await retrieveRelatedMemory(
-          userText,
-          getProjectDatabasePath(
+      memoryResult =
+        await retrieveProjectMemory({
+          userMessage: userText,
+
+          projectPath:
             normalizedProjectPath,
-          ),
-        );
+
+          previousTurn:
+            getPreviousConversationTurn(
+              state.messages,
+            ),
+        });
     } catch (
       error: unknown
     ) {
@@ -739,30 +788,35 @@ export const callProjectAgent =
     }
 
     const relatedMemoryPrompt =
-      buildRelatedMemoryPrompt(
-        relatedMemory,
+      buildProjectMemoryPrompt(
+        memoryResult,
       );
 
-    if (relatedMemory) {
+    if (
+      memoryResult?.memoryContext
+    ) {
       console.log(
-        "[Project Agent] Related memory found:",
+        "[Project Agent] Memory context found:",
         {
-          episodeId:
-            relatedMemory.episode.episodeId,
+          memoryRequired:
+            memoryResult.memoryRequired,
 
-          windowId:
-            relatedMemory.window.windowId,
+          gateConfidence:
+            memoryResult.gateDecision.confidence,
 
-          turns:
-            relatedMemory.turns.length,
+          hasTemporalMemory:
+            memoryResult.temporalMemory !== null,
+
+          graphMemoryLength:
+            memoryResult.graphMemoryContext.length,
 
           estimatedTokens:
-            relatedMemory.estimatedTokens,
+            memoryResult.estimatedTokens,
         },
       );
     } else {
       console.log(
-        "[Project Agent] No related memory found.",
+        "[Project Agent] No memory context found.",
       );
     }
 
@@ -810,9 +864,10 @@ export const callProjectAgent =
     );
 
     const terminalTool =
-      terminalExecutionTool(
-        llm,
-      ) as TerminalTool;
+      terminalExecutionTool({
+        projectPath:
+          normalizedProjectPath,
+      }) as TerminalTool;
 
     /*
      * Expose the tools to the model.
@@ -829,7 +884,6 @@ export const callProjectAgent =
     const toolExecutor =
       createProjectToolExecutor(
         terminalTool,
-        normalizedProjectPath,
         runnableConfig,
       );
 

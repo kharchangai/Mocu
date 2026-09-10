@@ -307,15 +307,18 @@ const createToolExecutor = (
   });
 
   toolExecutor.registerTool({
-    name: "terminal_intent_executor",
+    name: "terminal_executor",
     description:
-      "Executes a terminal task based on a user intent.",
+      "Executes a single terminal command.",
     execute: async (args) => {
       const toolArgs = args as ToolArgs;
 
       return terminalTool.invoke(
         {
-          intent: getStringArg(toolArgs, "intent"),
+          command: getStringArg(
+            toolArgs,
+            "command",
+          ),
         },
         config,
       );
@@ -424,7 +427,12 @@ export const callMainAgent = async (
 
   throwIfAborted(signal);
 
-  const terminalTool = terminalExecutionTool(llm);
+  const terminalTool = terminalExecutionTool() as unknown as {
+    invoke: (
+      args: ToolArgs,
+      config?: RunnableConfig,
+    ) => Promise<unknown>;
+  };
 
   const llmWithTools = llm.bindTools([
     scheduleTool,

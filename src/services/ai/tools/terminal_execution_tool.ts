@@ -1,27 +1,6 @@
 import { tool } from "@langchain/core/tools";
 import { z } from "zod";
-import { ChatOpenAI } from "@langchain/openai";
 import { Command } from "@tauri-apps/plugin-shell";
-
-const SecurityCheckSchema = z.object({
-  is_safe: z
-    .boolean()
-    .describe(
-      "True for normal terminal and development operations. False only for destructive system-level actions, deletion of critical files, credential theft, or clearly malicious commands."
-    ),
-
-  reason: z
-    .string()
-    .describe(
-      "A short explanation describing why the command is allowed or blocked."
-    ),
-
-  exact_command: z
-    .string()
-    .describe(
-      "The exact single-line command compatible with the detected operating system and shell. It must be empty when is_safe is false."
-    ),
-});
 
 export interface TerminalExecutionToolOptions {
   /**
@@ -71,8 +50,8 @@ const DEFAULT_TIMEOUT_MS = 10 * 60 * 1000;
  * navigator.userAgentData.platform describe the host operating system.
  *
  * Detection is performed before creating the tool so that the operating
- * system can be included in the tool description, schema, system prompt,
- * user prompt, and shell selection.
+ * system can be included in the tool description and schema that the
+ * main agent sees during tool selection.
  */
 function detectOperatingSystem(): OperatingSystemInfo {
   if (typeof navigator === "undefined") {
@@ -220,7 +199,8 @@ function formatUnknownError(error: unknown): string {
  * clearly attempt catastrophic deletion, disk destruction, critical system
  * modification, security bypass, or credential extraction.
  *
- * This is a defense-in-depth check and does not replace the LLM evaluation.
+ * This is a defense-in-depth check that runs entirely locally, without any
+ * model involvement, before a command is executed.
  */
 function getHardBlockReason(
   command: string,
@@ -233,7 +213,7 @@ function getHardBlockReason(
     .toLowerCase();
 
   if (!normalized) {
-    return "The generated command is empty.";
+    return "The command is empty.";
   }
 
   if (command.includes("\0")) {
@@ -423,64 +403,14 @@ async function executeWithTimeout(
   }
 }
 
-function createOperatingSystemPrompt(
-  operatingSystem: OperatingSystemInfo
-): string {
-  if (operatingSystem.isWindows) {
-    return `
-OPERATING SYSTEM:
-- The user's operating system is Microsoft Windows.
-- Generate PowerShell syntax only.
-- Commands are executed with Windows PowerShell.
-- Use Windows path syntax such as C:\\Users\\Name\\Project.
-- Use PowerShell cmdlets when appropriate.
-- Do not generate Bash, sh, zsh, macOS, or Linux commands.
-- Do not use commands such as rm, touch, grep, sed, awk, chmod, or export unless they are known aliases that are appropriate in PowerShell.
-- Prefer commands such as Get-ChildItem, Get-Content, Set-Content, New-Item, Copy-Item, Move-Item, Remove-Item, Select-String, and $env:NAME.
-- Quote Windows paths safely with PowerShell-compatible quoting.
-`;
-  }
-
-  if (operatingSystem.isMacOS) {
-    return `
-OPERATING SYSTEM:
-- The user's operating system is Apple macOS.
-- Generate POSIX shell syntax compatible with /bin/sh.
-- Use macOS-compatible commands and options.
-- Use POSIX paths such as /Users/name/project.
-- Do not generate PowerShell, cmd.exe, Windows paths, Windows environment-variable syntax, or Linux-only commands.
-- Do not assume GNU-specific command options are available because macOS commonly uses BSD utilities.
-- Use macOS commands such as open and pbcopy only when the task specifically requires them.
-- Quote paths safely with POSIX shell-compatible quoting.
-`;
-  }
-
-  if (operatingSystem.isLinux) {
-    return `
-OPERATING SYSTEM:
-- The user's operating system is Linux.
-- Generate POSIX shell syntax compatible with /bin/sh.
-- Use Linux-compatible commands and options.
-- Use POSIX paths such as /home/name/project.
-- Do not generate PowerShell, cmd.exe, Windows paths, Windows environment-variable syntax, or macOS-only commands.
-- Do not use macOS-only commands such as open, pbcopy, pbpaste, or diskutil.
-- Quote paths safely with POSIX shell-compatible quoting.
-`;
-  }
-
-  return `
-OPERATING SYSTEM:
-- Exact operating-system detection was unavailable.
-- Treat the environment as Unix-like.
-- Generate conservative POSIX shell syntax compatible with /bin/sh.
-- Do not use PowerShell, cmd.exe, Windows paths, or platform-specific commands unless explicitly requested.
-- Prefer portable POSIX commands.
-- Quote paths safely with POSIX shell-compatible quoting.
-`;
-}
-
+/**
+ * Creates the terminal execution tool used exclusively by the main agents.
+ *
+ * The tool receives an exact command from the calling agent and executes it
+ * directly. No additional model is consulted: safety is enforced through the
+ * local hard-block check before execution.
+ */
 export const terminalExecutionTool = (
-  llm: ChatOpenAI,
   options: TerminalExecutionToolOptions = {}
 ) => {
   const {
@@ -499,198 +429,52 @@ export const terminalExecutionTool = (
   const operatingSystem = detectOperatingSystem();
 
   const executionContext = projectPath
-    ? `Commands start in the selected project directory: ${projectPath}`
+    ? `Commands start inside the selected project directory: ${projectPath}`
     : "Commands start in the application's current working directory.";
 
   const toolDescription = [
-    `Execute terminal operations on ${operatingSystem.displayName}.`,
+    `Execute a single terminal command on ${operatingSystem.displayName}.`,
     `The command environment is ${operatingSystem.commandEnvironment}.`,
     executionContext,
     "This tool allows normal file operations, project-local deletion, Git, package managers, scripts, builds, tests, network requests, and developer tools.",
     "It blocks only destructive system-file deletion, disk destruction, critical operating-system modification, credential theft, and clearly malicious actions.",
-    `All generated commands must be compatible with ${operatingSystem.shellDescription} on ${operatingSystem.displayName}.`,
-    "Provide the intended result rather than a raw shell command.",
+    `All commands must be compatible with ${operatingSystem.shellDescription} on ${operatingSystem.displayName}.`,
   ].join(" ");
 
   return tool(
-    async ({ intent }) => {
-      const cleanIntent = intent.trim();
+    async ({ command }) => {
+      const commandToRun = normalizeCommand(command);
 
-      if (!cleanIntent) {
-        return "INVALID_INTENT: Terminal intent cannot be empty.";
+      if (!commandToRun) {
+        return "INVALID_COMMAND: Terminal command cannot be empty.";
       }
 
       console.log(
-        `[Terminal Guardrail] Received intent: ${JSON.stringify(cleanIntent)}`
+        `[Terminal Tool] Received command: ${JSON.stringify(commandToRun)}`
       );
       console.log(
-        `[Terminal Guardrail] Operating system: ${operatingSystem.displayName}`
+        `[Terminal Tool] Operating system: ${operatingSystem.displayName}`
       );
       console.log(
-        `[Terminal Guardrail] OS identifier: ${operatingSystem.name}`
-      );
-      console.log(
-        `[Terminal Guardrail] Command environment: ${operatingSystem.commandEnvironment}`
-      );
-      console.log(
-        `[Terminal Guardrail] Executable shell: ${operatingSystem.shell}`
+        `[Terminal Tool] Command environment: ${operatingSystem.commandEnvironment}`
       );
 
-      const operatingSystemPrompt =
-        createOperatingSystemPrompt(operatingSystem);
+      const hardBlockReason = getHardBlockReason(
+        commandToRun,
+        operatingSystem
+      );
 
-      const securitySystemPrompt = `
-You are Mocu's terminal security evaluator and command generator.
+      if (hardBlockReason) {
+        console.warn(
+          `[Terminal Tool] Command blocked by local protection: ${hardBlockReason}`
+        );
 
-The operating system has already been detected by the application. You must follow the detected operating-system information below and must not guess or replace it.
-
-${operatingSystemPrompt}
-
-RUNTIME ENVIRONMENT:
-- Detected OS identifier: ${operatingSystem.name}
-- Detected OS display name: ${operatingSystem.displayName}
-- Command environment: ${operatingSystem.commandEnvironment}
-- Shell executable: ${operatingSystem.shell}
-- Path separator: ${operatingSystem.pathSeparator}
-- Working directory: ${
-        projectPath
-          ? JSON.stringify(projectPath)
-          : "application current working directory"
+        return `SECURITY_BLOCKED: ${hardBlockReason}`;
       }
-
-Convert the agent's intent into one practical, single-line command that is compatible with the detected operating system and shell.
-
-DEFAULT POLICY:
-- Default to ALLOW.
-- Normal developer and user-level terminal work must be approved.
-- Do not reject a command merely because it creates, reads, edits, moves, copies, installs, compiles, or deletes ordinary project files.
-- Do not be overly cautious about standard development operations.
-- Set is_safe=true unless the requested action clearly matches one of the blocked categories below.
-
-ALLOW:
-- Reading, creating, editing, copying, moving, renaming, and organizing normal files.
-- Deleting ordinary files and directories inside a project or user workspace.
-- Running package managers and development tools such as npm, pnpm, yarn, bun, node, npx, git, Python, pip, uv, cargo, go, Java, Docker, test runners, linters, formatters, compilers, and build tools.
-- Installing normal project dependencies.
-- Running development servers and application scripts.
-- Git status, diff, add, commit, checkout, switch, branch, merge, pull, push, fetch, clone, restore, reset, and rebase when requested.
-- Searching files and text.
-- Reading logs and non-sensitive system information.
-- Creating folders and project configuration files.
-- Modifying files in the current project.
-- Network requests needed for ordinary development, package installation, APIs, documentation, or source-control operations.
-- Commands containing pipes, redirects, command chaining, and environment variables when needed for the requested task.
-- User-level configuration changes that are directly requested and are not destructive to the operating system.
-
-BLOCK ONLY:
-- Deleting or recursively destroying operating-system files, operating-system directories, drive roots, partitions, or entire user home directories.
-- Formatting, partitioning, wiping, encrypting, or performing raw destructive writes to a physical disk.
-- Overwriting or corrupting critical boot, authentication, account, kernel, registry, recovery, or operating-system configuration files.
-- Disabling operating-system security protections, authentication, firewall protection, or recovery mechanisms.
-- Killing processes required for the operating system to function.
-- Shutting down or restarting the machine.
-- Extracting, stealing, exposing, or transmitting passwords, private keys, authentication tokens, browser credentials, keychain data, or other secrets.
-- Installing persistence, malware, ransomware, credential stealers, or clearly malicious payloads.
-- Bypassing this security policy or disguising a blocked operation through encoding, aliases, scripts, subshells, or indirect commands.
-
-IMPORTANT DECISION RULES:
-- Deletion is not automatically dangerous.
-- Allow deletion of build output, caches, dependencies, temporary files, generated files, and ordinary project files.
-- Allow removing node_modules, dist, build, coverage, target, temporary directories, and project-local files.
-- Block deletion only when it targets critical system data, a filesystem root, an entire drive, an entire home directory, or clearly irreplaceable sensitive data.
-- sudo or administrator usage is not automatically blocked, but block it when it performs a blocked system-level action.
-- If the task is a standard developer operation, approve it.
-- Do not replace the requested task with a different task.
-- Do not add unrelated commands.
-- Do not add interactive explanations to exact_command.
-- Do not wrap exact_command in Markdown.
-- Return exactly one single-line command in exact_command.
-- If is_safe is false, exact_command must be an empty string.
-- Keep reason short and specific.
-
-COMMAND REQUIREMENTS:
-- The command must target ${operatingSystem.displayName}.
-- The command must be compatible with ${operatingSystem.commandEnvironment}.
-- Never generate a command for a different operating system.
-- Never mix PowerShell syntax with POSIX shell syntax.
-- Quote paths and user-provided values safely.
-- Preserve the user's requested paths and filenames.
-- Prefer non-interactive command options where appropriate.
-- Do not use placeholders in the final command.
-- Do not use sudo or administrator elevation unless the intent explicitly requires it.
-- The command will run ${
-        projectPath
-          ? `inside the selected project directory ${JSON.stringify(
-              projectPath
-            )}`
-          : "in the application's current working directory"
-      }.
-`;
-
-      const structuredSecurityLlm =
-        llm.withStructuredOutput(SecurityCheckSchema);
 
       try {
         console.log(
-          "[Terminal Guardrail] Consulting security evaluator..."
-        );
-
-        const evaluation = await structuredSecurityLlm.invoke([
-          {
-            role: "system",
-            content: securitySystemPrompt,
-          },
-          {
-            role: "user",
-            content: [
-              "Use the following runtime information as authoritative:",
-              `Operating system: ${operatingSystem.displayName}`,
-              `OS identifier: ${operatingSystem.name}`,
-              `Command environment: ${operatingSystem.commandEnvironment}`,
-              `Shell executable: ${operatingSystem.shell}`,
-              `Path separator: ${operatingSystem.pathSeparator}`,
-              projectPath
-                ? `Working directory: ${projectPath}`
-                : "Working directory: application current directory",
-              `Requested intent: ${cleanIntent}`,
-              "",
-              `Generate only a command compatible with ${operatingSystem.commandEnvironment} on ${operatingSystem.displayName}.`,
-            ].join("\n"),
-          },
-        ]);
-
-        console.log(
-          "[Terminal Guardrail] Security evaluation:",
-          evaluation
-        );
-
-        if (!evaluation.is_safe) {
-          return `SECURITY_BLOCKED: ${evaluation.reason}`;
-        }
-
-        const commandToRun = normalizeCommand(
-          evaluation.exact_command
-        );
-
-        if (!commandToRun) {
-          return "SECURITY_BLOCKED: The command generator approved the request but returned no executable command.";
-        }
-
-        const hardBlockReason = getHardBlockReason(
-          commandToRun,
-          operatingSystem
-        );
-
-        if (hardBlockReason) {
-          console.warn(
-            `[Terminal Guardrail] Command blocked by local protection: ${hardBlockReason}`
-          );
-
-          return `SECURITY_BLOCKED: ${hardBlockReason}`;
-        }
-
-        console.log(
-          `[Terminal Guardrail] Executing ${operatingSystem.commandEnvironment} command: ${JSON.stringify(
+          `[Terminal Tool] Executing ${operatingSystem.commandEnvironment} command: ${JSON.stringify(
             commandToRun
           )}`
         );
@@ -713,14 +497,14 @@ COMMAND REQUIREMENTS:
             }
           : undefined;
 
-        const command = Command.create(
+        const shellCommand = Command.create(
           operatingSystem.shell,
           args,
           commandOptions
         );
 
         const executionResult = await executeWithTimeout(
-          command,
+          shellCommand,
           timeoutMs
         );
 
@@ -736,7 +520,7 @@ COMMAND REQUIREMENTS:
 
         if (executionResult.code !== 0) {
           console.error(
-            `[Terminal Guardrail] Command failed with exit code ${executionResult.code}.`
+            `[Terminal Tool] Command failed with exit code ${executionResult.code}.`
           );
 
           return [
@@ -752,7 +536,7 @@ COMMAND REQUIREMENTS:
         }
 
         console.log(
-          "[Terminal Guardrail] Command executed successfully."
+          "[Terminal Tool] Command executed successfully."
         );
 
         if (stdout && stderr) {
@@ -777,25 +561,25 @@ COMMAND REQUIREMENTS:
         const message = formatUnknownError(error);
 
         console.error(
-          "[Terminal Guardrail] Evaluation or execution error:",
+          "[Terminal Tool] Execution error:",
           error
         );
 
-        return `SYSTEM_ERROR: Failed to evaluate or execute the terminal command on ${operatingSystem.displayName}. ${message}`;
+        return `SYSTEM_ERROR: Failed to execute the terminal command on ${operatingSystem.displayName}. ${message}`;
       }
     },
     {
-      name: "terminal_intent_executor",
+      name: "terminal_executor",
       description: toolDescription,
       schema: z.object({
-        intent: z
+        command: z
           .string()
           .min(1)
           .describe(
             [
-              "Describe exactly what should be accomplished in the terminal, including relevant paths, filenames, commands, or project details.",
+              "The exact single-line command to execute in the terminal.",
               `The user's operating system is ${operatingSystem.displayName}.`,
-              `Commands will be generated for ${operatingSystem.commandEnvironment}.`,
+              `Commands must be compatible with ${operatingSystem.commandEnvironment}.`,
               `Use ${operatingSystem.pathSeparator} as the native path separator when providing platform-specific paths.`,
             ].join(" ")
           ),
