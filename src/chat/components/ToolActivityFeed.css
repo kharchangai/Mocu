@@ -1,0 +1,170 @@
+/* src/chat/components/ToolActivityFeed.css */
+
+/* =========================================================
+   Tool activity feed (collapsible tool boxes in chat)
+   Minimal, compact style: tiny status icon, small text.
+   ========================================================= */
+
+.tool-activity-feed {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  max-width: 640px;
+  padding: 2px 0 6px;
+}
+
+.tool-activity-card {
+  overflow: hidden;
+  border: 1px solid #eceae5;
+  border-radius: 8px;
+  background: #faf9f7;
+}
+
+/* ---------------- Header (always visible) ---------------- */
+
+.tool-activity-card__header {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  width: 100%;
+  padding: 5px 9px;
+  border: none;
+  background: transparent;
+  cursor: pointer;
+  text-align: left;
+  font-family: inherit;
+  transition: background-color 0.15s ease;
+}
+
+.tool-activity-card__header:hover {
+  background: rgb(236 234 229 / 45%);
+}
+
+.tool-activity-card__header:focus-visible {
+  outline: 1.5px solid #c96343;
+  outline-offset: -1.5px;
+}
+
+/* Tiny status icon: spinner while running, check/cross when done */
+.tool-activity-card__status {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  width: 14px;
+  height: 14px;
+  color: var(--tool-accent, #c96343);
+  background: transparent;
+}
+
+.tool-activity-card__spinner {
+  width: 10px;
+  height: 10px;
+  border: 1.5px solid rgb(201 99 67 / 25%);
+  border-top-color: var(--tool-accent, #c96343);
+  border-radius: 50%;
+  animation: tool-activity-spin 0.8s linear infinite;
+}
+
+@keyframes tool-activity-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.tool-activity-card__status--done {
+  color: #4d8f5a;
+}
+
+.tool-activity-card__status--error {
+  color: #c04c3d;
+}
+
+.tool-activity-card__label {
+  flex-shrink: 0;
+  color: #4b4944;
+  font-size: 11.5px;
+  font-weight: 500;
+  line-height: 1.3;
+  white-space: nowrap;
+}
+
+.tool-activity-card__preview {
+  flex: 1;
+  overflow: hidden;
+  color: #9b978e;
+  font-size: 11px;
+  line-height: 1.3;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  direction: ltr;
+}
+
+/* Rotating arrow (plain, no box) */
+.tool-activity-card__chevron {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  width: 14px;
+  height: 14px;
+  margin-left: auto;
+  color: #9b978e;
+  transition:
+    transform 0.2s ease,
+    color 0.15s ease;
+}
+
+.tool-activity-card__chevron--open {
+  color: #c96343;
+  transform: rotate(90deg);
+}
+
+/* ---------------- Expandable body ---------------- */
+
+.tool-activity-card__body {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 7px 9px 9px;
+  border-top: 1px solid #eceae5;
+  animation: tool-activity-expand 0.18s ease;
+}
+
+@keyframes tool-activity-expand {
+  from {
+    opacity: 0;
+    transform: translateY(-3px);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.tool-activity-card__section-title {
+  color: #9b978e;
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.tool-activity-card__code {
+  max-height: 180px;
+  margin: 0;
+  padding: 7px 9px;
+  overflow: auto;
+  border-radius: 6px;
+  color: #4b4944;
+  background: #f2f0ec;
+  font-family: "JetBrains Mono", Consolas, "Courier New", monospace;
+  font-size: 11px;
+  line-height: 1.5;
+  white-space: pre-wrap;
+  word-break: break-word;
+  direction: ltr;
+  text-align: left;
+  box-sizing: border-box;
+}

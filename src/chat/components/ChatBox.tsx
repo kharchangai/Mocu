@@ -1,4 +1,5 @@
 import {
+  Fragment,
   useCallback,
   useEffect,
   useRef,
@@ -15,10 +16,15 @@ import { ChatInput } from './ChatInput';
 import { UserMessage } from './UserMessage';
 import { AssistantMessage } from './AssistantMessage';
 import { ChatStatusBubble } from './ChatStatusBubble';
+import { ToolActivityFeed } from './ToolActivityFeed';
+import { MemorySaveIndicator } from './MemorySaveIndicator';
 
 import { callChatAgent } from '../../services/ai/chat-agent';
 import { callProjectAgent } from '../../services/ai/project-agent';
 import { isAbortError } from '../../services/aiService';
+
+import { useToolActivity } from '../hooks/useToolActivity';
+import { useMemorySaveStatus } from '../hooks/useMemorySaveStatus';
 
 import {
   loadShortTermMemory,
@@ -91,6 +97,21 @@ export function ChatBox({
 }: ChatBoxProps) {
   const [isLoading, setIsLoading] = useState(false);
   const [draftMessage, setDraftMessage] = useState('');
+
+  /*
+   * Per-turn tool activity store: accumulates the tool boxes of the
+   * running request and attaches them to the assistant message that
+   * answers it, so they stay visible above each response.
+   */
+  const toolActivity = useToolActivity();
+
+  /*
+   * Background project-memory save status. Tracked here (always
+   * mounted) so the mind icon below the response catches the
+   * "saving" event even before the response message exists.
+   */
+  const memorySaveStatus =
+    useMemorySaveStatus();
 
   /*
    * Messages loaded from the selected project's persisted memory.
@@ -396,6 +417,12 @@ export function ChatBox({
 
     setIsLoading(true);
 
+    /*
+     * The tool boxes of this request start empty; previous requests'
+     * boxes stay attached to their own assistant messages.
+     */
+    toolActivity.beginRequest();
+
     const currentHistory =
       chatId === requestChatId
         ? messagesRef.current
@@ -530,10 +557,18 @@ export function ChatBox({
         lastAssistantMessage,
       ];
 
-      onAppendMessage(
+      const assistantMessage = onAppendMessage(
         requestChatId,
         'assistant',
         response,
+      );
+
+      /*
+       * Attach the tool boxes used for this request to the response
+       * message, so they remain visible above it.
+       */
+      toolActivity.commit(
+        assistantMessage.id,
       );
 
       /*
@@ -576,10 +611,19 @@ export function ChatBox({
         error,
       );
 
-      onAppendMessage(
-        requestChatId,
-        'assistant',
-        'Sorry, I encountered an error while processing that request.',
+      const errorMessage =
+        onAppendMessage(
+          requestChatId,
+          'assistant',
+          'Sorry, I encountered an error while processing that request.',
+        );
+
+      /*
+       * Even on failure, keep the tools that already ran attached to
+       * the error message so the user can inspect them.
+       */
+      toolActivity.commit(
+        errorMessage.id,
       );
     } finally {
       if (
@@ -621,6 +665,27 @@ export function ChatBox({
       ? messages
       : projectMemoryMessages;
 
+  /*
+   * The mind icon sits directly below the agent's latest response
+   * (rendered inside that message, above its action buttons).
+   */
+  let lastAssistantIndex = -1;
+
+  for (
+    let index = displayMessages.length - 1;
+    index >= 0;
+    index -= 1
+  ) {
+    if (
+      displayMessages[index].role ===
+      'assistant'
+    ) {
+      lastAssistantIndex = index;
+
+      break;
+    }
+  }
+
   return (
     <section
       className="chat-box"
@@ -633,7 +698,7 @@ export function ChatBox({
         >
           <div className="chat-box-messages-inner">
             {displayMessages.map(
-              (message) =>
+              (message, messageIndex) =>
                 message.role === 'user' ? (
                   <UserMessage
                     key={message.id}
@@ -645,12 +710,56 @@ export function ChatBox({
                     }
                   />
                 ) : (
-                  <AssistantMessage
+                  <Fragment
                     key={message.id}
-                    content={message.content}
-                  />
+                  >
+                    {/*
+                      * Tool boxes of this turn: shown below the user's
+                      * message and above this response, and they stay
+                      * there after the answer arrives.
+                      */}
+                    <ToolActivityFeed
+                      activities={toolActivity.getForMessage(
+                        message.id,
+                      )}
+                    />
+
+                    <AssistantMessage
+                      content={
+                        message.content
+                      }
+                      footer={
+                        messageIndex ===
+                        lastAssistantIndex ? (
+                          /*
+                           * Small mind icon directly below the response
+                           * text: blinks while the background memory
+                           * save runs and stands still once complete.
+                           */
+                          <MemorySaveIndicator
+                            status={
+                              memorySaveStatus
+                            }
+                          />
+                        ) : undefined
+                      }
+                    />
+                  </Fragment>
                 ),
             )}
+
+            {/*
+              * Live tool boxes of the request that is currently
+              * running. Once the response arrives they are committed
+              * to that message and move above it.
+              */}
+            {isLoading ? (
+              <ToolActivityFeed
+                activities={
+                  toolActivity.pendingActivities
+                }
+              />
+            ) : null}
 
             {isLoading ? (
               <ChatStatusBubble

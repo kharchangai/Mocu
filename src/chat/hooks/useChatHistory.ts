@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { loadChats, saveChats } from '../storage/chat-storage';
 import {
+  deleteProjectConversationFile,
   getProjectHistoryFilePath,
   loadProjectConversationFile,
   normalizeHistoryFilePath,
@@ -426,15 +427,31 @@ export function useChatHistory() {
 
   const deleteChat = useCallback(
     (chatId: string) => {
+      /*
+       * Resolve the conversation before removing it from state so a
+       * project chat can also delete its persisted history file.
+       */
+      const deletedChat = chats.find((chat) => chat.id === chatId);
+
       setChats((currentChats) =>
         currentChats.filter((chat) => chat.id !== chatId),
       );
+
+      /*
+       * A project chat owns a persisted conversation file in the
+       * project's .mocu/memory directory. Deleting the chat must
+       * remove that file too, otherwise the conversation would be
+       * loaded back the next time the project is opened.
+       */
+      if (deletedChat?.projectPath) {
+        void deleteProjectConversationFile(deletedChat.projectPath);
+      }
 
       if (activeChatId === chatId) {
         setActiveChatId(null);
       }
     },
-    [activeChatId],
+    [activeChatId, chats],
   );
 
   const clearAllChats = useCallback(() => {

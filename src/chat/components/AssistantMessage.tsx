@@ -3,6 +3,7 @@ import {
   useRef,
   useState,
 } from "react";
+import type { ReactNode } from "react";
 
 import { MarkdownRenderer } from "./markdown";
 
@@ -10,6 +11,12 @@ import "./AssistantMessage.css";
 
 type AssistantMessageProps = {
   content: string;
+
+  /*
+   * Optional content rendered directly below the response text and
+   * above the action buttons (e.g. the memory save mind icon).
+   */
+  footer?: ReactNode;
 };
 
 function CopyIcon() {
@@ -77,6 +84,7 @@ function RetryIcon() {
 
 export function AssistantMessage({
   content,
+  footer,
 }: AssistantMessageProps) {
   const [isCopied, setIsCopied] =
     useState(false);
@@ -136,6 +144,8 @@ export function AssistantMessage({
           direction="auto"
         />
       </div>
+
+      {footer}
 
       <div
         className="assistant-message__actions"

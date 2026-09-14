@@ -23,6 +23,10 @@ import {
 } from "./agent/helpers";
 
 import {
+  dispatchAgentToolActivity,
+} from "../../chat/services/toolActivity";
+
+import {
   getLongTermMemoryContextForAgent,
   getShortMemoryContextForAgent,
   processMessageMemoryInBackground,
@@ -779,6 +783,18 @@ const executeToolCall =
       toolName,
     );
 
+    /*
+     * The chat activity feed shows a collapsible box per tool call,
+     * so it receives the arguments up front and the result afterwards.
+     * (The avatar keeps using the simple mocu_activity event above.)
+     */
+    dispatchAgentToolActivity({
+      id: toolCallId,
+      tool: toolName,
+      args: toolArgs,
+      status: "running",
+    });
+
     let toolResult =
       "";
 
@@ -824,6 +840,18 @@ const executeToolCall =
     const normalizedToolResult =
       toolResult ||
       CHAT_EMPTY_TOOL_RESULT;
+
+    dispatchAgentToolActivity({
+      id: toolCallId,
+      tool: toolName,
+      args: toolArgs,
+      result: normalizedToolResult,
+      status:
+        normalizedToolResult ===
+        CHAT_TOOL_FAILURE_RESULT
+          ? "error"
+          : "done",
+    });
 
     return {
       toolMessage:

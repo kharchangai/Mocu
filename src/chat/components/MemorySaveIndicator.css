@@ -1,0 +1,58 @@
+/* src/chat/components/MemorySaveIndicator.css */
+
+/* =========================================================
+   Memory save indicator (small mind icon)
+   Blinks while the background memory save runs, stands
+   still once the save is complete.
+   ========================================================= */
+
+.memory-save-indicator {
+  display: flex;
+  align-items: center;
+  width: fit-content;
+  margin: 1px 0 0;
+  padding: 2px 0;
+}
+
+.memory-save-indicator__icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  color: #9b978e;
+  transition: color 0.25s ease;
+}
+
+/* Saving: soft blink */
+.memory-save-indicator--saving
+  .memory-save-indicator__icon {
+  color: #c96343;
+  animation: memory-save-blink 1.2s ease-in-out infinite;
+}
+
+/* Completed: calm, solid, subtle green */
+.memory-save-indicator--done
+  .memory-save-indicator__icon {
+  color: #4d8f5a;
+  animation: none;
+}
+
+/* Failed: muted red */
+.memory-save-indicator--error
+  .memory-save-indicator__icon {
+  color: #c04c3d;
+  animation: none;
+}
+
+@keyframes memory-save-blink {
+  0%,
+  100% {
+    opacity: 1;
+  }
+
+  50% {
+    opacity: 0.25;
+  }
+}

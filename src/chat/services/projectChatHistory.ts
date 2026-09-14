@@ -4,6 +4,7 @@ import {
   exists,
   mkdir,
   readTextFile,
+  remove,
   writeTextFile,
 } from '@tauri-apps/plugin-fs';
 
@@ -302,6 +303,53 @@ const exchangesToMessages = (
     },
   ]);
 };
+
+/**
+ * Deletes the persisted conversation files for a project folder.
+ *
+ * Removes chat.json together with the legacy short.json so the
+ * conversation can never be migrated back after deletion. Fails
+ * silently (with a log entry) when the files do not exist.
+ */
+export async function deleteProjectConversationFile(
+  projectPath: string,
+): Promise<void> {
+  const normalizedProjectPath = normalizePath(projectPath);
+
+  if (!normalizedProjectPath) {
+    return;
+  }
+
+  const filesToDelete = [
+    getProjectHistoryFilePath(normalizedProjectPath),
+    joinAbsolutePath(
+      normalizedProjectPath,
+      LEGACY_SHORT_MEMORY_FILE,
+    ),
+  ];
+
+  for (const filePath of filesToDelete) {
+    try {
+      const fileExists = await exists(filePath);
+
+      if (!fileExists) {
+        continue;
+      }
+
+      await remove(filePath);
+
+      console.log(
+        `[Project History] Deleted conversation file ${filePath}`,
+      );
+    } catch (error) {
+      console.error(
+        '[Project History] Failed to delete the conversation file:',
+        filePath,
+        error,
+      );
+    }
+  }
+}
 
 /**
  * Writes a project conversation to its history file.

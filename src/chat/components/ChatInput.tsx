@@ -73,9 +73,6 @@ export function ChatInput({
 }: ChatInputProps) {
   const textareaRef = useRef<HTMLTextAreaElement | null>(null);
 
-  const [isProjectPanelOpen, setIsProjectPanelOpen] =
-    useState(false);
-
   const [availableSkills, setAvailableSkills] = useState<
     AvailableSkill[]
   >([]);
@@ -317,6 +314,14 @@ export function ChatInput({
     event: React.ChangeEvent<HTMLInputElement>,
   ) => {
     onProjectPathChange(event.target.value);
+  };
+
+  const handleChooseFolder = async () => {
+    if (!onChooseProjectFolder) {
+      return;
+    }
+
+    await onChooseProjectFolder();
   };
 
   /*
@@ -563,14 +568,6 @@ export function ChatInput({
     }
   };
 
-  const handleChooseFolder = async () => {
-    if (!onChooseProjectFolder) {
-      return;
-    }
-
-    await onChooseProjectFolder();
-  };
-
   const loadSuffix =
     commandMenuMode === 'extensions'
       ? {
@@ -585,90 +582,23 @@ export function ChatInput({
   return (
     <div className="chat-input-shell">
       <div className="chat-input-inner">
-        <div className="project-folder-section">
-          <button
-            type="button"
-            className={`project-folder-trigger ${
-              hasProjectPath
-                ? 'project-folder-trigger--active'
-                : ''
-            }`}
-            onClick={() =>
-              setIsProjectPanelOpen((current) => !current)
-            }
-            aria-expanded={isProjectPanelOpen}
-          >
-            <FolderOpen size={16} />
+        {hasProjectPath && (
+          <div className="project-path-bar">
+            <FolderOpen size={13} />
 
-            <span>
-              {hasProjectPath
-                ? 'Project folder connected'
-                : 'Project folder'}
-            </span>
-
-            <span className="project-folder-optional">
-              Optional
-            </span>
-          </button>
-
-          {isProjectPanelOpen && (
-            <div className="project-folder-panel">
-              <div className="project-folder-panel-header">
-                <div>
-                  <h3>Project workspace</h3>
-
-                  <p>
-                    Mocu can use this folder for project files,
-                    chat memory, and project-related data.
-                  </p>
-                </div>
-
-                <button
-                  type="button"
-                  className="project-folder-close-button"
-                  onClick={() => setIsProjectPanelOpen(false)}
-                  aria-label="Close project folder panel"
-                >
-                  <X size={16} />
-                </button>
-              </div>
-
-              <div className="project-folder-controls">
-                <input
-                  type="text"
-                  value={safeProjectPath}
-                  onChange={handleProjectPathChange}
-                  placeholder="Select or enter a project folder path..."
-                  aria-label="Project folder path"
-                />
-
-                <button
-                  type="button"
-                  className="choose-folder-button"
-                  onClick={() => void handleChooseFolder()}
-                >
-                  <FolderOpen size={16} />
-                  Choose folder
-                </button>
-              </div>
-
-              {hasProjectPath && (
-                <>
-                  <p className="selected-project-path">
-                    {safeProjectPath}
-                  </p>
-
-                  <p className="project-folder-save-hint">
-                    Chats with this folder are saved under Projects
-                    in the sidebar.
-                  </p>
-                </>
-              )}
-            </div>
-          )}
-        </div>
+            <input
+              type="text"
+              value={safeProjectPath}
+              onChange={handleProjectPathChange}
+              placeholder="Project folder path..."
+              aria-label="Project folder path"
+              title={safeProjectPath}
+            />
+          </div>
+        )}
 
         <div className="chat-composer">
+
           {isCommandMenuOpen && (
             <CommandMenu
               mode={commandMenuMode ?? 'commands'}
@@ -773,6 +703,16 @@ export function ChatInput({
 
           <div className="chat-composer-footer">
             <div className="chat-composer-left-actions">
+              <button
+                type="button"
+                className="composer-icon-button"
+                onClick={() => void handleChooseFolder()}
+                aria-label="Choose a project folder"
+                title="Choose a project folder"
+              >
+                <FolderOpen size={17} />
+              </button>
+
               <button
                 type="button"
                 className="composer-icon-button"
