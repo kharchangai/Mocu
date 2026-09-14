@@ -14,15 +14,19 @@
       {
         "label": "main",
         "title": "mocu",
-        "width": 250,
-        "height": 250,
-        "minWidth": 250,
-        "minHeight": 250,
-        "decorations": false,
-        "transparent": true,
-        "alwaysOnTop": true,
-        "resizable": false,
-        "shadow": false
+        "width": 1100,
+        "height": 760,
+        "minWidth": 720,
+        "minHeight": 520,
+        "maximized": true,
+        "decorations": true,
+        "transparent": false,
+        "backgroundColor": "#ffffff",
+        "alwaysOnTop": false,
+        "resizable": true,
+        "shadow": true,
+        "visible": true,
+        "center": true
       }
     ],
     "security": {

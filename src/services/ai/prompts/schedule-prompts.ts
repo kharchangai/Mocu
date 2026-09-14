@@ -33,7 +33,7 @@ User Query: "{query}"
 Analyze the query and history carefully:
 1. If the user wants to set, create, make, or schedule a new timer, reminder, alarm, or plan, select "CREATE".
 2. If the user wants to check, read, view, or ask what plans/timers they have, select "READ".
-3. If the user wants to cancel, delete, or remove a timer or plan (e.g., "اون برنامه رو کنسل کن"), select "DELETE".
+3. If the user wants to cancel, delete, or remove a timer or plan (e.g., "cancel that program"), select "DELETE".
    - To DELETE, look at the recent chat history to find the ID, type (TIMER or PLANNER), and date of the schedule they want to delete.
 
 You must output a JSON matching the requested schema.

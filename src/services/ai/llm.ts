@@ -8,6 +8,12 @@ type LlmTierConfig = {
   model: string;
 };
 
+export type LlmGenerationOptions = {
+  systemPrompt?: string;
+  temperature?: number;
+  maxTokens?: number;
+};
+
 function normalizeBaseUrl(baseUrl: string): string | undefined {
   const normalized = baseUrl.trim().replace(/\/+$/, "");
 
@@ -41,6 +47,7 @@ function getTierConfig(
 
 export const getAsyncLLM = async (
   tier: LlmTier = "medium",
+  options: LlmGenerationOptions = {},
 ): Promise<ChatOpenAI> => {
   const config = await readSettings();
 
@@ -62,9 +69,14 @@ export const getAsyncLLM = async (
   return new ChatOpenAI({
     apiKey,
     model: selectedModel.model.trim(),
+    ...(options.temperature === undefined
+      ? {}
+      : { temperature: options.temperature }),
+    ...(options.maxTokens === undefined
+      ? {}
+      : { maxTokens: options.maxTokens }),
     configuration: {
       baseURL: normalizeBaseUrl(selectedModel.baseUrl),
     },
-    dangerouslyAllowBrowser: true,
   });
 };

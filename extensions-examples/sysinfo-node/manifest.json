@@ -1,0 +1,15 @@
+{
+  "id": "sysinfo-node",
+  "name": "System Info Node Extension",
+  "description": "Minimal Node.js/SDK text extension that returns host OS name, version and related system details.",
+  "version": "0.1.0",
+  "runtime": "node",
+  "entry": "index.js",
+  "commands": [
+    {
+      "id": "sysinfo",
+      "title": "Get system information",
+      "description": "Returns OS name, version, architecture, memory, CPU and uptime."
+    }
+  ]
+}

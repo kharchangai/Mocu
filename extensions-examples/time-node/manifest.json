@@ -1,0 +1,15 @@
+{
+  "id": "time-node",
+  "name": "Time Node Extension",
+  "description": "Minimal Node.js/SDK text extension that returns the current time and the command response time.",
+  "version": "0.1.0",
+  "runtime": "node",
+  "entry": "index.js",
+  "commands": [
+    {
+      "id": "time",
+      "title": "Get current time",
+      "description": "Returns the current date/time and the response time in milliseconds."
+    }
+  ]
+}

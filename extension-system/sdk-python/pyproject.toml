@@ -1,0 +1,17 @@
+[build-system]
+requires = ["setuptools>=70"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "mocu-extension-sdk"
+version = "0.1.0"
+description = "Official Python SDK for Mocu extensions."
+requires-python = ">=3.10"
+authors = [
+    { name = "Mocu" }
+]
+license = { text = "MIT" }
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["mocu_extension_sdk*"]

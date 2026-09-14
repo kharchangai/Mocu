@@ -1,8 +1,0 @@
-{
-  "name": "meko-pi-sidecar",
-  "private": true,
-  "type": "module",
-  "dependencies": {
-    "@earendil-works/pi-coding-agent": "latest"
-  }
-}

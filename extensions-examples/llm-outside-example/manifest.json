@@ -1,0 +1,15 @@
+{
+  "id": "llm-outside-example",
+  "name": "LLM Outside Example",
+  "description": "Demonstrates calling extension.llm.generate() from a helper function, not directly inside the command handler.",
+  "version": "0.1.0",
+  "runtime": "node",
+  "entry": "index.js",
+  "commands": [
+    {
+      "id": "ask",
+      "title": "Ask a question",
+      "description": "Sends a question to the Mocu LLM via a separate helper function."
+    }
+  ]
+}

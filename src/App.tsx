@@ -3,10 +3,9 @@ import { useEffect, useRef, useState } from 'react';
 import { listen } from '@tauri-apps/api/event';
 
 import { Mocu, MocuState } from './components/Mocu';
-import { Settings } from './components/Settings';
-import {
-  TranscriptSpeaker,
-} from './components/MocuTranscript';
+import { CUBE_SIZE } from './components/Mocu';
+import ChatPage from './chat/ChatPage';
+import { TranscriptSpeaker } from './components/MocuTranscript';
 
 import {
   generateSpeech,
@@ -17,9 +16,11 @@ import {
 import { chatWithMocu } from './services/ai/index';
 import { useScheduleTrigger } from './hooks/useScheduleTrigger';
 import { useMocuWindowSize } from './hooks/useMocuWindowSize';
+import { useMocuClickThrough } from './hooks/useMocuClickThrough';
 
-// test
-import {runTest} from './test'
+import { runTest } from './test';
+
+import { startExtensionHost } from './extensions/services/host-service';
 
 type ActivityEvent = {
   text: string;
@@ -35,61 +36,87 @@ const MAIN_WINDOW_WIDTH = 250;
 const MAIN_WINDOW_BASE_HEIGHT = 320;
 const TRANSCRIPT_EXTRA_HEIGHT = 170;
 
+function getCurrentRouteHash(): string {
+  return window.location.hash;
+}
+
 function App() {
-  const [mocuState, setMocuState] =
-    useState<MocuState>('idle');
+  const [routeHash, setRouteHash] = useState(getCurrentRouteHash);
 
-  const [, setCurrentActivity] =
-    useState<string | null>(null);
+  const [mocuState, setMocuState] = useState<MocuState>('idle');
+  const [, setCurrentActivity] = useState<string | null>(null);
 
-  const [transcriptText, setTranscriptText] =
-    useState('');
-
+  const [transcriptText, setTranscriptText] = useState('');
   const [transcriptSpeaker, setTranscriptSpeaker] =
     useState<TranscriptSpeaker>('mocu');
 
-  const mediaRecorderRef =
-    useRef<MediaRecorder | null>(null);
-
+  const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const audioChunksRef = useRef<Blob[]>([]);
-
   const typingTimeoutRef =
     useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  const currentAudioRef =
-    useRef<HTMLAudioElement | null>(null);
+  const currentAudioRef = useRef<HTMLAudioElement | null>(null);
+  const currentAudioUrlRef = useRef<string | null>(null);
 
-  const currentAudioUrlRef =
-    useRef<string | null>(null);
-
-  /*
-   * This controller belongs to the currently active AI pipeline.
-   *
-   * Calling abort() physically cancels browser fetch requests that
-   * receive its signal, including STT, LLM, and TTS requests.
-   */
-  const abortControllerRef =
-    useRef<AbortController | null>(null);
-
-  /*
-   * Every new pipeline receives an ID.
-   *
-   * The ID is still needed even with AbortController because:
-   * - microphone permission cannot be aborted directly;
-   * - a backend may ignore cancellation;
-   * - late callbacks or results must never update the UI.
-   */
+  const abortControllerRef = useRef<AbortController | null>(null);
   const pipelineIdRef = useRef(0);
 
-  const isSettingsWindow =
-    window.location.hash === '#settings';
+  const hasRunAtomicMemoryTestRef = useRef(false);
+
+  /*
+   * The Mocu avatar (cube) lives in its own small overlay window
+   * with the `#mocu` hash.
+   *
+   * The main window is the chat window now: it is the default route
+   * and the first thing the user sees when the app starts. The cube
+   * window is created hidden and revealed by the mini cube button in
+   * the chat page (see toggle_mocu). Settings are rendered inside
+   * the chat page, so there is no separate settings route anymore.
+   */
+  const isMocuWindow = routeHash === '#mocu';
+  const isChatWindow = !isMocuWindow;
 
   const { resizeWindow } = useMocuWindowSize({
     width: MAIN_WINDOW_WIDTH,
     baseHeight: MAIN_WINDOW_BASE_HEIGHT,
     transcriptExtraHeight: TRANSCRIPT_EXTRA_HEIGHT,
-    disabled: isSettingsWindow,
+    disabled: !isMocuWindow,
   });
+
+  /*
+   * The Mocu window is transparent, but a transparent window still
+   * hit-tests as a solid rectangle at the OS level. This hook keeps
+   * the window click-through by default and only enables mouse input
+   * over the cube (and the transcript while it is visible), so the
+   * user can interact with items behind the window.
+   *
+   * Cube geometry: the cube is centered inside a container of
+   * MAIN_WINDOW_BASE_HEIGHT height anchored at the top of the window.
+   */
+  useMocuClickThrough({
+    width: MAIN_WINDOW_WIDTH,
+    baseHeight: MAIN_WINDOW_BASE_HEIGHT,
+    transcriptExtraHeight: TRANSCRIPT_EXTRA_HEIGHT,
+    cubeLeft: (MAIN_WINDOW_WIDTH - CUBE_SIZE) / 2,
+    cubeTop: (MAIN_WINDOW_BASE_HEIGHT - CUBE_SIZE) / 2,
+    cubeSize: CUBE_SIZE,
+    transcriptVisible: transcriptText.trim().length > 0,
+    disabled: !isMocuWindow,
+  });
+
+  useEffect(() => {
+    const syncRoute = () => {
+      setRouteHash(getCurrentRouteHash());
+    };
+
+    window.addEventListener('hashchange', syncRoute);
+    window.addEventListener('tauri://navigate', syncRoute);
+
+    return () => {
+      window.removeEventListener('hashchange', syncRoute);
+      window.removeEventListener('tauri://navigate', syncRoute);
+    };
+  }, []);
 
   const stopCurrentAudio = () => {
     const currentAudio = currentAudioRef.current;
@@ -120,9 +147,6 @@ function App() {
   };
 
   const createNewPipeline = () => {
-    /*
-     * A new operation always cancels the previous network pipeline.
-     */
     abortActivePipeline();
 
     const pipelineId = pipelineIdRef.current + 1;
@@ -144,41 +168,21 @@ function App() {
     };
 
     window.dispatchEvent(
-      new CustomEvent<MocuInterruptEvent>(
-        'mocu-interrupt',
-        { detail },
-      ),
+      new CustomEvent<MocuInterruptEvent>('mocu-interrupt', {
+        detail,
+      }),
     );
   };
 
   const handleInterrupt = () => {
-    /*
-     * Invalidate every pending callback first.
-     */
     pipelineIdRef.current += 1;
 
-    /*
-     * Cancel STT, LLM, TTS, and every fetch request that was given
-     * the active AbortSignal.
-     */
     abortActivePipeline();
-
-    /*
-     * Stop voice playback immediately.
-     */
     stopCurrentAudio();
 
-    /*
-     * Stop microphone recording if it is active.
-     *
-     * Its onstop handler will safely exit because pipelineId changed.
-     */
     const mediaRecorder = mediaRecorderRef.current;
 
-    if (
-      mediaRecorder &&
-      mediaRecorder.state !== 'inactive'
-    ) {
+    if (mediaRecorder && mediaRecorder.state !== 'inactive') {
       mediaRecorder.stop();
     }
 
@@ -191,6 +195,7 @@ function App() {
 
     setCurrentActivity(null);
     setMocuState('idle');
+    setTranscriptText('');
 
     dispatchInterruptEvent();
   };
@@ -209,10 +214,7 @@ function App() {
       return;
     }
 
-    const speechBlob = await generateSpeech(
-      text,
-      signal,
-    );
+    const speechBlob = await generateSpeech(text, signal);
 
     if (
       pipelineId !== pipelineIdRef.current ||
@@ -281,52 +283,52 @@ function App() {
     }
   };
 
-  const hasRunAtomicMemoryTestRef = useRef(false);
-  
   useEffect(() => {
-  if (hasRunAtomicMemoryTestRef.current) {
-    return;
-  }
+    /*
+     * Start the extension host bridge once. This is what lets extensions
+     * call Mocu host methods (currently the LLM) and receive answers back
+     * through Rust.
+     */
+    const stopHost = startExtensionHost();
 
-  hasRunAtomicMemoryTestRef.current = true;
+    return stopHost;
+  }, []);
 
-  const executeTest = async () => {
+  useEffect(() => {
+    if (!isMocuWindow || hasRunAtomicMemoryTestRef.current) {
+      return;
+    }
+
+    hasRunAtomicMemoryTestRef.current = true;
+
+    const executeTest = async () => {
       try {
         await runTest();
       } catch (error) {
-        console.error(
-          '[Atomic memory test] Failed:',
-          error,
-        );
+        console.error('[Atomic memory test] Failed:', error);
       }
     };
 
     void executeTest();
-  }, []);
+  }, [isMocuWindow]);
 
   useEffect(() => {
-    if (isSettingsWindow) {
+    if (!isMocuWindow) {
       return;
     }
 
-    const transcriptIsVisible =
-      transcriptText.trim().length > 0;
+    const transcriptIsVisible = transcriptText.trim().length > 0;
 
     void resizeWindow(transcriptIsVisible);
-  }, [
-    isSettingsWindow,
-    resizeWindow,
-    transcriptText,
-  ]);
+  }, [isMocuWindow, resizeWindow, transcriptText]);
 
   useEffect(() => {
-    if (isSettingsWindow) {
+    if (!isMocuWindow) {
       return;
     }
 
     const handleActivity = (event: Event) => {
-      const customEvent =
-        event as CustomEvent<ActivityEvent>;
+      const customEvent = event as CustomEvent<ActivityEvent>;
 
       if (customEvent.detail.isRunning) {
         setCurrentActivity(customEvent.detail.text);
@@ -346,10 +348,10 @@ function App() {
         handleActivity as EventListener,
       );
     };
-  }, [isSettingsWindow]);
+  }, [isMocuWindow]);
 
   useEffect(() => {
-    if (isSettingsWindow) {
+    if (!isMocuWindow) {
       return;
     }
 
@@ -358,35 +360,32 @@ function App() {
 
     const setupListener = async () => {
       try {
-        const unlisten = await listen(
-          'user_typing',
-          () => {
-            setMocuState((previousState) => {
-              if (
-                previousState !== 'typing' &&
-                previousState !== 'listening' &&
-                previousState !== 'thinking' &&
-                previousState !== 'speaking'
-              ) {
-                return 'typing';
-              }
-
-              return previousState;
-            });
-
-            if (typingTimeoutRef.current) {
-              clearTimeout(typingTimeoutRef.current);
+        const unlisten = await listen('user_typing', () => {
+          setMocuState((previousState) => {
+            if (
+              previousState !== 'typing' &&
+              previousState !== 'listening' &&
+              previousState !== 'thinking' &&
+              previousState !== 'speaking'
+            ) {
+              return 'typing';
             }
 
-            typingTimeoutRef.current = setTimeout(() => {
-              setMocuState((previousState) =>
-                previousState === 'typing'
-                  ? 'idle'
-                  : previousState,
-              );
-            }, 1000);
-          },
-        );
+            return previousState;
+          });
+
+          if (typingTimeoutRef.current) {
+            clearTimeout(typingTimeoutRef.current);
+          }
+
+          typingTimeoutRef.current = setTimeout(() => {
+            setMocuState((previousState) =>
+              previousState === 'typing'
+                ? 'idle'
+                : previousState,
+            );
+          }, 1000);
+        });
 
         if (disposed) {
           unlisten();
@@ -395,10 +394,7 @@ function App() {
 
         unlistenTyping = unlisten;
       } catch (error) {
-        console.error(
-          'Failed to listen for user typing:',
-          error,
-        );
+        console.error('Failed to listen for user typing:', error);
       }
     };
 
@@ -413,7 +409,7 @@ function App() {
         typingTimeoutRef.current = null;
       }
     };
-  }, [isSettingsWindow]);
+  }, [isMocuWindow]);
 
   useEffect(() => {
     return () => {
@@ -424,10 +420,7 @@ function App() {
 
       const mediaRecorder = mediaRecorderRef.current;
 
-      if (
-        mediaRecorder &&
-        mediaRecorder.state !== 'inactive'
-      ) {
+      if (mediaRecorder && mediaRecorder.state !== 'inactive') {
         mediaRecorder.stop();
       }
 
@@ -440,13 +433,8 @@ function App() {
     };
   }, []);
 
-  const handleScheduleTrigger = async (
-    ttsText: string,
-  ) => {
-    const {
-      pipelineId,
-      signal,
-    } = createNewPipeline();
+  const handleScheduleTrigger = async (ttsText: string) => {
+    const { pipelineId, signal } = createNewPipeline();
 
     stopCurrentAudio();
 
@@ -455,11 +443,7 @@ function App() {
     setMocuState('thinking');
 
     try {
-      await playSpeech(
-        ttsText,
-        pipelineId,
-        signal,
-      );
+      await playSpeech(ttsText, pipelineId, signal);
     } catch (error) {
       if (
         pipelineId !== pipelineIdRef.current ||
@@ -469,29 +453,21 @@ function App() {
         return;
       }
 
-      console.error(
-        'Schedule trigger TTS error:',
-        error,
-      );
-
+      console.error('Schedule trigger TTS error:', error);
       setMocuState('idle');
     }
   };
 
   useScheduleTrigger(
     handleScheduleTrigger,
-    isSettingsWindow,
+    !isMocuWindow,
   );
 
   const handleToggleRecording = async () => {
     if (mocuState === 'listening') {
-      const mediaRecorder =
-        mediaRecorderRef.current;
+      const mediaRecorder = mediaRecorderRef.current;
 
-      if (
-        mediaRecorder &&
-        mediaRecorder.state !== 'inactive'
-      ) {
+      if (mediaRecorder && mediaRecorder.state !== 'inactive') {
         mediaRecorder.stop();
       }
 
@@ -507,27 +483,20 @@ function App() {
       return;
     }
 
-    const {
-      pipelineId,
-      signal,
-    } = createNewPipeline();
+    const { pipelineId, signal } = createNewPipeline();
 
     stopCurrentAudio();
 
     try {
-      const stream =
-        await navigator.mediaDevices.getUserMedia({
-          audio: true,
-        });
+      const stream = await navigator.mediaDevices.getUserMedia({
+        audio: true,
+      });
 
       if (
         pipelineId !== pipelineIdRef.current ||
         signal.aborted
       ) {
-        stream
-          .getTracks()
-          .forEach((track) => track.stop());
-
+        stream.getTracks().forEach((track) => track.stop());
         return;
       }
 
@@ -555,14 +524,9 @@ function App() {
       };
 
       mediaRecorder.onerror = (event) => {
-        console.error(
-          'MediaRecorder error:',
-          event,
-        );
+        console.error('MediaRecorder error:', event);
 
-        stream
-          .getTracks()
-          .forEach((track) => track.stop());
+        stream.getTracks().forEach((track) => track.stop());
 
         mediaRecorderRef.current = null;
         audioChunksRef.current = [];
@@ -576,9 +540,7 @@ function App() {
       };
 
       mediaRecorder.onstop = async () => {
-        stream
-          .getTracks()
-          .forEach((track) => track.stop());
+        stream.getTracks().forEach((track) => track.stop());
 
         mediaRecorderRef.current = null;
 
@@ -597,21 +559,17 @@ function App() {
           audioChunksRef.current[0]?.type ||
           'audio/webm';
 
-        const audioBlob = new Blob(
-          audioChunksRef.current,
-          {
-            type: recordedMimeType,
-          },
-        );
+        const audioBlob = new Blob(audioChunksRef.current, {
+          type: recordedMimeType,
+        });
 
         audioChunksRef.current = [];
 
         try {
-          const transcribedText =
-            await transcribeAudio(
-              audioBlob,
-              signal,
-            );
+          const transcribedText = await transcribeAudio(
+            audioBlob,
+            signal,
+          );
 
           if (
             pipelineId !== pipelineIdRef.current ||
@@ -635,10 +593,7 @@ function App() {
           setTranscriptSpeaker('user');
           setTranscriptText(userText);
 
-          const response = await chatWithMocu(
-            userText,
-            signal,
-          );
+          const response = await chatWithMocu(userText, signal);
 
           if (
             pipelineId !== pipelineIdRef.current ||
@@ -657,14 +612,10 @@ function App() {
               'Received an empty response from the backend.',
             );
 
-            botResponseText =
-              'Understood, task completed.';
+            botResponseText = 'Understood, task completed.';
           }
 
-          console.log(
-            'Model response:',
-            botResponseText,
-          );
+          console.log('Model response:', botResponseText);
 
           setTranscriptSpeaker('mocu');
           setTranscriptText(botResponseText);
@@ -684,11 +635,7 @@ function App() {
             return;
           }
 
-          console.error(
-            'AI pipeline error:',
-            error,
-          );
-
+          console.error('AI pipeline error:', error);
           setMocuState('idle');
         } finally {
           if (
@@ -711,23 +658,19 @@ function App() {
         return;
       }
 
-      console.error(
-        'Microphone access failed:',
-        error,
-      );
-
+      console.error('Microphone access failed:', error);
       setMocuState('idle');
     }
   };
 
-  if (isSettingsWindow) {
-    return <Settings />;
+  if (isChatWindow) {
+    return <ChatPage />;
   }
 
   return (
     <div className="relative h-screen w-screen overflow-hidden bg-transparent select-none">
       <div
-        className="absolute top-0 left-0 flex w-full items-center justify-center"
+        className="absolute left-0 top-0 flex w-full items-center justify-center"
         style={{
           height: `${MAIN_WINDOW_BASE_HEIGHT}px`,
         }}
@@ -738,7 +681,7 @@ function App() {
           onInterrupt={handleInterrupt}
           transcriptText={transcriptText}
           transcriptSpeaker={transcriptSpeaker}
-          transcriptEnabled={true}
+          transcriptEnabled
           transcriptDelay={0}
           transcriptVisibleFor={7000}
           onTranscriptHidden={() => {

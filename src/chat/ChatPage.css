@@ -1,0 +1,395 @@
+/* src/chat/ChatPage.css */
+
+/*
+ * NOTE: Do NOT set a background on html/body/#root here.
+ *
+ * This stylesheet is imported globally into every Tauri window
+ * (App.tsx imports ChatPage statically), so a white background here
+ * would break the transparent Mocu avatar window.
+ *
+ * The chat window's white background comes from .chat-page below,
+ * which covers the full viewport of the chat window only.
+ * Sizing (width/height/margin/padding) is already handled globally
+ * in src/App.css.
+ */
+
+* {
+  box-sizing: border-box;
+}
+
+button,
+textarea {
+  font: inherit;
+}
+
+.chat-page {
+  display: flex;
+  width: 100%;
+  height: 100vh;
+  overflow: hidden;
+  color: #1f1e1b;
+  background: #ffffff;
+  font-family:
+    Inter,
+    ui-sans-serif,
+    system-ui,
+    -apple-system,
+    "Segoe UI",
+    sans-serif;
+}
+
+/* ---------- Sidebar ---------- */
+
+.chat-sidebar {
+  display: flex;
+  flex: 0 0 260px;
+  flex-direction: column;
+  width: 260px;
+  height: 100%;
+  overflow: hidden;
+  border-right: 1px solid #ebebe7;
+  background: #f7f7f5;
+}
+
+.chat-sidebar-top {
+  display: flex;
+  flex: 0 0 auto;
+  align-items: center;
+  justify-content: space-between;
+  padding: 14px 10px 4px 14px;
+}
+
+.chat-sidebar-brand {
+  display: flex;
+  align-items: center;
+  min-width: 0;
+  gap: 9px;
+  padding: 3px 5px;
+  border: 0;
+  border-radius: 8px;
+  color: inherit;
+  background: transparent;
+  cursor: pointer;
+}
+
+.chat-sidebar-logo {
+  display: flex;
+  flex: 0 0 auto;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  height: 26px;
+  border-radius: 7px;
+  color: #ffffff;
+  background: #d97757;
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.chat-sidebar-brand-name {
+  color: #1f1e1b;
+  font-size: 14.5px;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+}
+
+.chat-sidebar-icon-button {
+  display: flex;
+  flex: 0 0 auto;
+  align-items: center;
+  justify-content: center;
+  width: 30px;
+  height: 30px;
+  border: 0;
+  border-radius: 7px;
+  color: #8a887f;
+  background: transparent;
+  cursor: pointer;
+  transition:
+    background-color 120ms ease,
+    color 120ms ease;
+}
+
+.chat-sidebar-icon-button:hover {
+  color: #3d3c38;
+  background: #ececea;
+}
+
+/* Navigation items */
+
+.chat-sidebar-main-nav {
+  display: flex;
+  flex: 0 0 auto;
+  flex-direction: column;
+  gap: 1px;
+  padding: 8px 10px 10px;
+}
+
+.chat-sidebar-item {
+  display: flex;
+  align-items: center;
+  width: 100%;
+  height: 34px;
+  gap: 10px;
+  padding: 0 9px;
+  border: 0;
+  border-radius: 7px;
+  color: #5c5b55;
+  background: transparent;
+  cursor: pointer;
+  font-size: 13.5px;
+  text-align: left;
+  transition:
+    background-color 120ms ease,
+    color 120ms ease;
+}
+
+.chat-sidebar-item:hover {
+  color: #23221f;
+  background: #ececea;
+}
+
+.chat-sidebar-item-active {
+  color: #1f1e1b;
+  background: #e8e8e4;
+  font-weight: 500;
+}
+
+.chat-sidebar-item-icon {
+  display: flex;
+  flex: 0 0 auto;
+  align-items: center;
+  justify-content: center;
+  width: 17px;
+  height: 17px;
+  opacity: 0.9;
+}
+
+.chat-sidebar-item-label {
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.chat-sidebar-item-end-icon {
+  display: flex;
+  flex: 0 0 auto;
+  align-items: center;
+  justify-content: center;
+  width: 16px;
+  height: 16px;
+  color: #a6a49c;
+}
+
+.chat-sidebar-chevron {
+  transition: transform 140ms ease;
+}
+
+.chat-sidebar-chevron--open {
+  transform: rotate(180deg);
+}
+
+/* Chats accordion */
+
+.chat-sidebar-chats-group {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+
+.chat-sidebar-chats-list {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  max-height: 340px;
+  margin: 2px 0;
+  padding: 2px 0 2px 28px;
+  overflow-x: hidden;
+  overflow-y: auto;
+  scrollbar-color: #d8d6cf transparent;
+  scrollbar-width: thin;
+}
+
+.chat-sidebar-chats-list::-webkit-scrollbar {
+  width: 5px;
+}
+
+.chat-sidebar-chats-list::-webkit-scrollbar-thumb {
+  border-radius: 999px;
+  background: #d8d6cf;
+}
+
+.chat-sidebar-chats-empty {
+  margin: 0;
+  padding: 6px 9px;
+  color: #a6a49c;
+  font-size: 12.5px;
+  line-height: 1.5;
+}
+
+.chat-sidebar-chat-item {
+  display: flex;
+  align-items: center;
+  border-radius: 6px;
+  transition: background-color 120ms ease;
+}
+
+.chat-sidebar-chat-item:hover {
+  background: #ececea;
+}
+
+.chat-sidebar-chat-item-active {
+  background: #e8e8e4;
+}
+
+.chat-sidebar-chat-open {
+  flex: 1;
+  min-width: 0;
+  height: 30px;
+  padding: 0 4px 0 6px;
+  overflow: hidden;
+  border: 0;
+  border-radius: 6px;
+  color: #55534e;
+  background: transparent;
+  cursor: pointer;
+  font-size: 13px;
+  text-align: left;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.chat-sidebar-chat-item:hover .chat-sidebar-chat-open,
+.chat-sidebar-chat-item-active .chat-sidebar-chat-open {
+  color: #23221f;
+}
+
+.chat-sidebar-chat-more {
+  display: none;
+  flex: 0 0 auto;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  margin-right: 3px;
+  padding: 0;
+  border: 0;
+  border-radius: 5px;
+  color: #8a887f;
+  background: transparent;
+  cursor: pointer;
+}
+
+.chat-sidebar-chat-item:hover .chat-sidebar-chat-more {
+  display: flex;
+}
+
+.chat-sidebar-chat-more:hover {
+  color: #3d3c38;
+  background: #dededa;
+}
+
+/* Sidebar footer */
+
+.chat-sidebar-footer {
+  display: flex;
+  flex: 0 0 auto;
+  flex-direction: column;
+  gap: 2px;
+  margin-top: auto;
+  padding: 6px 10px 12px;
+}
+
+/* ---------- Main area ---------- */
+
+.chat-main {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  min-width: 0;
+  height: 100%;
+  background: #ffffff;
+}
+
+.chat-header {
+  display: flex;
+  flex: 0 0 auto;
+  align-items: center;
+  min-height: 52px;
+  padding: 0 24px;
+  border-bottom: 1px solid #f1f1ee;
+}
+
+.chat-header-title {
+  overflow: hidden;
+  color: #23221f;
+  font-size: 14px;
+  font-weight: 550;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* ---------- Placeholder pages ---------- */
+
+.chat-placeholder-page {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 32px;
+  text-align: center;
+}
+
+.chat-placeholder-page h1 {
+  margin: 0;
+  color: #23221f;
+  font-size: 20px;
+  font-weight: 600;
+}
+
+.chat-placeholder-page p {
+  max-width: 360px;
+  margin: 8px 0 0;
+  color: #8a887f;
+  font-size: 14px;
+  line-height: 1.6;
+}
+
+/* ---------- Narrow screens: icon rail ---------- */
+
+@media (max-width: 720px) {
+  .chat-sidebar {
+    flex-basis: 60px;
+    width: 60px;
+  }
+
+  .chat-sidebar-brand-name,
+  .chat-sidebar-icon-button,
+  .chat-sidebar-item-label,
+  .chat-sidebar-chats-list,
+  .chat-sidebar-item-end-icon {
+    display: none;
+  }
+
+  .chat-sidebar-top {
+    justify-content: center;
+    padding: 14px 6px 4px;
+  }
+
+  .chat-sidebar-main-nav,
+  .chat-sidebar-footer {
+    padding-right: 6px;
+    padding-left: 6px;
+  }
+
+  .chat-sidebar-item {
+    justify-content: center;
+    padding: 0;
+  }
+
+  .chat-header {
+    padding: 0 16px;
+  }
+}

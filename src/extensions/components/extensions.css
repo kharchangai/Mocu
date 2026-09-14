@@ -1,0 +1,289 @@
+/* src/extensions/components/extensions.css */
+
+.extensions-page {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 100%;
+  padding: 24px;
+  gap: 20px;
+  overflow-y: auto;
+  color: #1f1e1b;
+  background: #ffffff;
+  font-family:
+    Inter,
+    ui-sans-serif,
+    system-ui,
+    -apple-system,
+    "Segoe UI",
+    sans-serif;
+}
+
+.extensions-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  flex-wrap: wrap;
+}
+
+.extensions-heading h1 {
+  margin: 0;
+  color: #1f1e1b;
+  font-size: 20px;
+  font-weight: 650;
+  letter-spacing: -0.01em;
+}
+
+.extensions-heading p {
+  margin: 4px 0 0;
+  color: #8a887f;
+  font-size: 13.5px;
+  line-height: 1.5;
+}
+
+.extensions-header-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+/* Tabs */
+
+.extensions-tabs {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  border-bottom: 1px solid #ebebe7;
+}
+
+.extensions-tab {
+  padding: 7px 14px;
+  border: 0;
+  border-bottom: 2px solid transparent;
+  color: #5c5b55;
+  background: transparent;
+  cursor: pointer;
+  font-size: 13.5px;
+  border-radius: 0;
+  transition:
+    color 120ms ease,
+    border-color 120ms ease;
+}
+
+.extensions-tab:hover {
+  color: #23221f;
+}
+
+.extensions-tab.is-active {
+  color: #1f1e1b;
+  border-bottom-color: #d97757;
+  font-weight: 550;
+}
+
+.extensions-tab-count {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 18px;
+  height: 18px;
+  margin-left: 5px;
+  padding: 0 6px;
+  border-radius: 999px;
+  color: #ffffff;
+  background: #d97757;
+  font-size: 11px;
+  font-weight: 700;
+}
+
+/* Grid */
+
+.extensions-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+  gap: 16px;
+}
+
+/* Card */
+
+.extensions-card {
+  display: grid;
+  gap: 12px;
+  padding: 18px;
+  border: 1px solid #e6e4e0;
+  border-radius: 12px;
+  background: #ffffff;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.04);
+}
+
+.extensions-card-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.extensions-card-header h3 {
+  margin: 0;
+  color: #1f1e1b;
+  font-size: 15.5px;
+  font-weight: 650;
+}
+
+.extensions-card-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 1px 8px;
+  border-radius: 999px;
+  color: #6d5a3f;
+  background: #f3ede4;
+  font-size: 11.5px;
+  font-weight: 650;
+  text-transform: uppercase;
+}
+
+.extensions-card-description {
+  margin: 0;
+  color: #55534e;
+  font-size: 13.5px;
+  line-height: 1.55;
+}
+
+.extensions-card-meta {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  color: #8a887f;
+  font-size: 12px;
+}
+
+.extensions-card-meta > span + span {
+  color: #a6a49c;
+}
+
+.extensions-card-tags {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.extensions-tag {
+  padding: 1px 8px;
+  border-radius: 999px;
+  color: #5c5b55;
+  background: #f0f0ec;
+  font-size: 11.5px;
+}
+
+.extensions-card-status {
+  color: #3d3c38;
+  font-size: 13px;
+}
+
+.extensions-card-status strong.is-running {
+  color: #2e7d4f;
+}
+
+.extensions-card-status strong.is-stopped {
+  color: #9a6a3c;
+}
+
+.extensions-card-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+/* Buttons */
+
+.extensions-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 32px;
+  padding: 0 12px;
+  border: 1px solid #dededa;
+  border-radius: 8px;
+  color: #3d3c38;
+  background: #ffffff;
+  cursor: pointer;
+  font-size: 13px;
+  font-weight: 550;
+  transition:
+    background-color 120ms ease,
+    border-color 120ms ease,
+    color 120ms ease;
+}
+
+.extensions-button:hover:not(:disabled) {
+  border-color: #d4d2cb;
+  background: #f4f4f1;
+}
+
+.extensions-button:disabled {
+  opacity: 0.55;
+  cursor: default;
+}
+
+.extensions-button.is-primary {
+  border-color: transparent;
+  color: #ffffff;
+  background: #d97757;
+}
+
+.extensions-button.is-primary:hover:not(:disabled) {
+  background: #c96545;
+}
+
+.extensions-button.is-danger {
+  border: 0;
+  color: #b3402f;
+  background: #fbeae7;
+}
+
+.extensions-button.is-danger:hover:not(:disabled) {
+  background: #f6d9d3;
+}
+
+/* Status / messages */
+
+.extensions-status {
+  margin: 0;
+  color: #8a887f;
+  font-size: 13.5px;
+}
+
+.extensions-empty {
+  margin: 8px 0 0;
+  color: #8a887f;
+  font-size: 13.5px;
+  line-height: 1.6;
+}
+
+.extensions-error {
+  margin: 0;
+  padding: 10px 12px;
+  overflow: auto;
+  border: 1px solid #efc5c0;
+  border-radius: 8px;
+  color: #b3402f;
+  background: #fdf0ee;
+  white-space: pre-wrap;
+  font-size: 12.5px;
+}
+
+.extensions-result {
+  overflow: auto;
+  padding: 10px 12px;
+  border: 1px solid #e6e4e0;
+  border-radius: 8px;
+  color: #3d3c38;
+  background: #f6f6f3;
+  font-size: 12.5px;
+  max-height: 180px;
+}
