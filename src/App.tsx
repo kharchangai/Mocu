@@ -3,7 +3,7 @@ import { useEffect, useRef, useState } from 'react';
 import { listen } from '@tauri-apps/api/event';
 
 import { Mocu, MocuState } from './components/Mocu';
-import { Settings } from './components/Settings';
+import { CUBE_SIZE } from './components/Mocu';
 import ChatPage from './chat/ChatPage';
 import { TranscriptSpeaker } from './components/MocuTranscript';
 
@@ -16,6 +16,7 @@ import {
 import { chatWithMocu } from './services/ai/index';
 import { useScheduleTrigger } from './hooks/useScheduleTrigger';
 import { useMocuWindowSize } from './hooks/useMocuWindowSize';
+import { useMocuClickThrough } from './hooks/useMocuClickThrough';
 
 import { runTest } from './test';
 
@@ -62,21 +63,44 @@ function App() {
 
   const hasRunAtomicMemoryTestRef = useRef(false);
 
-  const isSettingsWindow = routeHash === '#settings';
-  const isChatWindow = routeHash === '#chat';
-
   /*
-   * The compact Mocu window is the default route only.
+   * The Mocu avatar (cube) lives in its own small overlay window
+   * with the `#mocu` hash.
    *
-   * It is important that the resize hook is disabled for both Chat and
-   * Settings. Otherwise the chat window can be forced back to 250x320.
+   * The main window is the chat window now: it is the default route
+   * and the first thing the user sees when the app starts. The cube
+   * window is created hidden and revealed by the mini cube button in
+   * the chat page (see toggle_mocu). Settings are rendered inside
+   * the chat page, so there is no separate settings route anymore.
    */
-  const isMocuWindow = !isSettingsWindow && !isChatWindow;
+  const isMocuWindow = routeHash === '#mocu';
+  const isChatWindow = !isMocuWindow;
 
   const { resizeWindow } = useMocuWindowSize({
     width: MAIN_WINDOW_WIDTH,
     baseHeight: MAIN_WINDOW_BASE_HEIGHT,
     transcriptExtraHeight: TRANSCRIPT_EXTRA_HEIGHT,
+    disabled: !isMocuWindow,
+  });
+
+  /*
+   * The Mocu window is transparent, but a transparent window still
+   * hit-tests as a solid rectangle at the OS level. This hook keeps
+   * the window click-through by default and only enables mouse input
+   * over the cube (and the transcript while it is visible), so the
+   * user can interact with items behind the window.
+   *
+   * Cube geometry: the cube is centered inside a container of
+   * MAIN_WINDOW_BASE_HEIGHT height anchored at the top of the window.
+   */
+  useMocuClickThrough({
+    width: MAIN_WINDOW_WIDTH,
+    baseHeight: MAIN_WINDOW_BASE_HEIGHT,
+    transcriptExtraHeight: TRANSCRIPT_EXTRA_HEIGHT,
+    cubeLeft: (MAIN_WINDOW_WIDTH - CUBE_SIZE) / 2,
+    cubeTop: (MAIN_WINDOW_BASE_HEIGHT - CUBE_SIZE) / 2,
+    cubeSize: CUBE_SIZE,
+    transcriptVisible: transcriptText.trim().length > 0,
     disabled: !isMocuWindow,
   });
 
@@ -638,10 +662,6 @@ function App() {
       setMocuState('idle');
     }
   };
-
-  if (isSettingsWindow) {
-    return <Settings />;
-  }
 
   if (isChatWindow) {
     return <ChatPage />;

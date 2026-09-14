@@ -22,6 +22,14 @@ import {
 } from './components/skills/SkillsPage';
 
 import {
+  Settings,
+} from '../components/Settings';
+
+import {
+  MocuMiniCube,
+} from './components/MocuMiniCube';
+
+import {
   ExtensionsPage,
 } from '../extensions/components/ExtensionsPage';
 
@@ -450,6 +458,12 @@ function ChatPage() {
           handleChooseProjectFolder
         }
       />
+
+      {/*
+       * Floating mini Mocu cube. Clicking it reveals the
+       * Mocu avatar window.
+       */}
+      <MocuMiniCube />
     </>
   );
 
@@ -484,9 +498,18 @@ function ChatPage() {
         );
 
       case 'settings':
-        return renderPlaceholderPage(
-          'Settings',
-          'Chat preferences and model settings will appear here.',
+        /*
+         * Real settings page. It renders inside the chat window;
+         * there is no separate settings window anymore.
+         */
+        return (
+          <Settings
+            onClose={() => {
+              setActiveItem('new-chat');
+              setIsChatsOpen(false);
+              setIsProjectsOpen(false);
+            }}
+          />
         );
 
       case 'new-chat':

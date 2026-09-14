@@ -1,0 +1,262 @@
+/* src/components/Settings.css
+ *
+ * Light theme matching the chat page (ChatPage.css):
+ * white background, soft gray cards, dark text, blue accent.
+ */
+
+.settings-page {
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+  background: #ffffff;
+  color: #1f1e1b;
+  font-family:
+    Inter,
+    ui-sans-serif,
+    system-ui,
+    -apple-system,
+    "Segoe UI",
+    sans-serif;
+}
+
+.settings-loading {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  height: 100%;
+}
+
+.settings-loading-text {
+  color: #9ca3af;
+  font-size: 12px;
+  letter-spacing: 0.05em;
+  animation: settings-pulse 1.6s ease-in-out infinite;
+}
+
+@keyframes settings-pulse {
+  0%,
+  100% {
+    opacity: 1;
+  }
+
+  50% {
+    opacity: 0.45;
+  }
+}
+
+/* ---------- Header ---------- */
+
+.settings-header {
+  flex: 0 0 auto;
+  padding: 22px 28px 16px;
+  border-bottom: 1px solid #f1f1ee;
+}
+
+.settings-title {
+  margin: 0;
+  color: #23221f;
+  font-size: 17px;
+  font-weight: 650;
+}
+
+.settings-subtitle {
+  margin: 4px 0 0;
+  color: #6b7280;
+  font-size: 12.5px;
+}
+
+/* ---------- Scrollable body ---------- */
+
+.settings-scroll {
+  flex: 1;
+  overflow-y: auto;
+  padding: 20px 28px 24px;
+}
+
+.settings-section {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  max-width: 640px;
+  margin: 0 0 28px;
+}
+
+.settings-section-title,
+.settings-section-label {
+  margin: 0 0 2px;
+  color: #8a8a85;
+  font-size: 10.5px;
+  font-weight: 700;
+  letter-spacing: 0.09em;
+  text-transform: uppercase;
+}
+
+.settings-section-title {
+  font-size: 12px;
+  color: #23221f;
+  letter-spacing: 0;
+  text-transform: none;
+  font-weight: 650;
+}
+
+/* ---------- Cards ---------- */
+
+.settings-card {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 16px;
+  background: #f7f7f5;
+  border: 1px solid #ebebe7;
+  border-radius: 12px;
+}
+
+.settings-card-header {
+  padding-bottom: 10px;
+  border-bottom: 1px solid #ebebe7;
+}
+
+.settings-card-title {
+  margin: 0;
+  color: #23221f;
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.settings-card-description {
+  margin: 3px 0 0;
+  color: #6b7280;
+  font-size: 11.5px;
+}
+
+/* ---------- Fields ---------- */
+
+.settings-field {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+
+.settings-label {
+  color: #6b7280;
+  font-size: 10px;
+  font-weight: 650;
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+  padding-left: 2px;
+}
+
+.settings-input {
+  width: 100%;
+  padding: 8px 11px;
+  box-sizing: border-box;
+  color: #1f1e1b;
+  background: #ffffff;
+  border: 1px solid #e0e0dc;
+  border-radius: 9px;
+  font: inherit;
+  font-size: 12.5px;
+  outline: none;
+  transition:
+    border-color 150ms ease,
+    box-shadow 150ms ease;
+}
+
+.settings-input::placeholder {
+  color: #b3b3ae;
+}
+
+.settings-input:focus {
+  border-color: #bfdbfe;
+  box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.08);
+}
+
+.settings-input:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+.settings-grid-2 {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+}
+
+/* ---------- Footer ---------- */
+
+.settings-footer {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+  padding: 14px 28px;
+  border-top: 1px solid #f1f1ee;
+  background: #fafaf8;
+}
+
+.settings-button-secondary {
+  padding: 8px 18px;
+  color: #374151;
+  background: #ffffff;
+  border: 1px solid #e0e0dc;
+  border-radius: 9px;
+  font: inherit;
+  font-size: 12.5px;
+  font-weight: 550;
+  cursor: pointer;
+  transition:
+    background-color 150ms ease,
+    border-color 150ms ease;
+}
+
+.settings-button-secondary:hover:not(:disabled) {
+  background: #f5f5f3;
+  border-color: #d1d5db;
+}
+
+.settings-button-primary {
+  padding: 8px 18px;
+  color: #ffffff;
+  background: #2563eb;
+  border: 1px solid #2563eb;
+  border-radius: 9px;
+  font: inherit;
+  font-size: 12.5px;
+  font-weight: 600;
+  cursor: pointer;
+  transition:
+    background-color 150ms ease,
+    box-shadow 150ms ease;
+}
+
+.settings-button-primary:hover:not(:disabled) {
+  background: #1d4ed8;
+  box-shadow: 0 4px 14px rgba(37, 99, 235, 0.25);
+}
+
+.settings-button-secondary:disabled,
+.settings-button-primary:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+/* ---------- Scrollbar ---------- */
+
+.settings-scroll::-webkit-scrollbar {
+  width: 8px;
+}
+
+.settings-scroll::-webkit-scrollbar-thumb {
+  background: rgba(148, 163, 184, 0.35);
+  border-radius: 8px;
+}
+
+.settings-scroll::-webkit-scrollbar-thumb:hover {
+  background: rgba(148, 163, 184, 0.55);
+}
+
+.settings-scroll::-webkit-scrollbar-track {
+  background: transparent;
+}

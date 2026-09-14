@@ -11,8 +11,9 @@ import { getAsyncLLM } from "./llm";
  * In-memory checkpointer keeps per-thread conversation history,
  * so multi-turn chats (src/chat) get real context in the agent.
  *
- * When no thread_id is passed (e.g. the voice pipeline), each call
- * runs on its own ephemeral thread, same as before.
+ * A thread_id is required on every invocation; stateless callers
+ * (e.g. the voice pipeline) pass a random ephemeral thread id so
+ * each call starts with a fresh, never-resumed thread.
  */
 const checkpointer = new MemorySaver();
 
@@ -128,15 +129,19 @@ export const chatWithMocu = async (
      *
      * When a threadId is given, the graph resumes the same
      * conversation (checkpointed history) instead of starting fresh.
+     *
+     * The checkpointer requires a thread_id on every invocation, even
+     * for one-shot calls — so stateless callers (e.g. the voice
+     * pipeline) get a random ephemeral thread that is never resumed.
      */
     const finalState = await app.invoke(
       inputs,
-      threadId
-        ? {
-            signal,
-            configurable: { thread_id: threadId },
-          }
-        : { signal },
+      {
+        signal,
+        configurable: {
+          thread_id: threadId ?? crypto.randomUUID(),
+        },
+      },
     );
 
     throwIfAborted(signal);

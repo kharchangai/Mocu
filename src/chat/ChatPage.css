@@ -1,18 +1,17 @@
 /* src/chat/ChatPage.css */
 
-:root {
-  background: #ffffff;
-}
-
-html,
-body,
-#root {
-  width: 100%;
-  height: 100%;
-  margin: 0;
-  padding: 0;
-  background: #ffffff;
-}
+/*
+ * NOTE: Do NOT set a background on html/body/#root here.
+ *
+ * This stylesheet is imported globally into every Tauri window
+ * (App.tsx imports ChatPage statically), so a white background here
+ * would break the transparent Mocu avatar window.
+ *
+ * The chat window's white background comes from .chat-page below,
+ * which covers the full viewport of the chat window only.
+ * Sizing (width/height/margin/padding) is already handled globally
+ * in src/App.css.
+ */
 
 * {
   box-sizing: border-box;

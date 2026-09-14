@@ -61,7 +61,12 @@ interface MocuProps {
  * Set the Tauri window height to at least 420 or 430 pixels.
  */
 const TOP_SPACE = 0;
-const CUBE_SIZE = 150;
+
+/*
+ * Exported so App.tsx can compute the cube's on-screen rectangle for
+ * the click-through toggle (see useMocuClickThrough).
+ */
+export const CUBE_SIZE = 150;
 
 export const Mocu: React.FC<MocuProps> = ({
   state = 'idle',

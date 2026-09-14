@@ -19,6 +19,51 @@ fn greet(name: &str) -> String {
     format!("Hello, {}! You've been greeted from Rust!", name)
 }
 
+/*
+ * Toggles the Mocu avatar (cube) window from the frontend.
+ *
+ * If the avatar window is visible it is hidden, otherwise it is
+ * shown and focused. Returns the resulting visibility so the mini
+ * cube button can reflect the new state.
+ *
+ * The cube window is created hidden at startup. If it was closed,
+ * it is rebuilt with the same transparent overlay configuration.
+ */
+#[tauri::command]
+fn toggle_mocu(app: tauri::AppHandle) -> bool {
+    if let Some(mocu_window) = app.get_webview_window("mocu") {
+        let is_visible = mocu_window
+            .is_visible()
+            .unwrap_or(false);
+
+        if is_visible {
+            let _ = mocu_window.hide();
+            return false;
+        }
+
+        let _ = mocu_window.show();
+        let _ = mocu_window.set_focus();
+        return true;
+    }
+
+    let _ = WebviewWindowBuilder::new(
+        &app,
+        "mocu",
+        WebviewUrl::App("/#mocu".into()),
+    )
+    .title("Mocu")
+    .inner_size(250.0, 430.0)
+    .decorations(false)
+    .transparent(true)
+    .always_on_top(true)
+    .resizable(false)
+    .shadow(false)
+    .visible(true)
+    .build();
+
+    true
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
@@ -36,6 +81,7 @@ pub fn run() {
         // Register all Tauri commands
         .invoke_handler(tauri::generate_handler![
             greet,
+            toggle_mocu,
             commands::desktop::capture_desktop,
             extension_host::extension_execute,
             extension_host::extension_respond,
@@ -44,14 +90,6 @@ pub fn run() {
 
         .setup(|app| {
             // Build the tray menu items
-            let settings_item = MenuItem::with_id(
-                app,
-                "settings",
-                "Settings",
-                true,
-                None::<&str>,
-            )?;
-
             let open_chat_item = MenuItem::with_id(
                 app,
                 "open_chat",
@@ -70,7 +108,7 @@ pub fn run() {
 
             let menu = Menu::with_items(
                 app,
-                &[&settings_item, &open_chat_item, &quit_item],
+                &[&open_chat_item, &quit_item],
             )?;
 
             // Get the app's default icon
@@ -84,66 +122,76 @@ pub fn run() {
                 .icon(icon)
                 .menu(&menu)
                 .on_menu_event(|app, event| match event.id.as_ref() {
-                    "settings" => {
-                        if let Some(settings_window) =
-                            app.get_webview_window("settings")
-                        {
-                            let _ = settings_window.show();
-                            let _ = settings_window.set_focus();
+                    "open_chat" => {
+                        /*
+                         * The chat window is the main window. Closing it
+                         * only hides it (so the tray stays functional),
+                         * so normally it always exists here. If it was
+                         * somehow destroyed, rebuild it.
+                         */
+                        if let Some(chat_window) = app.get_webview_window("main") {
+                            let _ = chat_window.unminimize();
+                            let _ = chat_window.show();
+                            let _ = chat_window.set_focus();
                         } else {
                             match WebviewWindowBuilder::new(
                                 app,
-                                "settings",
-                                WebviewUrl::App("/#settings".into()),
+                                "main",
+                                WebviewUrl::App("/".into()),
                             )
-                            .title("Mocu Settings")
-                            .inner_size(420.0, 520.0)
-                            .resizable(false)
+                            .title("mocu")
+                            .inner_size(1100.0, 760.0)
+                            .min_inner_size(720.0, 520.0)
+                            .resizable(true)
                             .decorations(true)
-                            .always_on_top(true)
+                            .maximized(true)
                             .build()
                             {
                                 Ok(_) => {}
                                 Err(error) => {
                                     eprintln!(
-                                        "[mocu] Failed to create settings window: {error}"
+                                        "[mocu] Failed to recreate chat window: {error}"
                                     );
                                 }
                             }
                         }
                     }
 
-                    "open_chat" => {
-                    if let Some(chat_window) = app.get_webview_window("chat") {
-                        let _ = chat_window.maximize();
-                        let _ = chat_window.show();
-                        let _ = chat_window.set_focus();
-                    } else {
-                        match WebviewWindowBuilder::new(
-                            app,
-                            "chat",
-                            WebviewUrl::App("/#chat".into()),
-                        )
-                        .title("Mocu Chat")
-                        .resizable(true)
-                        .decorations(true)
-                        .build()
-                        {
-                            Ok(chat_window) => {
-                                let _ = chat_window.maximize();
-                            }
-                            Err(error) => {
-                                eprintln!(
-                                    "[mocu] Failed to create chat window: {error}"
-                                );
-                            }
-                        }
+                    "quit" => {
+                        /*
+                         * Full app exit: stops all extension processes
+                         * through the RunEvent::Exit handler below.
+                         */
+                        app.exit(0);
                     }
-                }
 
                     _ => {}
                 })
                 .build(app)?;
+
+            /*
+             * The Mocu avatar (cube) window. It starts hidden so the
+ * user sees the chat window first. The mini cube button inside
+             * the chat page reveals this window via the `show_mocu`
+             * command.
+             */
+            if let Err(error) = WebviewWindowBuilder::new(
+                app,
+                "mocu",
+                WebviewUrl::App("/#mocu".into()),
+            )
+            .title("Mocu")
+            .inner_size(250.0, 430.0)
+            .decorations(false)
+            .transparent(true)
+            .always_on_top(true)
+            .resizable(false)
+            .shadow(false)
+            .visible(false)
+            .build()
+            {
+                eprintln!("[mocu] Failed to create mocu avatar window: {error}");
+            }
 
             // Listen for keyboard key presses in a separate thread
             let keyboard_app_handle = app.handle().clone();
@@ -166,10 +214,42 @@ pub fn run() {
         .build(tauri::generate_context!())
         .expect("error while building Tauri application")
         .run(|app_handle, event| {
-            // On shutdown, terminate every extension process cleanly.
-            if let tauri::RunEvent::Exit = event {
-                use tauri::Manager;
-                app_handle.state::<ExtensionManager>().stop_all();
+            use tauri::Manager;
+
+            match event {
+                // On shutdown, terminate every extension process cleanly.
+                tauri::RunEvent::Exit => {
+                    app_handle
+                        .state::<ExtensionManager>()
+                        .stop_all();
+                }
+
+                /*
+                 * Closing the chat (main) window only hides it so the
+                 * tray icon keeps working: "Open Chat" can always
+                 * re-show it and "Quit" performs the real exit.
+                 */
+                tauri::RunEvent::WindowEvent {
+                    label,
+                    event: window_event,
+                    ..
+                } => {
+                    if label == "main" {
+                        if let tauri::WindowEvent::CloseRequested { api, .. } =
+                            window_event
+                        {
+                            if let Some(window) =
+                                app_handle.get_webview_window("main")
+                            {
+                                let _ = window.hide();
+                            }
+
+                            api.prevent_close();
+                        }
+                    }
+                }
+
+                _ => {}
             }
         });
 }
