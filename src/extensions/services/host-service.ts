@@ -2,10 +2,47 @@ import { listen } from "@tauri-apps/api/event";
 
 import { generateSimpleAnswer } from "../../services/ai";
 
+import { dispatchAgentToolActivity } from "../../chat/services/toolActivity";
+
 import { respondExtension } from "./extension-client";
 
 const MAX_LLM_PROMPT_LENGTH = 100_000;
 const MAX_LLM_SYSTEM_PROMPT_LENGTH = 20_000;
+
+/**
+ * Handle one-way progress notifications streamed by extensions while a
+ * command runs ("mocu.extension.activity"). The payload identifies the
+ * chat tool card (toolCallId + toolName, passed through the command
+ * context) and carries the accumulated output text so far; dispatching it
+ * as a tool-activity update live-refreshes that card in the chat.
+ */
+function handleActivityNotification(
+  extensionId: string,
+  params: Record<string, unknown>,
+): void {
+  const toolCallId = params.toolCallId;
+  const text = params.text;
+
+  if (typeof toolCallId !== "string" || !toolCallId) {
+    return;
+  }
+
+  const toolName =
+    typeof params.toolName === "string" && params.toolName
+      ? params.toolName
+      : `extension_${extensionId}`;
+
+  dispatchAgentToolActivity({
+    id: toolCallId,
+    tool: toolName,
+    status: "running",
+    streaming: true,
+    streamLog:
+      typeof text === "string"
+        ? text
+        : "",
+  });
+}
 
 /**
  * Handle host-bound JSON-RPC requests that extensions send toward Mocu.
@@ -47,6 +84,12 @@ async function handleHostMessage(
     (typeof record.id === "string" || typeof record.id === "number")
       ? (record.id as string | number)
       : null;
+
+  if (method === "mocu.extension.activity") {
+    // One-way progress stream; never answered.
+    handleActivityNotification(extensionId, params);
+    return;
+  }
 
   if (method !== "mocu.llm.generate") {
     if (requestId !== null) {

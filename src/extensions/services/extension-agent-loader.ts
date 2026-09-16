@@ -42,7 +42,7 @@ export type ResolveExtensionsResult = {
   missingExtensions: string[];
 };
 
-const normalizeOutput = (
+export const normalizeExtensionOutput = (
   output: unknown,
 ): string => {
   let rawText: string;
@@ -190,7 +190,7 @@ export const resolveSelectedExtensions = async (
           id: extensionId,
           name: installed.manifest.name,
           command,
-          output: normalizeOutput(result),
+          output: normalizeExtensionOutput(result),
           success: true,
         });
       } catch (error) {

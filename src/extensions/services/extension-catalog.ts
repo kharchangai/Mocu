@@ -2,6 +2,8 @@ import type {
   ExtensionRuntime,
 } from "../types/extension";
 
+import { PI_NODE_CATALOG_FILES } from "./pi-node-files";
+
 export interface CatalogCommand {
   id: string;
   title: string;
@@ -237,5 +239,36 @@ export const EXTENSION_CATALOG: ExtensionCatalogEntry[] = [
       { path: "manifest.json", content: ASK_LLM_NODE_MANIFEST },
       { path: "index.js", content: ASK_LLM_NODE_INDEX },
     ],
+  },
+  {
+    id: "pi-node",
+    name: "Pi Agent",
+    description:
+      "Embeds a full pi coding-agent session inside the extension via the pi SDK. " +
+      "'ask' sends a prompt to pi (persistent conversation; runs tools like bash/read/edit) and returns its final response; " +
+      "'reset' starts a fresh session. Runs 'npm install' on first install, so it needs npm on PATH and may take a minute.",
+    version: "0.1.0",
+    runtime: "node",
+    entry: "index.js",
+    author: "Mocu",
+    tags: ["node", "pi", "agent", "coding"],
+    commands: [
+      {
+        id: "ask",
+        title: "Ask pi",
+        description: "Send a prompt to a pi agent session and return its final response.",
+      },
+      {
+        id: "reset",
+        title: "Reset pi session",
+        description: "Dispose the current pi session so the next 'ask' starts fresh.",
+      },
+      {
+        id: "status",
+        title: "Pi session status",
+        description: "Shows whether a pi session is active, its cwd, model and thinking level.",
+      },
+    ],
+    files: PI_NODE_CATALOG_FILES,
   },
 ];

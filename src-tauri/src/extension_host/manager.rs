@@ -27,7 +27,29 @@ pub struct JsonRpcErrorObject {
 
 /// Hard cap for a single `extension.execute` call. Extensions that take longer
 /// than this report a timeout so the calling thread is never blocked forever.
-const EXECUTE_TIMEOUT: Duration = Duration::from_secs(90);
+/// Generous by design: long-running extensions such as the pi bridge (`ask`)
+/// run full agent loops (LLM turns + tool calls) that can take many minutes.
+/// Commands may override this via `timeoutSeconds` in their manifest entry
+/// (`0` = no timeout).
+const DEFAULT_EXECUTE_TIMEOUT: Duration = Duration::from_secs(900);
+
+/// Resolve the effective timeout for a command from its manifest entry.
+/// Returns `None` when the command opted out of timeouts (`timeoutSeconds: 0`).
+fn command_timeout(manifest: &ExtensionManifest, command: &str) -> Option<Duration> {
+    manifest
+        .commands
+        .iter()
+        .find(|entry| entry.id == command)
+        .and_then(|entry| entry.timeout_seconds)
+        .map(|seconds| {
+            if seconds == 0 {
+                None
+            } else {
+                Some(Duration::from_secs(seconds))
+            }
+        })
+        .unwrap_or(Some(DEFAULT_EXECUTE_TIMEOUT))
+}
 
 /// A registered (installed) extension that is ready to be spawned on demand.
 #[derive(Clone)]
@@ -169,6 +191,7 @@ impl ExtensionManager {
         manifest: ExtensionManifest,
         command: String,
         input: Option<Value>,
+        context: Option<Value>,
     ) -> Result<Value, String> {
         let id = manifest.id.trim().to_string();
 
@@ -184,6 +207,7 @@ impl ExtensionManager {
             "params": {
                 "command": command,
                 "input": input.unwrap_or(Value::Null),
+                "context": context.unwrap_or(json!({})),
             }
         });
 
@@ -219,11 +243,22 @@ impl ExtensionManager {
         }
 
         // Wait (without holding any manager lock) for the extension to answer.
-        match receiver.recv_timeout(EXECUTE_TIMEOUT) {
-            Ok(result) => Ok(result),
-            Err(_) => Err(format!(
-                "Extension '{id}' timed out while handling command '{command}'"
-            )),
+        // The per-command manifest entry may override the default timeout
+        // (timeoutSeconds) or opt out entirely (timeoutSeconds: 0).
+        match command_timeout(&manifest, &command) {
+            Some(timeout) => match receiver.recv_timeout(timeout) {
+                Ok(result) => Ok(result),
+                Err(_) => Err(format!(
+                    "Extension '{id}' timed out after {}s while handling command '{command}'",
+                    timeout.as_secs()
+                )),
+            },
+            None => match receiver.recv() {
+                Ok(result) => Ok(result),
+                Err(_) => Err(format!(
+                    "Extension '{id}' disconnected while handling command '{command}'"
+                )),
+            },
         }
     }
 

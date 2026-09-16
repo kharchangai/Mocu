@@ -27,6 +27,11 @@ pub struct ExtensionExecuteInput {
     pub manifest: ExtensionManifest,
     pub command: String,
     pub input: Option<Value>,
+    /// Opaque context forwarded verbatim to the extension inside the
+    /// `extension.execute` params. Used e.g. to carry the calling agent's
+    /// tool-card id so extensions can stream live progress back to chat.
+    #[serde(default)]
+    pub context: Option<Value>,
 }
 
 #[tauri::command]
@@ -40,9 +45,10 @@ pub async fn extension_execute(
     let manifest = input.manifest;
     let command = input.command;
     let input_value = input.input;
+    let context_value = input.context;
 
     tauri::async_runtime::spawn_blocking(move || {
-        manager.execute(app_handle, path, manifest, command, input_value)
+        manager.execute(app_handle, path, manifest, command, input_value, context_value)
     })
     .await
     .map_err(|error| format!("Extension execution task failed: {error}"))?

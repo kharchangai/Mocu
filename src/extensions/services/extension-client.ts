@@ -15,6 +15,7 @@ export async function executeExtension(
   manifest: ExtensionManifest,
   command: string,
   input?: unknown,
+  context?: Record<string, unknown>,
 ): Promise<unknown> {
   return invoke("extension_execute", {
     input: {
@@ -22,6 +23,7 @@ export async function executeExtension(
       manifest,
       command,
       input: input ?? null,
+      context: context ?? null,
     },
   });
 }

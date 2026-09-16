@@ -23,11 +23,29 @@ export type AgentToolActivity = {
 
   tool: string;
 
-  args: Record<string, unknown>;
+  /*
+   * Omitted on progress updates so the original input recorded by the
+   * agents is preserved on the card.
+   */
+  args?: Record<string, unknown>;
 
   result?: string;
 
   status: AgentToolActivityStatus;
+
+  /*
+   * True when the tool streams live progress (extension commands that
+   * declare `streaming: true` in their manifest). The chat shows the
+   * live output panel for such cards while they run.
+   */
+  streaming?: boolean;
+
+  /*
+   * Accumulated live progress text streamed by the extension while the
+   * command ran. Kept on the card after completion (next to the final
+   * result) and persisted with the rest of the activity.
+   */
+  streamLog?: string;
 };
 
 export const dispatchAgentToolActivity = (

@@ -41,8 +41,8 @@ import {
 } from "../../chat/components/skills/selected-skill-loader";
 
 import {
-  resolveSelectedExtensions,
-} from "../../extensions/services/extension-agent-loader";
+  loadExtensionAgentTools,
+} from "../../extensions/services/extension-agent-tools";
 
 import {
   ToolExecutor,
@@ -75,7 +75,7 @@ import {
   type ProjectMemoryRetrievalResult,
 } from "../../chat/project/memory/memory-retrieval/memoryRetrievalPipeline";
 
-const MAX_TOOL_STEPS = 3;
+const MAX_TOOL_STEPS = 5;
 
 type ToolArgs =
   Record<string, unknown>;
@@ -313,7 +313,7 @@ const getCurrentDateTime =
 const buildProjectAgentSystemPrompt = (
   projectPath: string,
   skillsPrompt: string,
-  extensionsPrompt: string,
+  extensionToolsPrompt: string,
   relatedMemoryPrompt: string,
 ): string => {
   const promptParts: string[] = [
@@ -333,11 +333,11 @@ const buildProjectAgentSystemPrompt = (
   }
 
   if (
-    extensionsPrompt.trim()
+    extensionToolsPrompt.trim()
   ) {
     promptParts.push(
       "",
-      extensionsPrompt.trim(),
+      extensionToolsPrompt.trim(),
     );
   }
 
@@ -475,6 +475,7 @@ const executeProjectToolCall =
         await toolExecutor.execute(
           toolName,
           toolArgs,
+          { toolCallId, toolName },
         );
 
       throwIfAborted(
@@ -716,12 +717,6 @@ export const callProjectAgent =
         runnableConfig,
       );
 
-    const extensionResolution =
-      await resolveSelectedExtensions(
-        selectedExtensionIds,
-        userText,
-      );
-
     throwIfAborted(
       signal,
     );
@@ -843,12 +838,47 @@ export const callProjectAgent =
       }) as TerminalTool;
 
     /*
+     * Expose extension commands as callable tools so the agent can run
+     * them itself when the user asks to use an extension (or a task
+     * matches one). Extensions are never executed up front; when the
+     * user selected specific extensions, only those are offered as
+     * tools. Failures never block the agent.
+     */
+    const extensionTools =
+      await loadExtensionAgentTools(
+        selectedExtensionIds,
+      );
+
+    if (
+      extensionTools.missingExtensions.length > 0
+    ) {
+      console.warn(
+        "[Project Agent] Selected extensions not found:",
+        extensionTools.missingExtensions,
+      );
+    }
+
+    if (
+      extensionTools.entries.length > 0
+    ) {
+      console.log(
+        "[Project Agent] Extension tools available:",
+        extensionTools.entries.map(
+          (
+            entry,
+          ) => entry.name,
+        ),
+      );
+    }
+
+    /*
      * Expose tools to the model.
      */
     const llmWithTools =
       llm.bindTools([
         terminalTool,
         perplexitySearchTool,
+        ...extensionTools.tools,
       ]);
 
     /*
@@ -860,11 +890,15 @@ export const callProjectAgent =
         runnableConfig,
       );
 
+    extensionTools.registerAll(
+      toolExecutor,
+    );
+
     const systemPrompt =
       buildProjectAgentSystemPrompt(
         normalizedProjectPath,
         skillResolution.skillsPrompt,
-        extensionResolution.extensionsPrompt,
+        extensionTools.prompt,
         relatedMemoryPrompt,
       );
 

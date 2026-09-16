@@ -1,0 +1,15 @@
+{
+  "name": "pi-node",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Mocu extension that embeds a pi coding-agent session via the pi SDK.",
+  "engines": {
+    "node": ">=20"
+  },
+  "dependencies": {
+    "@earendil-works/pi-coding-agent": "^0.84.1",
+    "@mocu/extension-contracts": "file:./vendor/extension-contracts",
+    "@mocu/extension-sdk": "file:./vendor/extension-sdk"
+  }
+}

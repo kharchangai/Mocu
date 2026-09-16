@@ -11,11 +11,13 @@ export async function executeExtensionCommand<T = unknown>(
   extension: InstalledExtension,
   command: string,
   input?: unknown,
+  context?: Record<string, unknown>,
 ): Promise<T> {
   return (await executeExtension(
     extension.path,
     extension.manifest,
     command,
     input ?? null,
+    context,
   )) as T;
 }

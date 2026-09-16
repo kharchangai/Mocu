@@ -177,6 +177,15 @@ export function ToolActivityFeed({
               activity.status ===
               'running';
 
+            /*
+             * Streaming cards belong to extension commands whose manifest
+             * declares `streaming: true`. They receive live progress
+             * updates while running and show a live output panel.
+             */
+            const isStreaming =
+              isRunning &&
+              activity.streaming === true;
+
             const accent =
               activity.status ===
               'done'
@@ -188,11 +197,20 @@ export function ToolActivityFeed({
 
             const inputText =
               describeToolInput(
-                activity.args,
+                activity.args ?? {},
               );
 
             const resultText =
               activity.result?.trim() ||
+              '';
+
+            /*
+             * Live progress streamed by the extension while the command
+             * ran. Kept on the card after completion so the user can
+             * still see everything the extension did.
+             */
+            const streamLog =
+              activity.streamLog?.trim() ||
               '';
 
             return (
@@ -251,9 +269,13 @@ export function ToolActivityFeed({
                   </span>
 
                   <span className="tool-activity-card__label">
-                    {getToolLabel(
-                      activity.tool,
-                    )}
+                    {isStreaming
+                      ? `${getToolLabel(
+                          activity.tool,
+                        )} (streaming)`
+                      : getToolLabel(
+                          activity.tool,
+                        )}
                   </span>
 
                   {!isRunning &&
@@ -293,19 +315,60 @@ export function ToolActivityFeed({
                     ) : null}
 
                     <div className="tool-activity-card__section-title">
-                      {isRunning
-                        ? 'Status'
-                        : 'Output'}
+                      {isRunning ? (
+                        isStreaming ? (
+                          <>
+                            <span
+                              className="tool-activity-card__spinner"
+                              aria-hidden="true"
+                            />
+                            {' Live output'}
+                          </>
+                        ) : (
+                          'Status'
+                        )
+                      ) : streamLog ? (
+                        'Stream log'
+                      ) : (
+                        'Output'
+                      )}
                     </div>
 
                     <pre
                       className="tool-activity-card__code tool-activity-card__code--output"
                     >
                       {isRunning
-                        ? 'Running…'
+                        ? (isStreaming
+                            ? streamLog
+                            : resultText)
+                          ? `${
+                              isStreaming
+                                ? streamLog
+                                : resultText
+                            }\n\n${
+                              isStreaming
+                                ? '… still streaming …'
+                                : '… still running …'
+                            }`
+                          : 'Running…'
                         : resultText ||
                           'Done — no output.'}
                     </pre>
+
+                    {!isRunning &&
+                    streamLog ? (
+                      <>
+                        <div className="tool-activity-card__section-title">
+                          Streamed progress
+                        </div>
+
+                        <pre
+                          className="tool-activity-card__code tool-activity-card__code--output"
+                        >
+                          {streamLog}
+                        </pre>
+                      </>
+                    ) : null}
                   </div>
                 ) : null}
               </motion.div>

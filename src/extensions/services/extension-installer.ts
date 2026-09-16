@@ -1,5 +1,7 @@
 import JSZip from "jszip";
 
+import { Command } from "@tauri-apps/plugin-shell";
+
 import {
   appDataDir,
   basename,
@@ -288,6 +290,13 @@ async function collectFolderFiles(
   const entries = await readDir(directoryPath);
 
   for (const entry of entries) {
+    // node_modules is provisioned by `npm install` after the copy, so skip
+    // it here: installing a folder like pi-node would otherwise copy its
+    // entire local dependency tree byte by byte.
+    if (entry.isDirectory && entry.name === "node_modules") {
+      continue;
+    }
+
     const entryPath = await join(
       directoryPath,
       entry.name,
@@ -376,6 +385,88 @@ async function getExtensionsRoot(): Promise<string> {
 }
 
 /**
+ * Best-effort Windows detection. Same rationale as the terminal tool:
+ * navigator.userAgent reflects the host operating system inside Tauri.
+ */
+function isWindowsPlatform(): boolean {
+  return navigator.userAgent
+    ?.toLowerCase()
+    .includes("windows") ?? false;
+}
+
+/**
+ * Run `npm install` inside an installed extension directory so extensions
+ * that declare dependencies (e.g. the pi Agent and its pi SDK) become
+ * runnable right after installation. `npm` is not directly executable on
+ * Windows, so go through the same shell wrappers the terminal tool uses
+ * (both are allowlisted in the Tauri shell capability).
+ */
+async function runNpmInstall(
+  directoryPath: string,
+): Promise<void> {
+  const isWindows = isWindowsPlatform();
+
+  const command = isWindows
+    ? Command.create(
+        "powershell",
+        ["-NoProfile", "-Command", "npm install --no-audit --no-fund"],
+        { cwd: directoryPath },
+      )
+    : Command.create(
+        "sh",
+        ["-c", "npm install --no-audit --no-fund"],
+        { cwd: directoryPath },
+      );
+
+  const output = await command.execute();
+
+  if (output.code !== 0) {
+    const errorDetail = output.stderr.trim()
+      ? output.stderr.trim().slice(-1000)
+      : `exit code ${output.code}`;
+
+    throw new Error(
+      `npm install failed for the extension. ${errorDetail}`,
+    );
+  }
+}
+
+/**
+ * Copy the prepared files into `directoryPath`, then, when the extension
+ * ships a package.json, install its dependencies. On any failure the
+ * partially-installed directory is removed so the UI stays consistent.
+ */
+async function installExtensionFiles(
+  directoryPath: string,
+  files: ArchiveFile[],
+): Promise<void> {
+  await installFilesIntoDirectory(directoryPath, files);
+
+  const hasPackageJson = files.some(
+    (file) =>
+      file.relativePath.toLocaleLowerCase() === "package.json",
+  );
+
+  if (!hasPackageJson) {
+    return;
+  }
+
+  try {
+    await runNpmInstall(directoryPath);
+  } catch (error) {
+    try {
+      await remove(directoryPath, {
+        recursive: true,
+      });
+    } catch {
+      // Keep the original installation error.
+    }
+
+    throw error;
+  }
+}
+
+/**
  * Install an extension from a ZIP archive that contains manifest.json.
  */
 export async function installExtensionFromZip(
@@ -395,7 +486,7 @@ export async function installExtensionFromZip(
     archive.extensionId,
   );
 
-  await installFilesIntoDirectory(
+  await installExtensionFiles(
     installedDirectory,
     archive.files,
   );
@@ -467,7 +558,7 @@ export async function installExtensionFromFolder(
     manifestId,
   );
 
-  await installFilesIntoDirectory(
+  await installExtensionFiles(
     installedDirectory,
     files,
   );
@@ -526,7 +617,7 @@ export async function installBundledExtension(
     extensionId,
   );
 
-  await installFilesIntoDirectory(
+  await installExtensionFiles(
     installedDirectory,
     files,
   );

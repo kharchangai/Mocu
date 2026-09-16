@@ -6,7 +6,10 @@ export interface ToolDefinition<
 > {
   name: string;
   description: string;
-  execute: (args: TArgs) => Promise<TResult> | TResult;
+  execute: (
+    args: TArgs,
+    context?: Record<string, unknown>,
+  ) => Promise<TResult> | TResult;
 }
 
 export interface ToolCall {
@@ -88,6 +91,7 @@ export class ToolExecutor {
   public async execute(
     toolName: string,
     args: unknown = {},
+    context?: Record<string, unknown>,
   ): Promise<unknown> {
     const tool = this.tools.get(toolName);
 
@@ -97,7 +101,10 @@ export class ToolExecutor {
       );
     }
 
-    return await tool.execute(args);
+    return await tool.execute(
+      args as Record<string, unknown>,
+      context,
+    );
   }
 
   public async executeCall(

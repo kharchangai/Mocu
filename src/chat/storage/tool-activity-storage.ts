@@ -25,6 +25,7 @@ const MAX_STORED_MESSAGES = 40;
  */
 const MAX_RESULT_LENGTH = 6000;
 const MAX_INPUT_JSON_LENGTH = 2000;
+const MAX_STREAM_LOG_LENGTH = 20_000;
 
 function clampText(value: string, maxLength: number): string {
   return value.length > maxLength
@@ -45,8 +46,9 @@ function isAgentToolActivity(value: unknown): value is AgentToolActivity {
     (activity.status === 'running' ||
       activity.status === 'done' ||
       activity.status === 'error') &&
-    typeof activity.args === 'object' &&
-    activity.args !== null
+    (activity.args === undefined ||
+      (typeof activity.args === 'object' &&
+        activity.args !== null))
   );
 }
 
@@ -151,19 +153,28 @@ export function saveToolActivities(
                 )
               : activity.result,
 
-            args: Object.fromEntries(
-              Object.entries(
-                activity.args,
-              ).map(([key, value]) => [
-                key,
-                typeof value === 'string'
-                  ? clampText(
-                      value,
-                      MAX_INPUT_JSON_LENGTH,
-                    )
-                  : value,
-              ]),
-            ),
+            streamLog: activity.streamLog
+              ? clampText(
+                  activity.streamLog,
+                  MAX_STREAM_LOG_LENGTH,
+                )
+              : activity.streamLog,
+
+            args: activity.args
+              ? Object.fromEntries(
+                  Object.entries(
+                    activity.args,
+                  ).map(([key, value]) => [
+                    key,
+                    typeof value === 'string'
+                      ? clampText(
+                          value,
+                          MAX_INPUT_JSON_LENGTH,
+                        )
+                      : value,
+                  ]),
+                )
+              : activity.args,
           }),
         );
     }

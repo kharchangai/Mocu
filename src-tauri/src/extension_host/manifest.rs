@@ -29,4 +29,14 @@ pub struct ExtensionCommand {
 
     #[serde(default)]
     pub description: Option<String>,
+
+    /// When true, the command streams live progress to the chat via
+    /// `mocu.extension.activity` notifications while it runs.
+    #[serde(default)]
+    pub streaming: bool,
+
+    /// Per-command execution timeout in seconds. Omitted -> default (900s).
+    /// `0` -> no timeout (wait until the extension answers).
+    #[serde(default)]
+    pub timeout_seconds: Option<u64>,
 }
