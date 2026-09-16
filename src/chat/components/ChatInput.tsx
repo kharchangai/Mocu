@@ -104,6 +104,8 @@ export function ChatInput({
     string | null
   >(null);
 
+  const [sendError, setSendError] = useState<string | null>(null);
+
   const safeValue = typeof value === 'string' ? value : '';
   const safeProjectPath =
     typeof projectPath === 'string' ? projectPath : '';
@@ -461,6 +463,7 @@ export function ChatInput({
     const skillsToSend = [...selectedSkills];
     const extensionsToSend = [...selectedExtensions];
 
+    setSendError(null);
     closeCommandMenu();
     setSelectedSkills([]);
     setSelectedExtensions([]);
@@ -480,6 +483,11 @@ export function ChatInput({
       onValueChange(message);
       setSelectedSkills(skillsToSend);
       setSelectedExtensions(extensionsToSend);
+      setSendError(
+        error instanceof Error
+          ? error.message
+          : 'The message could not be sent.',
+      );
       throw error;
     }
   };
@@ -563,7 +571,7 @@ export function ChatInput({
       event.preventDefault();
 
       if (canSend) {
-        void handleSend();
+        void handleSend().catch(() => undefined);
       }
     }
   };
@@ -760,7 +768,7 @@ export function ChatInput({
                 <button
                   type="button"
                   className="send-button"
-                  onClick={() => void handleSend()}
+                  onClick={() => void handleSend().catch(() => undefined)}
                   disabled={!canSend}
                   aria-label="Send message"
                 >
@@ -770,6 +778,12 @@ export function ChatInput({
             </div>
           </div>
         </div>
+
+        {sendError ? (
+          <p className="chat-input-error" role="alert">
+            {sendError}
+          </p>
+        ) : null}
 
         <p className="chat-input-disclaimer">
           Type /skill to select a skill, or /extension to run an

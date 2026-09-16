@@ -175,18 +175,38 @@ function ChatPage() {
           return;
         }
 
-        handleProjectPathChange(
-          normalizedFolderPath,
-        );
+        /*
+         * Do not update the currently active chat's projectPath here.
+         * Selecting a folder is navigation, not an edit to the existing
+         * conversation. Mutating chat A to point at folder B before loading
+         * B can make both chats share the same history file; the duplicate
+         * cleanup then removes chat A and a later send targets the wrong
+         * conversation.
+         *
+         * A newly selected folder becomes the default for a new chat. If it
+         * already has a persisted conversation, loadProjectConversation
+         * makes that conversation active below.
+         */
+        setDefaultProjectPath(normalizedFolderPath);
 
         /*
          * If this project already has a conversation stored inside
-         * .mocu/memory, load it and make it active.
+         * .mocu/memory, load it and make it active. Keep the current chat
+         * visible until this read completes; otherwise a slow or failed
+         * read can strand the user on a blank New chat page.
          */
         const loadedConversation =
           await loadProjectConversation(
             normalizedFolderPath,
           );
+
+        if (!loadedConversation) {
+          /*
+           * There is no saved conversation for this folder, so future
+           * messages must not be appended to the previous project.
+           */
+          startNewChat();
+        }
 
         setActiveItem('new-chat');
 
@@ -198,8 +218,8 @@ function ChatPage() {
         }
       },
       [
-        handleProjectPathChange,
         loadProjectConversation,
+        startNewChat,
       ],
     );
 

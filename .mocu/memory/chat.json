@@ -1,0 +1,64 @@
+{
+  "version": 1,
+  "chatId": "chat_df34d538-ac67-47fa-ab0e-cc40f9bc4874",
+  "title": "برای من توضیح بده توی فرانت اند چطوری از اکستنشن...",
+  "projectPath": "E:\\mocube\\mocu",
+  "createdAt": "2026-09-16T08:23:13.096Z",
+  "updatedAt": "2026-09-16T10:59:32.903Z",
+  "messages": [
+    {
+      "id": "message_3485a7e8-75df-4b26-bebd-40e845bd2403",
+      "role": "user",
+      "content": "برای من توضیح بده توی فرانت اند چطوری از اکستنشن استفاده میکنه ایجنت. این رو میدونم که هر اکستنشن میشه ابزار langchain ولی میخوام بهتر متوجه بشم که وقتی من یک اکستنشن برای مکو ساختم و یکسری کامند دادم برای این کامند ها توی فرامت اند چه اتفاقی میوفته؟ منظورم اینه که بهتر میخوام بهشم فهمم که اجنت چطوری یک چیزی رو میفرسته برای اکستنشن و اکستنشن چطوری جواب میده و استریم چطوری استفاق میوفته. ساده ولی کامل توضیح بده",
+      "createdAt": "2026-09-16T08:23:13.097Z"
+    },
+    {
+      "id": "message_f74af895-2dd1-4eff-a4f9-caebe8fe34ca",
+      "role": "user",
+      "content": "برای من توضیح بده توی فرانت اند چطوری از اکستنشن استفاده میکنه ایجنت. این رو میدونم که هر اکستنشن میشه ابزار langchain ولی میخوام بهتر متوجه بشم که وقتی من یک اکستنشن برای مکو ساختم و یکسری کامند دادم برای این کامند ها توی فرامت اند چه اتفاقی میوفته؟ منظورم اینه که بهتر میخوام بهشم فهمم که اجنت چطوری یک چیزی رو میفرسته برای اکستنشن و اکستنشن چطوری جواب میده و استریم چطوری استفاق میوفته. ساده ولی کامل توضیح بده",
+      "createdAt": "2026-09-16T10:34:58.086Z"
+    },
+    {
+      "id": "message_451fc9f5-71c5-46db-a1dc-3c2070d51621",
+      "role": "assistant",
+      "content": "# معماری استفاده‌ی Agent از Extension در فرانت‌اند\n\nتحلیل زیر بر اساس کد واقعی پروژه انجام شده (نتیجه‌ی Pi Agent بدون خطا برگشت). بذار قدم‌به‌قدم توضیح بدم:\n\n## ۰) نمای کلی: سه لایه با دو مرز\n\n```\n┌─────────────────────────────────────────────┐\n│  React (فرانت‌اند)                            │\n│  src/extensions/* + src/services/ai/*       │\n├─────────────────────────────────────────────┤\n│  Rust / Tauri  (مدیر پروسه‌ها)                │\n│  src-tauri/src/extension_host/*             │\n├─────────────────────────────────────────────┤\n│  پروسه Extension (node / python)            │\n│  با SDK: extension-system/sdk-node          │\n└─────────────────────────────────────────────┘\n```\n\n- مرز اول (فرانت‌اند ↔ Rust): با `invoke()` تِیوری\n- مرز دوم (Rust ↔ اکستنشن): **JSON-RPC روی stdin/stdout** (هر پیام یک خط JSON) — قراردادها در `extension-system/contracts/src/protocol.ts`\n\nنکته‌ی معماری مهم: **هیچ مفهوم activate/start وجود ندارد**. فرانت‌اند فقط می‌داند چه اکستنشن‌هایی نصب است؛ اجرای پروسه کاملاً lazy و دست Rust است.\n\n## ۱) فرانت‌اند چطور command ها را به Agent می‌دهد؟ (تبدیل به Tool)\n\nقلب ماجرا در `src/extensions/services/extension-agent-tools.ts` و تابع `loadExtensionAgentTools(selectedExtensionIds)` است که در `chat-agent.ts` (تابع `callChatAgent`) صدا زده می‌شود:\n\n1. **فیلتر opt-in**: فقط اکستنشن‌هایی که کاربر از منوی `/extension` در `ChatInput.tsx` انتخاب کرده (از طریق `configurable.selectedExtensions`) به tool تبدیل می‌شوند. اکستنشن انتخاب‌نشده = هیچ پروسه‌ای spawn نمی‌شود. حداکثر ۲۴ tool.\n2. برای **هر command در manifest** یک tool ساخته می‌شود:\n   - نام: `extension_{id}_{command}` — مثلاً `extension_pi_node_ask`\n   - schema: فقط یک پارامتر `input` (مدل چیزی جز این نمی‌فرستد)\n3. خروجی شامل سه بخش:\n   - `tools` → به `llm.bindTools([...])` داده می‌شود — **فقط schema به مدل می‌رسد**\n   - `registerAll(executor)` → اجراکننده‌ها در `ToolExecutor` ثبت می‌شوند — **اجرا واقعی اینجاست**\n   - `prompt` → به system prompt اضافه می‌شود (با قوانین EXTENSION USAGE RULES)\n\nنتیجه: مدل اکستنشن را یک tool معمولی LangChain می‌بیند و از پروسه/pipe/JSON-RPC **هیچ اطلاعی ندارد**.\n\n## ۲) زنجیره‌ی کامل فراخوانی (Agent → Extension)\n\nحلقه agent: `llmWithTools.invoke(...)` → اگر `tool_calls` بود → `executeToolCall` → `toolExecutor.execute(...)` — و **`toolCallId` کلید استریمینگ است**.\n\n| مرحله | کجا | چه می‌گذرد |\n|---|---|---|\n| ۱ | `extension-agent-tools.ts` | جدا کردن `args.input`؛ اگر command استریمی بود، کارت UI از ابتدا `streaming: true` می‌شود |\n| ۲ | `extension-client.ts` | `invoke(\"extension_execute\", {...})` |\n| ۳ | Rust `manager.rs` | اگر پروسه زنده نیست → `spawn_extension` (**lazy activation**) |\n| ۴ | Rust `process.rs` | اجرای `node index.js` یا `python -u` با stdin/stdout پipe + بررسی امنیتی entry (`verify_entry_path`) |\n| ۵ | Rust → اکستنشن | این JSON به **stdin** نوشته می‌شود |\n\n```json\n{\"jsonrpc\":\"2.0\",\"id\":\"<uuid>\",\"method\":\"extension.execute\",\n \"params\":{\"command\":\"ask\",\"input\":{...},\n           \"context\":{\"toolCallId\":\"...\",\"toolName\":\"...\"}}}\n```\n\n| مرحله | کجا | چه می‌گذرد |\n|---|---|---|\n| ۶ | Rust منتظر می‌ماند | روی `PendingRpc`؛ timeout پیش‌فرض ۹۰۰ ثانیه (override با `timeoutSeconds`) |\n| ۷ | SDK اکستنشن `protocol-client.ts` | با readline از stdin می‌خواند و dispatch به handler ثبت‌شده با `createExtension({commands:{ask}})` |\n| ۸ | handler شما | مثلاً در pi-node: `session.prompt(prompt)` اجرا می‌شود |\n\n**چه داده‌ای به اکستنشن می‌رسد**: نام command، `input`، و `context` (شامل toolCallId).\n\n## ۳) مسیر برگشت پاسخ\n\nاکستنشن **یک خط JSON-RPC response روی stdout** می‌نویسد:\n\n```json\n{\"jsonrpc\":\"2.0\",\"id\":\"<uuid>\",\"result\":{\"success\":true,\"output\":\"متن نهایی\"}}\n```\n\n- ترد reader در `process.rs`: پیامی که `method` ندارد و `id` دارد → پاسخ است → `PendingRpc::resolve` → `invoke` در فرانت‌اند resolve می‌شود.\n- در `extension-agent-tools.ts`: `normalizeExtensionOutput` خروجی را به متن تبدیل می‌کند (فیلد `output` ترجیح دارد، سقف ۳۰هزار کاراکتر).\n- در `chat-agent.ts`: نتیجه به `ToolMessage` تبدیل و به history اضافه می‌شود → **LLM دوباره invoke می‌شود** تا با دیدن نتیجه، پاسخ نهایی کاربر را بنویسد. همزمان کارت UI با `status:\"done\"` بسته می‌شود.\n- خطاها هرگز agent را نمی‌شکنند؛ به‌عنوان نتیجه‌ی ناموفق به مدل گزارش می‌شوند.\n\n**مسیر معکوس هم هست**: اکستنشن می‌تواند با `mocu.llm.generate` مدل Mocu را صدا بزند. `host-service.ts` این request را از طریق event تِیوری می‌گیرد، با `generateSimpleAnswer` (تک‌completion بدون agent loop) جواب می‌دهد و پاسخ را به **stdin** اکستنشن برمی‌گرداند.\n\n## ۴) استریم دقیقاً چطور اتفاق می‌افتد؟\n\nمهم‌ترین نکته: **دو جریان کاملاً جدا** وجود دارد.\n\n### الف) استریمِ پیشرفتِ اجرای command (نه توکن مدل)\n\nپایه‌اش تفاوت Request/Response با **Notification** در JSON-RPC است:\n\n1. اکستنشن حین اجرا، پیام‌های **بدون id** با متد `mocu.extension.activity` می‌فرستد: `{\"method\":\"mocu.extension.activity\",\"params\":{\"toolCallId\",\"toolName\",\"text\"}}` — از طریق `extension.notify(...)` در SDK\n2. در pi-node، کلاس `ActivityStream` رویدادهای session پی را به متن تبدیل و هر **۳۰۰ms** یک flush می‌کند (ضد flood شدن stdout). متن **تجمعی** است، نه delta\n3. ترد reader در Rust: چون پیام `method` دارد (نه `id`) → resolve نمی‌کند؛ به‌جایش `app.emit(\"extension://message\", ...)` به فرانت‌اند می‌فرستد\n4. `host-service.ts` → `handleActivityNotification`: با `toolCallId` می‌داند استریم متعلق به کدام کارت chat است → `dispatchAgentToolActivity({streaming: true, streamLog: text})`\n5. `toolActivity.ts`: CustomEvent با نام `mocu_tool_activity` روی `window` — یک event bus درون-پروسه‌ای (نه Tauri event)\n6. `ToolActivityFeed.tsx` برای کارت‌های استریمی یک `<pre>` زنده رندر می‌کند\n\nنکته: notification ها **هرگز answer نمی‌گیرند** (fire-and-forget) و اگر `toolCallId` نداشته باشند دور ریخته می‌شوند.\n\n### ب) توکن‌های پاسخ چت اصلی\n\nدر کد فعلی، چت از `app.invoke` LangGraph استفاده می‌کند → پاسخ نهایی **پس از پایان کل حلقه agent یک‌جا** برمی‌گردد؛ استریم توکن‌به‌توکن به UI وجود ندارد. تنها چیزی که کاربر «زنده» می‌بیند، همان کارت‌های activity و `streamLog` از مسیر (الف) است.\n\n## ۵) جمع‌بندی تفاوت دو جریان\n\n| | نتیجه command (`extension.execute`) | استریم activity (`mocu.extension.activity`) |\n|---|---|---|\n| نوع پیام JSON-RPC | Request/Response (با `id`) | Notification (بدون `id`) |\n| دفعات | یک‌بار، در پایان اجرا | هر ~۳۰۰ms، حین اجرا، تجمعی |\n| مسیر برگشت | stdout → `PendingRpc.resolve` → مقدار بازگشتی `invoke` | stdout → Tauri event → `mocu_tool_activity` |\n| مصرف‌کننده | حلقه agent → `ToolMessage` → ورودی بعدی LLM | UI چت (کارت زنده با `streamLog`) |\n| timeout | دارد (پیش‌فرض ۹۰۰s) | بی‌اثر، fire-and-forget |\n\n## خلاصه در یک جمله\n\nمدل فقط یک tool با پارامتر `input` می‌بیند → فرانت‌اند با `invoke` تِیوری به Rust می‌دهد → Rust پروسه را lazy spawn کرده و JSON-RPC به stdin می‌نویسد → اکستنشن حین کار notification (بدون id) برای استریم می‌فرستد و در پایان یک response (با id) → نتیجه به‌عنوان `ToolMessage` برمی‌گردد به LLM تا جواب نهایی نوشته شود.\n\nفایل‌های کلیدی برای مطالعه بیشتر: `extension-agent-tools.ts`، `host-service.ts`، `manager.rs`/`process.rs`، `protocol-client.ts`، و `extensions-examples/pi-node/index.js` (نمونه کامل با استریم واقعی).",
+      "createdAt": "2026-09-16T10:38:51.703Z"
+    },
+    {
+      "id": "message_4a55965e-acfc-4996-8f26-28545c7238ce",
+      "role": "user",
+      "content": "خوب توی این فلدر E:\\mocube\\mocu\\extensions-examples\\test یک اسکتنشن خیلی ساده برام بساز فقط میخوام ببینم چطوری ساخته میشه چطوری کار مکینه.\nکاری که میخوام بکنه اینه که یک کامند داره به اسم time و زمان سیستم رو توی index فایل با کد جاواسکریپت میگیره و میده.\nاسمش get_time و توضیهشچ اینه کا اکستشن برای گرفتن زمان هست همین.",
+      "createdAt": "2026-09-16T10:49:22.938Z"
+    },
+    {
+      "id": "message_d10f18f0-2c50-4965-a84b-9289cbb8119a",
+      "role": "assistant",
+      "content": "✅ اکستنشن شما با موفقیت ساخته شد: `E:\\mocube\\mocu\\extensions-examples\\test\\`\n\n## چی ساخته شد\n\n| فایل | نقش |\n|---|---|\n| `manifest.json` | شناسنامه اکستنشن: `id: \"get_time\"`، توضیح «اکستنشن برای گرفتن زمان هست»، یک command به نام `time` |\n| `index.js` | handler مربوط به `time` که با `new Date()` زمان سیستم را می‌گیرد و `extension.start()` را صدا می‌زند |\n| `package.json` + `package-lock.json` | `type: \"module\"` و وابستگی‌های SDK با `file:./vendor/...` |\n| `vendor/` | نسخه فعلی SDK پروژه (کنار اکستنشن vendored شده — الگوی رسمی `pi-node`) |\n| `node_modules/` | خروجی `npm install` (شامل typescript، @types/node و...) |\n\n## نکته مهمی که حین ساخت کشف شد\n\nنمونه‌های قدیمی (`time-node` و `sysinfo-node`) یک **نسخه کهنه از SDK** دارند که lifecycle `initialize/activate` می‌خواهد، ولی host فعلی Mocu فقط `extension.execute` می‌فرستد — تست اولیه با خطای «Extension is not active.» شکست خورد. به همین دلیل SDK **فعلی** پروژه vendored شد که بدون lifecycle مستقیم execute را پاس می‌دهد.\n\n## تست‌ها (همه موفق ✓)\n\n1. **شبیه‌سازی پروتکل Mocu**: ارسال `extension.execute` با command `time` به stdin → پاسخ `{success: true, output: \"CURRENT SYSTEM TIME...\"}`\n2. **مسیر خطا**: command ناموجود → `{\"success\": false, \"error\": \"Unknown command: unknown\"}` ✓\n3. **شبیه‌سازی نصب از UI**: `npm install` دقیقاً مطابق `extension-installer.ts` — موفق ✓\n\n⚠️ یک خطای غیرمرتبط از terminal_executor هم رخ داد (`invalid utf-8 sequence`) که به خود اکستنشن ربطی ندارد و دستور بعدی با موفقیت اجرا شد.\n\n## نحوه تست در خود Mocu\n\n1. برنامه را اجرا کنید → صفحه Extensions → نصب از پوشه → انتخاب `E:\\mocube\\mocu\\extensions-examples\\test`\n2. در چت با منوی `/extension` اکستنشن **Get Time Extension** را انتخاب کنید\n3. بنویسید «زمان الان سیستم چنده؟» — مدل ابزار `extension_get_time_time` را صدا می‌زند و خروجی را نشان می‌دهد",
+      "createdAt": "2026-09-16T10:54:48.024Z"
+    },
+    {
+      "id": "message_f16481f0-e5d5-4e23-b918-6b4632a3a2f4",
+      "role": "user",
+      "content": "ممنون",
+      "createdAt": "2026-09-16T10:58:42.278Z"
+    },
+    {
+      "id": "message_ab6f0f25-c31a-45b0-8d5d-645bb11e857e",
+      "role": "assistant",
+      "content": "خواهش می‌کنم 🌹",
+      "createdAt": "2026-09-16T10:58:47.980Z"
+    },
+    {
+      "id": "message_5a17c2f3-5a70-4996-9f53-a0152eea88a4",
+      "role": "user",
+      "content": "خیلی خوب متوجه شدم",
+      "createdAt": "2026-09-16T10:59:18.413Z"
+    },
+    {
+      "id": "message_ed5fb3c1-b2c8-47b4-8e4e-403f448be06e",
+      "role": "assistant",
+      "content": "خوشحالم که روشن شد 😊",
+      "createdAt": "2026-09-16T10:59:32.903Z"
+    }
+  ]
+}

@@ -285,14 +285,21 @@ function App() {
 
   useEffect(() => {
     /*
-     * Start the extension host bridge once. This is what lets extensions
-     * call Mocu host methods (currently the LLM) and receive answers back
-     * through Rust.
+     * There are two Tauri webviews: the chat window and the avatar window.
+     * Only the chat webview should own the extension host bridge. If both
+     * webviews listen for extension://message, every host request is handled
+     * twice (including two LLM calls and two JSON-RPC responses). That can
+     * leave an extension in a broken state and make the next chat request
+     * appear to refresh the app.
      */
+    if (!isChatWindow) {
+      return;
+    }
+
     const stopHost = startExtensionHost();
 
     return stopHost;
-  }, []);
+  }, [isChatWindow]);
 
   useEffect(() => {
     if (!isMocuWindow || hasRunAtomicMemoryTestRef.current) {

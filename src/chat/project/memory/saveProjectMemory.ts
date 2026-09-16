@@ -36,6 +36,7 @@ import type {
 import { databaseManager } from "./storage/databaseManager";
 import { entityMemoryStore } from "./memory-retrieval/entityMemoryStore";
 import { useWindowGraphDatabase } from "./window/windowGraphIndexer";
+import { runProjectMemoryExclusive } from "./projectMemoryOperationQueue";
 
 /* -------------------------------------------------------------------------- */
 /* Storage Locations                                                          */
@@ -82,17 +83,6 @@ const normalizeProjectPath = (path: string): string => {
 };
 
 /* -------------------------------------------------------------------------- */
-/* Pipeline Queue                                                             */
-/* -------------------------------------------------------------------------- */
-
-/**
- * All background pipelines run strictly one after another so that
- * switching the database between projects can never interleave with a
- * running pipeline.
- */
-let pipelineQueue: Promise<void> = Promise.resolve();
-
-/* -------------------------------------------------------------------------- */
 /* Main Function                                                              */
 /* -------------------------------------------------------------------------- */
 
@@ -111,16 +101,8 @@ let pipelineQueue: Promise<void> = Promise.resolve();
 export function saveProjectMemory(
   input: SaveProjectMemoryInput,
 ): Promise<SaveProjectMemoryResult> {
-  const operation =
-    runProjectMemoryPipeline(input);
-
-  /*
-   * The finished pipeline is appended to the queue so the next call
-   * waits for it, regardless of whether it succeeded or failed.
-   */
-  pipelineQueue = operation.then(
-    () => undefined,
-    () => undefined,
+  const operation = runProjectMemoryExclusive(() =>
+    runProjectMemoryPipeline(input),
   );
 
   return operation;
@@ -135,7 +117,7 @@ async function runProjectMemoryPipeline({
   agentResponse,
   projectPath,
 }: SaveProjectMemoryInput): Promise<SaveProjectMemoryResult> {
-  await pipelineQueue;
+  /* The shared queue already serialized this pipeline with retrieval. */
 
   const normalizedUserMessage =
     userMessage.trim();

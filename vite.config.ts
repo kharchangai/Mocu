@@ -22,7 +22,18 @@ export default defineConfig(async () => ({
       port: 1431,
     },
     watch: {
-      ignored: ["**/src-tauri/**"],
+      /*
+       * Project conversations and memory databases are stored inside
+       * <project>/.mocu. When the active project is this repository itself,
+       * those files are written while Vite is running and must not trigger a
+       * dev-server reload. Otherwise pending Tauri invoke callbacks are lost
+       * and the webview returns to the New chat page.
+       */
+      ignored: [
+        "**/src-tauri/**",
+        "**/.mocu/**",
+        "**/.mocu",
+      ],
     },
   },
 }));

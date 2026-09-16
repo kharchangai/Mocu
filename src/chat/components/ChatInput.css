@@ -191,6 +191,13 @@
   background: #dc2626;
 }
 
+.chat-input-error {
+  margin: 6px 0 0;
+  color: #dc2626;
+  font-size: 11px;
+  line-height: 1.4;
+}
+
 .chat-input-disclaimer {
   margin: 8px 0 0;
   color: #9ca3af;

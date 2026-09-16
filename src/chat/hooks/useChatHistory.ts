@@ -1,4 +1,10 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from 'react';
 import { loadChats, saveChats } from '../storage/chat-storage';
 import {
   deleteProjectConversationFile,
@@ -77,6 +83,19 @@ export function useChatHistory() {
   const [chats, setChats] = useState<ChatConversation[]>(() => loadChats());
   const [activeChatId, setActiveChatId] = useState<string | null>(null);
 
+  /*
+   * Keep the selected chat synchronously as well as in React state. A
+   * sidebar click and an Enter press can happen before React renders the
+   * next frame; callbacks created during that frame would otherwise still
+   * see the previous null chat ID and create a new chat.
+   */
+  const activeChatIdRef = useRef<string | null>(null);
+
+  const setActiveChat = useCallback((chatId: string | null) => {
+    activeChatIdRef.current = chatId;
+    setActiveChatId(chatId);
+  }, []);
+
   useEffect(() => {
     saveChats(chats);
   }, [chats]);
@@ -99,8 +118,8 @@ export function useChatHistory() {
   );
 
   const startNewChat = useCallback(() => {
-    setActiveChatId(null);
-  }, []);
+    setActiveChat(null);
+  }, [setActiveChat]);
 
   const selectChat = useCallback(
     (chatId: string) => {
@@ -111,9 +130,9 @@ export function useChatHistory() {
         return;
       }
 
-      setActiveChatId(chatId);
+      setActiveChat(chatId);
     },
-    [chats],
+    [chats, setActiveChat],
   );
 
   const createChat = useCallback(
@@ -159,7 +178,7 @@ export function useChatHistory() {
       };
 
       setChats((currentChats) => [newChat, ...currentChats]);
-      setActiveChatId(chatId);
+      setActiveChat(chatId);
 
       if (isProjectChat) {
         void saveProjectConversationFile(newChat);
@@ -170,7 +189,7 @@ export function useChatHistory() {
         message,
       };
     },
-    [],
+    [setActiveChat],
   );
 
   const addMessage = useCallback(
@@ -243,18 +262,24 @@ export function useChatHistory() {
         throw new Error('The message cannot be empty.');
       }
 
-      if (!activeChatId) {
+      const currentActiveChatId = activeChatIdRef.current;
+
+      if (!currentActiveChatId) {
         return createChat(normalizedContent);
       }
 
-      const message = addMessage(activeChatId, 'user', normalizedContent);
+      const message = addMessage(
+        currentActiveChatId,
+        'user',
+        normalizedContent,
+      );
 
       return {
-        chatId: activeChatId,
+        chatId: currentActiveChatId,
         message,
       };
     },
-    [activeChatId, addMessage, createChat],
+    [addMessage, createChat],
   );
 
   const addAssistantMessage = useCallback(
@@ -300,6 +325,29 @@ export function useChatHistory() {
         normalizedProjectPath,
       );
 
+      /*
+       * A conversation can already be present in localStorage even when
+       * its project file is temporarily unavailable (for example while a
+       * project folder is being switched or its .mocu directory is being
+       * created). Prefer that in-memory conversation over silently opening
+       * a new chat and losing the user's next message.
+       */
+      const normalizedRequestedPath = normalizeHistoryFilePath(
+        normalizedProjectPath,
+      );
+
+      const localConversation = chats.find(
+        (chat) =>
+          chat.projectPath &&
+          normalizeHistoryFilePath(chat.projectPath) ===
+            normalizedRequestedPath,
+      );
+
+      if (!loaded && localConversation) {
+        setActiveChat(localConversation.id);
+        return localConversation;
+      }
+
       if (!loaded) {
         return null;
       }
@@ -330,11 +378,11 @@ export function useChatHistory() {
         return sortChats([loaded, ...withoutExisting]);
       });
 
-      setActiveChatId(loaded.id);
+      setActiveChat(loaded.id);
 
       return loaded;
     },
-    [],
+    [chats, setActiveChat],
   );
 
   const ensureChat = useCallback(
@@ -354,11 +402,20 @@ export function useChatHistory() {
        * agent thread ID, project path, and history file path, so new
        * messages are appended to the same conversation and file.
        */
-      if (activeChatId) {
+      const currentActiveChatId = activeChatIdRef.current;
+
+      if (
+        currentActiveChatId &&
+        chats.some((chat) => chat.id === currentActiveChatId)
+      ) {
         return {
-          chatId: activeChatId,
+          chatId: currentActiveChatId,
           wasCreated: false,
         };
+      }
+
+      if (currentActiveChatId) {
+        setActiveChat(null);
       }
 
       const normalizedProjectPath = projectPath.trim();
@@ -395,7 +452,7 @@ export function useChatHistory() {
         wasCreated: true,
       };
     },
-    [activeChatId, createChat, loadProjectConversation],
+    [chats, createChat, loadProjectConversation, setActiveChat],
   );
 
   const appendMessage = useCallback(
@@ -447,17 +504,17 @@ export function useChatHistory() {
         void deleteProjectConversationFile(deletedChat.projectPath);
       }
 
-      if (activeChatId === chatId) {
-        setActiveChatId(null);
+      if (activeChatIdRef.current === chatId) {
+        setActiveChat(null);
       }
     },
-    [activeChatId, chats],
+    [chats, setActiveChat],
   );
 
   const clearAllChats = useCallback(() => {
     setChats([]);
-    setActiveChatId(null);
-  }, []);
+    setActiveChat(null);
+  }, [setActiveChat]);
 
   return {
     chats,

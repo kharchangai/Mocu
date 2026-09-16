@@ -156,9 +156,11 @@ const buildExtensionToolsPrompt = (
 /**
  * Loads extension commands as agent tools.
  *
- * When selectedExtensionIds is not empty, only the extensions explicitly
- * selected by the user are exposed as tools. When it is empty, every
- * installed extension is available.
+ * Only extensions explicitly selected by the user are exposed as tools.
+ * An empty selection returns an empty tool set. This is important because
+ * exposing every installed extension on every request can make the model
+ * invoke an extension unexpectedly (and starts its child process) even when
+ * the user did not ask for one.
  *
  * Selected extensions are not executed here. They are only exposed to
  * the model as callable tools.
@@ -199,25 +201,38 @@ export const loadExtensionAgentTools =
 
     const missingExtensions: string[] = [];
 
-    if (requestedIds.length > 0) {
-      const requestedIdSet = new Set(requestedIds);
-
-      const installedIds = new Set(
-        installed.map(
-          (extension) => extension.manifest.id,
-        ),
-      );
-
-      for (const id of requestedIds) {
-        if (!installedIds.has(id)) {
-          missingExtensions.push(id);
-        }
-      }
-
-      installed = installed.filter((extension) =>
-        requestedIdSet.has(extension.manifest.id),
-      );
+    /*
+     * Extensions are opt-in per request. The chat input exposes them through
+     * /extension, so a normal message must not start or advertise installed
+     * extension processes just because they happen to exist on disk.
+     */
+    if (requestedIds.length === 0) {
+      return {
+        tools: [],
+        entries: [],
+        registerAll: () => undefined,
+        prompt: "",
+        missingExtensions: [],
+      };
     }
+
+    const requestedIdSet = new Set(requestedIds);
+
+    const installedIds = new Set(
+      installed.map(
+        (extension) => extension.manifest.id,
+      ),
+    );
+
+    for (const id of requestedIds) {
+      if (!installedIds.has(id)) {
+        missingExtensions.push(id);
+      }
+    }
+
+    installed = installed.filter((extension) =>
+      requestedIdSet.has(extension.manifest.id),
+    );
 
     const usedNames = new Set<string>();
 

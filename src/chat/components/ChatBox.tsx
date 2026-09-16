@@ -388,7 +388,12 @@ export function ChatBox({
 
       setIsLoading(false);
 
-      return;
+      /*
+       * Let ChatInput restore the draft and selected tags. Swallowing this
+       * error makes a failed project resume look like a successful send and
+       * leaves the user on an empty New chat page with no explanation.
+       */
+      throw error;
     }
 
     /*

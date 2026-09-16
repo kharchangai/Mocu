@@ -40,6 +40,7 @@
  */
 
 import { getAsyncLLM } from "../../../../services/ai/llm";
+import { runProjectMemoryExclusive } from "../projectMemoryOperationQueue";
 
 import {
   extractJSONObject,
@@ -511,7 +512,20 @@ function estimateTokens(
  * @param input The user message, project path, and optional previous
  *   live conversation turn.
  */
-export async function retrieveProjectMemory(
+export function retrieveProjectMemory(
+  input: ProjectMemoryRetrievalInput,
+): Promise<ProjectMemoryRetrievalResult> {
+  /*
+   * Retrieval changes the active project database used by the memory
+   * managers. Serialize it with background saves and retrievals from other
+   * projects so switching from B back to A cannot cross the database pools.
+   */
+  return runProjectMemoryExclusive(() =>
+    retrieveProjectMemoryInternal(input),
+  );
+}
+
+async function retrieveProjectMemoryInternal(
   input: ProjectMemoryRetrievalInput,
 ): Promise<ProjectMemoryRetrievalResult> {
   const normalizedUserMessage =

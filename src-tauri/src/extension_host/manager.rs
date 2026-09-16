@@ -43,10 +43,18 @@ fn command_timeout(manifest: &ExtensionManifest, command: &str) -> Option<Durati
         .and_then(|entry| entry.timeout_seconds)
         .map(|seconds| {
             if seconds == 0 {
-                None
-            } else {
-                Some(Duration::from_secs(seconds))
+                return None;
             }
+
+            /*
+             * A manifest is user/extension input. Do not allow an invalid
+             * oversized value to panic Duration::from_secs and terminate the
+             * Tauri process while a chat message is being sent.
+             */
+            const MAX_TIMEOUT_SECONDS: u64 = 24 * 60 * 60;
+            let bounded_seconds = seconds.min(MAX_TIMEOUT_SECONDS);
+
+            Some(Duration::from_secs(bounded_seconds))
         })
         .unwrap_or(Some(DEFAULT_EXECUTE_TIMEOUT))
 }

@@ -1,0 +1,11 @@
+{
+  "name": "get_time",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "اکستنشن برای گرفتن زمان هست",
+  "dependencies": {
+    "@mocu/extension-contracts": "file:./vendor/extension-contracts",
+    "@mocu/extension-sdk": "file:./vendor/extension-sdk"
+  }
+}

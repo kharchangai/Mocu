@@ -1,0 +1,15 @@
+{
+  "id": "get_time",
+  "name": "Get Time Extension",
+  "description": "اکستنشن برای گرفتن زمان هست",
+  "version": "0.1.0",
+  "runtime": "node",
+  "entry": "index.js",
+  "commands": [
+    {
+      "id": "time",
+      "title": "Get current system time",
+      "description": "Returns the current system date and time."
+    }
+  ]
+}
