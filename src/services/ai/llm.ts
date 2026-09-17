@@ -80,3 +80,45 @@ export const getAsyncLLM = async (
     },
   });
 };
+
+export const getAsyncLLMByModel = async (
+  model: string,
+  options: LlmGenerationOptions = {},
+): Promise<ChatOpenAI> => {
+  const config = await readSettings();
+
+  const trimmedModel = model.trim();
+
+  if (!trimmedModel) {
+    throw new Error(
+      "The LLM model name is not set. Pass a model name like 'gpt-4'.",
+    );
+  }
+
+  // A model name is not tied to a tier. Use the shared LLM endpoint for
+  // every model instead of selecting a different URL based on its name.
+  // `mediumBaseUrl` is the canonical shared URL; the fallbacks keep this
+  // working when only one of the tier fields has been configured.
+  const baseUrl =
+    config.mediumBaseUrl || config.cheapBaseUrl || config.expensiveBaseUrl;
+
+  if (!baseUrl.trim()) {
+    throw new Error(
+      "The LLM base URL is not configured. Open Settings and set its base URL.",
+    );
+  }
+
+  return new ChatOpenAI({
+    apiKey: config.apiKey || "",
+    model: trimmedModel,
+    ...(options.temperature === undefined
+      ? {}
+      : { temperature: options.temperature }),
+    ...(options.maxTokens === undefined
+      ? {}
+      : { maxTokens: options.maxTokens }),
+    configuration: {
+      baseURL: normalizeBaseUrl(baseUrl),
+    },
+  });
+};

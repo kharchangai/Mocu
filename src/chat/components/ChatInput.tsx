@@ -15,6 +15,7 @@ import {
   useState,
 } from 'react';
 import { listAvailableSkills } from '../services/skillService';
+import { listAvailableAgents } from '../agent/agent-loader';
 import { scanInstalledExtensions } from '../../extensions/services/extension-scanner';
 import { CommandMenu } from './CommandMenu';
 import {
@@ -31,12 +32,18 @@ import type {
   AvailableExtension,
   SelectedExtension,
 } from './extensionTypes';
+import { filterAgents } from './agentMention';
+import type {
+  AvailableAgent,
+  SelectedAgent,
+} from './agentTypes';
 import './ChatInput.css';
 
 export type SendOptions = {
   projectPath: string | null;
   selectedSkills: SelectedSkill[];
   selectedExtensions: SelectedExtension[];
+  selectedAgent: SelectedAgent | null;
 };
 
 export type ChatInputProps = {
@@ -56,7 +63,7 @@ export type ChatInputProps = {
   onStop?: () => void;
 };
 
-type CommandMenuMode = 'commands' | 'skills' | 'extensions';
+type CommandMenuMode = 'commands' | 'skills' | 'extensions' | 'agents';
 
 export function ChatInput({
   value = '',
@@ -81,6 +88,8 @@ export function ChatInput({
     AvailableExtension[]
   >([]);
 
+  const [availableAgents, setAvailableAgents] = useState<AvailableAgent[]>([]);
+
   const [activeCommand, setActiveCommand] =
     useState<ActiveSlashCommand | null>(null);
 
@@ -91,6 +100,8 @@ export function ChatInput({
   const [selectedExtensions, setSelectedExtensions] = useState<
     SelectedExtension[]
   >([]);
+
+  const [selectedAgent, setSelectedAgent] = useState<SelectedAgent | null>(null);
 
   const [selectedItemIndex, setSelectedItemIndex] = useState(0);
   const [isLoadingSkills, setIsLoadingSkills] = useState(false);
@@ -103,6 +114,9 @@ export function ChatInput({
   const [extensionsError, setExtensionsError] = useState<
     string | null
   >(null);
+
+  const [isLoadingAgents, setIsLoadingAgents] = useState(false);
+  const [agentsError, setAgentsError] = useState<string | null>(null);
 
   const [sendError, setSendError] = useState<string | null>(null);
 
@@ -130,11 +144,14 @@ export function ChatInput({
         ? 'skills'
         : activeCommand.command === 'extension'
           ? 'extensions'
-          : 'commands';
+          : activeCommand.command === 'agent'
+            ? 'agents'
+            : 'commands';
 
   const activeCommandQuery =
     (activeCommand?.command === 'skill' ||
-      activeCommand?.command === 'extension'
+      activeCommand?.command === 'extension' ||
+      activeCommand?.command === 'agent'
       ? activeCommand.query
       : '') ?? '';
 
@@ -162,6 +179,14 @@ export function ChatInput({
       activeCommandQuery,
     );
   }, [commandMenuMode, availableExtensions, activeCommandQuery]);
+
+  const filteredAgents = useMemo(() => {
+    if (commandMenuMode !== 'agents') {
+      return [];
+    }
+
+    return filterAgents(availableAgents, activeCommandQuery);
+  }, [commandMenuMode, availableAgents, activeCommandQuery]);
 
   const loadSkills = useCallback(async () => {
     setIsLoadingSkills(true);
@@ -217,6 +242,33 @@ export function ChatInput({
     }
   }, []);
 
+  const loadAgents = useCallback(async () => {
+    setIsLoadingAgents(true);
+    setAgentsError(null);
+
+    try {
+      const installed = await listAvailableAgents();
+      setAvailableAgents(
+        installed.map((agent) => ({
+          id: agent.id,
+          name: agent.agentName,
+          description: agent.description,
+          path: agent.path,
+        })),
+      );
+    } catch (error) {
+      console.error('Failed to load agents:', error);
+      setAvailableAgents([]);
+      setAgentsError(
+        error instanceof Error
+          ? error.message
+          : 'Failed to load available agents.',
+      );
+    } finally {
+      setIsLoadingAgents(false);
+    }
+  }, []);
+
   useEffect(() => {
     void loadSkills();
   }, [loadSkills]);
@@ -224,6 +276,10 @@ export function ChatInput({
   useEffect(() => {
     void loadExtensions();
   }, [loadExtensions]);
+
+  useEffect(() => {
+    void loadAgents();
+  }, [loadAgents]);
 
   useEffect(() => {
     const textarea = textareaRef.current;
@@ -245,7 +301,9 @@ export function ChatInput({
         ? filteredSkills.length
         : commandMenuMode === 'extensions'
           ? filteredExtensions.length
-          : 2;
+          : commandMenuMode === 'agents'
+            ? filteredAgents.length
+            : 3;
 
     if (
       selectedItemIndex >= menuItemCount &&
@@ -256,6 +314,7 @@ export function ChatInput({
   }, [
     filteredSkills.length,
     filteredExtensions.length,
+    filteredAgents.length,
     selectedItemIndex,
     commandMenuMode,
   ]);
@@ -332,7 +391,10 @@ export function ChatInput({
    * switches to the matching list and the user can keep typing.
    */
   const handleSelectCommand = (command: string) => {
-    if (!activeCommand || (command !== 'skill' && command !== 'extension')) {
+    if (
+      !activeCommand ||
+      (command !== 'skill' && command !== 'extension' && command !== 'agent')
+    ) {
       return;
     }
 
@@ -437,6 +499,24 @@ export function ChatInput({
     setTextareaCaret(textBeforeMention.length);
   };
 
+  const handleAgentSelect = (agent: AvailableAgent) => {
+    if (!activeCommand) {
+      return;
+    }
+
+    const textBeforeMention = safeValue.slice(0, activeCommand.start);
+    const textAfterMention = safeValue.slice(activeCommand.end);
+
+    setSelectedAgent({
+      id: agent.id,
+      name: agent.name,
+      path: agent.path,
+    });
+    onValueChange(textBeforeMention + textAfterMention);
+    closeCommandMenu();
+    setTextareaCaret(textBeforeMention.length);
+  };
+
   const handleRemoveSkill = (skill: SelectedSkill) => {
     setSelectedSkills((currentSkills) =>
       currentSkills.filter(
@@ -453,6 +533,10 @@ export function ChatInput({
     );
   };
 
+  const handleRemoveAgent = () => {
+    setSelectedAgent(null);
+  };
+
   const handleSend = async () => {
     const message = safeValue.trim();
 
@@ -462,11 +546,13 @@ export function ChatInput({
 
     const skillsToSend = [...selectedSkills];
     const extensionsToSend = [...selectedExtensions];
+    const agentToSend = selectedAgent;
 
     setSendError(null);
     closeCommandMenu();
     setSelectedSkills([]);
     setSelectedExtensions([]);
+    setSelectedAgent(null);
     onValueChange('');
 
     try {
@@ -474,6 +560,7 @@ export function ChatInput({
         projectPath: normalizedProjectPath,
         selectedSkills: skillsToSend,
         selectedExtensions: extensionsToSend,
+        selectedAgent: agentToSend,
       });
     } catch (error) {
       /*
@@ -483,6 +570,7 @@ export function ChatInput({
       onValueChange(message);
       setSelectedSkills(skillsToSend);
       setSelectedExtensions(extensionsToSend);
+      setSelectedAgent(agentToSend);
       setSendError(
         error instanceof Error
           ? error.message
@@ -501,7 +589,9 @@ export function ChatInput({
           ? filteredSkills.length
           : commandMenuMode === 'extensions'
             ? filteredExtensions.length
-            : 2;
+            : commandMenuMode === 'agents'
+              ? filteredAgents.length
+              : 3;
 
       if (event.key === 'ArrowDown') {
         event.preventDefault();
@@ -551,8 +641,19 @@ export function ChatInput({
           if (selectedExtension) {
             handleExtensionSelect(selectedExtension);
           }
+        } else if (commandMenuMode === 'agents') {
+          const selectedAgentItem = filteredAgents[selectedItemIndex];
+
+          if (selectedAgentItem) {
+            handleAgentSelect(selectedAgentItem);
+          }
         } else {
-          const commandItem = selectedItemIndex === 0 ? 'skill' : 'extension';
+          const commandItem =
+            selectedItemIndex === 0
+              ? 'skill'
+              : selectedItemIndex === 1
+                ? 'extension'
+                : 'agent';
 
           handleSelectCommand(commandItem);
         }
@@ -582,10 +683,15 @@ export function ChatInput({
           isLoading: isLoadingExtensions,
           error: extensionsError,
         }
-      : {
-          isLoading: isLoadingSkills,
-          error: skillsError,
-        };
+      : commandMenuMode === 'agents'
+        ? {
+            isLoading: isLoadingAgents,
+            error: agentsError,
+          }
+        : {
+            isLoading: isLoadingSkills,
+            error: skillsError,
+          };
 
   return (
     <div className="chat-input-shell">
@@ -613,12 +719,14 @@ export function ChatInput({
               commandQuery={activeCommandQuery}
               skills={filteredSkills}
               extensions={filteredExtensions}
+              agents={filteredAgents}
               selectedIndex={selectedItemIndex}
               isLoading={loadSuffix.isLoading}
               error={loadSuffix.error}
               onSelectCommand={handleSelectCommand}
               onSelectSkill={handleSkillSelect}
               onSelectExtension={handleExtensionSelect}
+              onSelectAgent={handleAgentSelect}
               onHover={setSelectedItemIndex}
             />
           )}
@@ -648,6 +756,22 @@ export function ChatInput({
                   </button>
                 </span>
               ))}
+            </div>
+          )}
+
+          {selectedAgent && (
+            <div className="skill-tags-row" aria-label="Selected agent">
+              <span className="skill-tag agent-tag" title={selectedAgent.name}>
+                <span className="skill-tag-name">🤖 {selectedAgent.name}</span>
+                <button
+                  type="button"
+                  className="skill-tag-remove"
+                  onClick={handleRemoveAgent}
+                  aria-label={`Remove agent ${selectedAgent.name}`}
+                >
+                  <X size={12} />
+                </button>
+              </span>
             </div>
           )}
 
@@ -786,8 +910,8 @@ export function ChatInput({
         ) : null}
 
         <p className="chat-input-disclaimer">
-          Type /skill to select a skill, or /extension to run an
-          extension. Mocu can make mistakes. Check important information.
+          Type /skill, /extension, or /agent to select resources for this
+          request. Mocu can make mistakes. Check important information.
         </p>
       </div>
     </div>

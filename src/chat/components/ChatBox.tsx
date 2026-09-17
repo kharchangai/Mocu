@@ -35,6 +35,7 @@ import type { ChatMessage } from '../types/chat';
 
 import type { SelectedSkill } from './skillTypes';
 import type { SelectedExtension } from './extensionTypes';
+import type { SelectedAgent } from './agentTypes';
 
 import './ChatBox.css';
 
@@ -51,6 +52,7 @@ type SendOptions = {
   projectPath?: string | null;
   selectedSkills?: SelectedSkill[];
   selectedExtensions?: SelectedExtension[];
+  selectedAgent?: SelectedAgent | null;
 };
 
 type ChatBoxProps = {
@@ -507,6 +509,8 @@ export function ChatBox({
             options?.selectedExtensions?.map(
               (extension) => extension.id,
             ) ?? [],
+          selectedAgent:
+            options?.selectedAgent?.name ?? null,
         },
       };
 

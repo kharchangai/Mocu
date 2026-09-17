@@ -50,6 +50,8 @@ import {
   loadExtensionAgentTools,
 } from "../../extensions/services/extension-agent-tools";
 
+import { runAgentByName } from "../../chat/agent/agent-runner";
+
 import {
   ToolExecutor,
 } from "./agent/tool-executor";
@@ -256,6 +258,23 @@ const addSkillsToChatSystemPrompt = (
  * the model as callable tools (via loadExtensionAgentTools) and the
  * model invokes them itself when the user asks to use an extension.
  */
+const addDelegatedAgentToChatSystemPrompt = (
+  baseSystemPrompt: string,
+  delegatedAgentResult: string,
+): string => {
+  if (!delegatedAgentResult.trim()) {
+    return baseSystemPrompt;
+  }
+
+  return [
+    baseSystemPrompt.trim(),
+    "",
+    "DELEGATED AGENT RESULT",
+    "Use this saved-agent result as supporting work for the user's request. Verify it before making claims.",
+    delegatedAgentResult.trim(),
+  ].join("\n");
+};
+
 const addExtensionsToChatSystemPrompt = (
   baseSystemPrompt: string,
   extensionsPrompt: string,
@@ -327,6 +346,15 @@ const getSelectedSkillNames = (
       typeof item === "string" &&
       item.trim().length > 0,
   );
+};
+
+const getSelectedAgentName = (
+  config: RunnableConfig,
+): string | null => {
+  const value = config.configurable?.selectedAgent;
+  return typeof value === "string" && value.trim()
+    ? value.trim()
+    : null;
 };
 
 const getSelectedExtensionIds = (
@@ -933,6 +961,22 @@ export const callChatAgent =
         runnableConfig,
       );
 
+    const selectedAgentName = getSelectedAgentName(runnableConfig);
+    let delegatedAgentResult = "";
+
+    if (selectedAgentName) {
+      try {
+        delegatedAgentResult = await runAgentByName(
+          selectedAgentName,
+          userText,
+          "",
+          runnableConfig,
+        );
+      } catch (error) {
+        console.warn("[Chat Agent] Delegated agent failed:", error);
+      }
+    }
+
     throwIfAborted(
       signal,
     );
@@ -1138,10 +1182,14 @@ export const callChatAgent =
         extensionTools.prompt,
       );
 
-    const systemPrompt =
-      addFileManagerRulesToSystemPrompt(
-        extensionEnabledSystemPrompt,
-      );
+    const delegatedAgentSystemPrompt = addDelegatedAgentToChatSystemPrompt(
+      extensionEnabledSystemPrompt,
+      delegatedAgentResult,
+    );
+
+    const systemPrompt = addFileManagerRulesToSystemPrompt(
+      delegatedAgentSystemPrompt,
+    );
 
     let messagesToRun:
       BaseMessage[] = [

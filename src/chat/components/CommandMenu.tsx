@@ -1,26 +1,29 @@
-import { Box, FolderOpen, Puzzle, TerminalSquare } from 'lucide-react';
+import { Bot, Box, FolderOpen, Puzzle, TerminalSquare } from 'lucide-react';
 import { useEffect, useRef } from 'react';
 import type { AvailableSkill } from './skillTypes';
 import type { AvailableExtension } from './extensionTypes';
+import type { AvailableAgent } from './agentTypes';
 
 /*
  * The command menu shows the available slash commands while the caret is
  * on a bare "/", then switches to the matching skill or extension list
  * once the user types or selects "/skill" or "/extension".
  */
-type CommandMenuMode = 'commands' | 'skills' | 'extensions';
+type CommandMenuMode = 'commands' | 'skills' | 'extensions' | 'agents';
 
 type CommandMenuProps = {
   mode: CommandMenuMode;
   commandQuery: string;
   skills: AvailableSkill[];
   extensions: AvailableExtension[];
+  agents: AvailableAgent[];
   selectedIndex: number;
   isLoading: boolean;
   error: string | null;
   onSelectCommand: (command: string) => void;
   onSelectSkill: (skill: AvailableSkill) => void;
   onSelectExtension: (extension: AvailableExtension) => void;
+  onSelectAgent: (agent: AvailableAgent) => void;
   onHover: (index: number) => void;
 };
 
@@ -35,6 +38,11 @@ const COMMANDS = [
     name: '/extension',
     description: 'Run an extension and send its output to Mocu',
   },
+  {
+    command: 'agent',
+    name: '/agent',
+    description: 'Delegate this request to a saved specialist agent',
+  },
 ] as const;
 
 export function CommandMenu({
@@ -42,12 +50,14 @@ export function CommandMenu({
   commandQuery,
   skills,
   extensions,
+  agents,
   selectedIndex,
   isLoading,
   error,
   onSelectCommand,
   onSelectSkill,
   onSelectExtension,
+  onSelectAgent,
   onHover,
 }: CommandMenuProps) {
   const selectedItemRef = useRef<HTMLButtonElement | null>(null);
@@ -63,7 +73,9 @@ export function CommandMenu({
     ? 'Commands'
     : mode === 'skills'
       ? 'Skills'
-      : 'Extensions';
+      : mode === 'extensions'
+        ? 'Extensions'
+        : 'Agents';
 
   return (
     <div
@@ -97,8 +109,10 @@ export function CommandMenu({
               <span className="command-menu-icon">
                 {commandItem.command === 'skill' ? (
                   <TerminalSquare size={17} />
-                ) : (
+                ) : commandItem.command === 'extension' ? (
                   <Puzzle size={17} />
+                ) : (
+                  <Bot size={17} />
                 )}
               </span>
 
@@ -177,10 +191,10 @@ export function CommandMenu({
               );
             })
           )
-        ) : extensions.length === 0 ? (
+        ) : mode === 'extensions' ? extensions.length === 0 ? (
           <div className="command-menu-status">
             {commandQuery.trim() === ''
-              ? 'No matching command found'
+              ? 'No extensions available'
               : 'No extensions match that query'}
           </div>
         ) : (
@@ -220,6 +234,39 @@ export function CommandMenu({
                 <span className="command-source-badge command-source-badge--global">
                   Extension
                 </span>
+              </button>
+            );
+          })
+        ) : agents.length === 0 ? (
+          <div className="command-menu-status">
+            {commandQuery.trim() === ''
+              ? 'No agents available'
+              : 'No agents match that query'}
+          </div>
+        ) : (
+          agents.map((agent, index) => {
+            const isSelected = index === selectedIndex;
+
+            return (
+              <button
+                key={agent.id}
+                ref={isSelected ? selectedItemRef : null}
+                type="button"
+                role="option"
+                aria-selected={isSelected}
+                className={`command-menu-skill ${isSelected ? 'command-menu-skill--selected' : ''}`}
+                onMouseEnter={() => onHover(index)}
+                onMouseDown={(event) => {
+                  event.preventDefault();
+                  onSelectAgent(agent);
+                }}
+              >
+                <span className="command-menu-icon"><Bot size={17} /></span>
+                <span className="command-menu-information">
+                  <span className="command-menu-skill-name">{agent.name}</span>
+                  <span className="command-menu-skill-description">{agent.description}</span>
+                </span>
+                <span className="command-source-badge command-source-badge--global">Agent</span>
               </button>
             );
           })

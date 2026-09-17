@@ -290,6 +290,37 @@ textarea {
   background: #dededa;
 }
 
+.chat-sidebar-agent-list {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  max-height: 180px;
+  margin: 2px 0 4px;
+  padding: 2px 8px 2px 36px;
+  overflow-y: auto;
+}
+
+.chat-sidebar-agent-item {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  min-width: 0;
+  height: 28px;
+  overflow: hidden;
+  color: #77746c;
+  font-size: 12px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.chat-sidebar-agent-dot {
+  flex: 0 0 auto;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: #d97757;
+}
+
 /* Sidebar footer */
 
 .chat-sidebar-footer {
@@ -369,6 +400,7 @@ textarea {
   .chat-sidebar-icon-button,
   .chat-sidebar-item-label,
   .chat-sidebar-chats-list,
+  .chat-sidebar-agent-list,
   .chat-sidebar-item-end-icon {
     display: none;
   }

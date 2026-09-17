@@ -36,6 +36,9 @@ settings.json
 *.sln
 *.sw?
 
+# Mocu local data
+.mocu/
+
 # OS generated files
 Thumbs.db
 desktop.ini

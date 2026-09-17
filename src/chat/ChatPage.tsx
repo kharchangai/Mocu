@@ -33,6 +33,8 @@ import {
   ExtensionsPage,
 } from '../extensions/components/ExtensionsPage';
 
+import { AgentsPage } from './components/agents/AgentsPage';
+
 import {
   useChatHistory,
   type EnsureChatResult,
@@ -339,11 +341,17 @@ function ChatPage() {
             return;
           }
 
-          case 'packages': {
-            setActiveItem('packages');
+          case 'mcp': {
+            setActiveItem('mcp');
             setIsChatsOpen(false);
             setIsProjectsOpen(false);
+            return;
+          }
 
+          case 'agents': {
+            setActiveItem('agents');
+            setIsChatsOpen(false);
+            setIsProjectsOpen(false);
             return;
           }
 
@@ -511,11 +519,14 @@ function ChatPage() {
           <ExtensionsPage />
         );
 
-      case 'packages':
+      case 'mcp':
         return renderPlaceholderPage(
-          'Packages',
-          'Browse and manage Mocu packages here.',
+          'MCP',
+          'Browse and manage MCP connections here.',
         );
+
+      case 'agents':
+        return <AgentsPage />;
 
       case 'settings':
         /*

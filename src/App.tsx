@@ -302,7 +302,7 @@ function App() {
   }, [isChatWindow]);
 
   useEffect(() => {
-    if (!isMocuWindow || hasRunAtomicMemoryTestRef.current) {
+    if (!isChatWindow || hasRunAtomicMemoryTestRef.current) {
       return;
     }
 
@@ -317,7 +317,7 @@ function App() {
     };
 
     void executeTest();
-  }, [isMocuWindow]);
+  }, [isChatWindow]);
 
   useEffect(() => {
     if (!isMocuWindow) {

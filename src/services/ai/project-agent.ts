@@ -45,6 +45,11 @@ import {
 } from "../../extensions/services/extension-agent-tools";
 
 import {
+  loadAgentTools,
+  type AgentToolSet,
+} from "../../chat/agent/agent-tools";
+
+import {
   ToolExecutor,
 } from "./agent/tool-executor";
 
@@ -315,6 +320,7 @@ const buildProjectAgentSystemPrompt = (
   skillsPrompt: string,
   extensionToolsPrompt: string,
   relatedMemoryPrompt: string,
+  agentToolsPrompt: string,
 ): string => {
   const promptParts: string[] = [
     "You are Mocu, a helpful AI assistant.",
@@ -347,6 +353,13 @@ const buildProjectAgentSystemPrompt = (
     promptParts.push(
       "",
       relatedMemoryPrompt.trim(),
+    );
+  }
+
+  if (agentToolsPrompt.trim()) {
+    promptParts.push(
+      "",
+      agentToolsPrompt.trim(),
     );
   }
 
@@ -625,6 +638,25 @@ const getSelectedSkillNames = (
 /*
  * Reads selected extension IDs from RunnableConfig.
  */
+const getSelectedAgentNames = (
+  config: RunnableConfig,
+): string[] => {
+  const value = config.configurable?.selectedAgent;
+
+  if (typeof value === "string" && value.trim()) {
+    return [value.trim()];
+  }
+
+  if (Array.isArray(value)) {
+    return value.filter(
+      (item): item is string =>
+        typeof item === "string" && item.trim().length > 0,
+    );
+  }
+
+  return [];
+};
+
 const getSelectedExtensionIds = (
   config: RunnableConfig,
 ): string[] => {
@@ -716,6 +748,8 @@ export const callProjectAgent =
       getSelectedExtensionIds(
         runnableConfig,
       );
+
+    const selectedAgentNames = getSelectedAgentNames(runnableConfig);
 
     throwIfAborted(
       signal,
@@ -849,6 +883,19 @@ export const callProjectAgent =
         selectedExtensionIds,
       );
 
+    const agentTools: AgentToolSet = await loadAgentTools(
+      selectedAgentNames,
+      normalizedProjectPath,
+      runnableConfig,
+    );
+
+    if (agentTools.missingAgents.length > 0) {
+      console.warn(
+        "[Project Agent] Selected agents not found:",
+        agentTools.missingAgents,
+      );
+    }
+
     if (
       extensionTools.missingExtensions.length > 0
     ) {
@@ -879,6 +926,7 @@ export const callProjectAgent =
         terminalTool,
         perplexitySearchTool,
         ...extensionTools.tools,
+        ...agentTools.tools,
       ]);
 
     /*
@@ -894,12 +942,17 @@ export const callProjectAgent =
       toolExecutor,
     );
 
+    agentTools.registerAll(
+      toolExecutor,
+    );
+
     const systemPrompt =
       buildProjectAgentSystemPrompt(
         normalizedProjectPath,
         skillResolution.skillsPrompt,
         extensionTools.prompt,
         relatedMemoryPrompt,
+        agentTools.prompt,
       );
 
     let messagesToRun:

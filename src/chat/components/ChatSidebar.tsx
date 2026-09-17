@@ -1,8 +1,9 @@
-import type { ReactNode } from 'react';
+import { useEffect, useState, type ReactNode } from 'react';
 
 import { confirm } from '@tauri-apps/plugin-dialog';
 
 import type { RecentChat } from '../types/chat';
+import { listAvailableAgents, type AvailableAgent } from '../agent/agent-loader';
 
 export type ChatSidebarItemId =
   | 'new-chat'
@@ -181,6 +182,17 @@ export function ChatSidebar({
   onToggleProjects,
   onDeleteChat,
 }: ChatSidebarProps) {
+  const [availableAgents, setAvailableAgents] = useState<AvailableAgent[]>([]);
+
+  useEffect(() => {
+    void listAvailableAgents()
+      .then(setAvailableAgents)
+      .catch((error) => {
+        console.error('[Chat Sidebar] Failed to load agents:', error);
+        setAvailableAgents([]);
+      });
+  }, []);
+
   /*
    * window.confirm is not supported inside the Tauri webview, so the
    * dialog plugin's native confirm is used instead.
@@ -501,6 +513,21 @@ export function ChatSidebar({
             </svg>
           }
         />
+
+        {activeItem === 'agents' ? (
+          <div className="chat-sidebar-agent-list" aria-label="Available agents">
+            {availableAgents.length === 0 ? (
+              <p className="chat-sidebar-chats-empty">No saved agents</p>
+            ) : (
+              availableAgents.map((agent) => (
+                <div className="chat-sidebar-agent-item" key={agent.path} title={agent.description}>
+                  <span className="chat-sidebar-agent-dot" aria-hidden="true" />
+                  <span>{agent.agentName}</span>
+                </div>
+              ))
+            )}
+          </div>
+        ) : null}
       </nav>
 
       <div className="chat-sidebar-footer">
