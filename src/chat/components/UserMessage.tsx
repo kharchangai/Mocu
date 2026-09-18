@@ -1,14 +1,20 @@
 // src/chat/components/UserMessage.tsx
 
 import { useEffect, useRef, useState } from 'react';
+import {
+  SlashMentionText,
+  type MentionResourceNames,
+} from './SlashMentionText';
 
 type UserMessageProps = {
   content: string;
+  resourceNames?: MentionResourceNames;
   onEdit?: () => void;
 };
 
 export function UserMessage({
   content,
+  resourceNames,
   onEdit,
 }: UserMessageProps) {
   const [isCopied, setIsCopied] = useState(false);
@@ -44,7 +50,10 @@ export function UserMessage({
     <article className="user-message" aria-label="User message">
       <div className="user-message-group">
         <div className="user-message-bubble" dir="auto">
-          {content}
+          <SlashMentionText
+            content={content}
+            resourceNames={resourceNames}
+          />
         </div>
 
         <div className="user-message-actions">

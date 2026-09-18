@@ -26,6 +26,7 @@ import { isAbortError, throwIfAborted } from '../../services/ai/agent/abort';
 import { ToolExecutor } from '../../services/ai/agent/tool-executor';
 import { terminalExecutionTool } from '../../services/ai/tools/terminal_execution_tool';
 import { perplexitySearchTool } from '../../services/ai/tools/perplexity_search_tool';
+import { skillLoaderTool } from '../../services/ai/tools/skill_loader_tool';
 import { resolveSelectedSkills } from '../components/skills/selected-skill-loader';
 import { loadExtensionAgentTools } from '../../extensions/services/extension-agent-tools';
 import { scanInstalledExtensions } from '../../extensions/services/extension-scanner';
@@ -122,12 +123,12 @@ async function runAgentNode(
   throwIfAborted(signal);
 
   const normalizedProjectPath = input.projectPath.trim();
+
   const selectedSkills = await resolveSelectedSkills(
     mergeReferences(
       input.agent.skills,
       getConfigReferences(runnableConfig, 'selectedSkills'),
     ),
-    normalizedProjectPath,
   );
   throwIfAborted(signal);
 
@@ -147,6 +148,7 @@ async function runAgentNode(
   const bindableTools: StructuredToolInterface[] = [
     terminalTool,
     perplexitySearchTool,
+    skillLoaderTool,
     ...extensionTools.tools,
     ...childAgents.tools,
   ];
@@ -167,6 +169,15 @@ async function runAgentNode(
     execute: (args) =>
       perplexitySearchTool.invoke(
         args as { query: string },
+        runnableConfig,
+      ),
+  });
+  executor.registerTool({
+    name: 'load_skill',
+    description: skillLoaderTool.description,
+    execute: (args) =>
+      skillLoaderTool.invoke(
+        args as { skillName: string },
         runnableConfig,
       ),
   });
@@ -369,6 +380,7 @@ async function createChildAgentTools(
       .toLowerCase()
       .replace(/[^a-z0-9]+/g, '_')
       .replace(/^_|_$/g, '')}`;
+    const description = `Run the ${child.agentName} specialist agent for a delegated request. ${child.description}`;
     const run = async (args: ToolArgs) =>
       runAgent({
         agent: child,
@@ -387,7 +399,7 @@ async function createChildAgentTools(
         async ({ request }) => run({ request }),
         {
           name: toolName,
-          description: `Delegate work to the ${child.agentName} agent.`,
+          description,
           schema: z.object({
             request: z.string().min(1).describe('The work for the child agent.'),
           }),
@@ -400,9 +412,12 @@ async function createChildAgentTools(
     tools,
     registerAll: (executor) => {
       for (const [name, execute] of executors) {
+        const entry = tools.find((item) => item.name === name);
         executor.registerTool({
           name,
-          description: 'Delegates work to a configured child agent.',
+          description:
+            (entry?.description as string | undefined) ??
+            'Delegates work to a configured child agent.',
           execute,
         });
       }

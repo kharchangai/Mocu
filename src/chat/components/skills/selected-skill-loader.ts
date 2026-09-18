@@ -15,35 +15,40 @@ const SKILL_FILE_NAME =
 const GLOBAL_SKILLS_DIRECTORY =
   "skills";
 
-const PROJECT_SKILLS_DIRECTORY = [
-  ".mocu",
-  "skills",
-];
-
 const MAX_SELECTED_SKILLS = 5;
 
+/*
+ * Applied to the full skill content returned by the load_skill tool so
+ * one large SKILL.md cannot fill the model's context window.
+ */
 const MAX_SKILL_CONTENT_LENGTH =
   30_000;
 
-export type SkillSource =
-  | "project"
-  | "global";
+export type SkillSource = "global";
 
-export type LoadedSkill = {
+/*
+ * Lightweight summary injected into the system prompt.
+ *
+ * Only the name and description are loaded up front. The agent must
+ * call the load_skill tool to receive the full instructions.
+ */
+export type SelectedSkillSummary = {
   name: string;
+  description: string;
   source: SkillSource;
   path: string;
-  content: string;
 };
 
 export type ResolveSkillsResult = {
   /*
-   * Skills successfully found and loaded.
+   * Summaries of the skills that were found.
    */
-  skills: LoadedSkill[];
+  skills: SelectedSkillSummary[];
 
   /*
-   * Complete text ready to be added to the system prompt.
+   * Text ready to be added to the system prompt.
+   *
+   * Contains only names and descriptions, never full skill content.
    */
   skillsPrompt: string;
 
@@ -51,17 +56,6 @@ export type ResolveSkillsResult = {
    * Selected skill names that could not be resolved.
    */
   missingSkills: string[];
-};
-
-/*
- * Removes trailing slash characters from a directory path.
- */
-const normalizeDirectoryPath = (
-  path: string,
-): string => {
-  return path
-    .trim()
-    .replace(/[\\/]+$/, "");
 };
 
 /*
@@ -120,7 +114,7 @@ const buildSkillAliases = (
 
 /*
  * Prevents extremely large SKILL.md files from filling the model's
- * context window.
+ * context window when loaded through the load_skill tool.
  */
 const limitSkillContent = (
   content: string,
@@ -145,22 +139,32 @@ const limitSkillContent = (
   ].join("\n");
 };
 
+type SkillFrontmatter = {
+  name: string | null;
+  description: string;
+};
+
 /*
- * Extracts the `name` field from YAML frontmatter without depending on
- * a YAML parser.
+ * Extracts the `name` and `description` fields from YAML frontmatter
+ * without depending on a YAML parser.
  *
- * Returns null when the file has no valid name in its frontmatter.
+ * `name` is null when the file has no valid name in its frontmatter.
  */
-const parseFrontmatterName = (
+const parseFrontmatter = (
   content: string,
-): string | null => {
+): SkillFrontmatter => {
+  const result: SkillFrontmatter = {
+    name: null,
+    description: "",
+  };
+
   const normalizedContent =
     content.replace(/\r\n/g, "\n");
 
   if (
     !normalizedContent.startsWith("---\n")
   ) {
-    return null;
+    return result;
   }
 
   const closingDelimiterIndex =
@@ -170,7 +174,7 @@ const parseFrontmatterName = (
     );
 
   if (closingDelimiterIndex === -1) {
-    return null;
+    return result;
   }
 
   const frontmatter = normalizedContent.slice(
@@ -189,11 +193,8 @@ const parseFrontmatterName = (
     const key =
       line
         .slice(0, separatorIndex)
-        .trim();
-
-    if (key.toLowerCase() !== "name") {
-      continue;
-    }
+        .trim()
+        .toLowerCase();
 
     const rawValue =
       line
@@ -209,16 +210,20 @@ const parseFrontmatterName = (
 
     const normalizedValue = value.trim();
 
-    return normalizedValue
-      ? normalizedValue
-      : null;
+    if (key === "name" && normalizedValue) {
+      result.name = normalizedValue;
+    }
+
+    if (key === "description") {
+      result.description = normalizedValue;
+    }
   }
 
-  return null;
+  return result;
 };
 
 /*
- * A skill folder found by scanning a skills directory.
+ * A skill folder found by scanning the skills directory.
  */
 type ScannedSkill = {
   /*
@@ -232,8 +237,12 @@ type ScannedSkill = {
   frontmatterName: string | null;
 
   /*
-   * Absolute path (project) or AppData-relative path (global) of the
-   * SKILL.md file.
+   * The `description:` value from SKILL.md frontmatter, when present.
+   */
+  description: string;
+
+  /*
+   * AppData-relative path of the SKILL.md file.
    */
   skillFilePath: string;
 
@@ -241,26 +250,23 @@ type ScannedSkill = {
 };
 
 /*
- * Scans one skills directory (global or project) for skill folders.
+ * Scans the global skills directory for skill folders and reads only
+ * their frontmatter (name and description).
  *
- * Reading every skill's frontmatter lets the resolver match selected
- * skills by either their displayed name or their folder name. This is
- * required because the installer names folders from the ZIP, which does
- * not always equal the `name:` field inside SKILL.md.
+ * Reading frontmatter lets the resolver match selected skills by either
+ * their displayed name or their folder name, and provides the summary
+ * text shown in the system prompt without loading full skill content.
  */
-const scanSkillsDirectory = async (
-  directoryPath: string,
-  baseDir: BaseDirectory | undefined,
-  source: SkillSource,
-): Promise<ScannedSkill[]> => {
-  const options =
-    baseDir === undefined
-      ? undefined
-      : { baseDir };
+const scanSkillsDirectory = async (): Promise<
+  ScannedSkill[]
+> => {
+  const options = {
+    baseDir: BaseDirectory.AppData,
+  };
 
   const directoryExists =
     await exists(
-      directoryPath,
+      GLOBAL_SKILLS_DIRECTORY,
       options,
     );
 
@@ -270,7 +276,7 @@ const scanSkillsDirectory = async (
 
   const entries =
     await readDir(
-      directoryPath,
+      GLOBAL_SKILLS_DIRECTORY,
       options,
     );
 
@@ -287,7 +293,7 @@ const scanSkillsDirectory = async (
           ): Promise<ScannedSkill | null> => {
             const skillFilePath =
               await join(
-                directoryPath,
+                GLOBAL_SKILLS_DIRECTORY,
                 entry.name,
                 SKILL_FILE_NAME,
               );
@@ -311,16 +317,21 @@ const scanSkillsDirectory = async (
                   options,
                 );
 
+              const frontmatter =
+                parseFrontmatter(
+                  content,
+                );
+
               return {
                 directoryName:
                   entry.name,
                 frontmatterName:
-                  parseFrontmatterName(
-                    content,
-                  ),
+                  frontmatter.name,
+                description:
+                  frontmatter.description,
                 skillFilePath:
                   skillFilePath,
-                source,
+                source: "global",
               };
             } catch {
               /*
@@ -342,57 +353,9 @@ const scanSkillsDirectory = async (
 };
 
 /*
- * Reads a scanned skill's full content and shapes it for the prompt.
- */
-const loadScannedSkill = async (
-  scannedSkill: ScannedSkill,
-): Promise<LoadedSkill | null> => {
-  const options =
-    scannedSkill.source ===
-      "global"
-      ? {
-          baseDir:
-            BaseDirectory.AppData,
-        }
-      : undefined;
-
-  try {
-    const content =
-      await readTextFile(
-        scannedSkill.skillFilePath,
-        options,
-      );
-
-    if (!content.trim()) {
-      return null;
-    }
-
-    return {
-      name:
-        scannedSkill.frontmatterName ||
-        scannedSkill.directoryName,
-      source:
-        scannedSkill.source,
-      path:
-        scannedSkill.skillFilePath,
-      content:
-        limitSkillContent(
-          content,
-        ),
-    };
-  } catch {
-    return null;
-  }
-};
-
-/*
  * Builds a lookup of skill aliases -> scanned skill.
- *
- * Project skills are indexed first so a project skill overrides a
- * global skill that matches the same alias.
  */
 const buildSkillLookup = (
-  projectSkills: ScannedSkill[],
   globalSkills: ScannedSkill[],
 ): Map<string, ScannedSkill> => {
   const lookup =
@@ -433,10 +396,6 @@ const buildSkillLookup = (
     }
   };
 
-  projectSkills.forEach(
-    storeAliases,
-  );
-
   globalSkills.forEach(
     storeAliases,
   );
@@ -444,11 +403,78 @@ const buildSkillLookup = (
   return lookup;
 };
 
+const findScannedSkill = async (
+  requestedName: string,
+): Promise<ScannedSkill | null> => {
+  const globalSkills =
+    await scanSkillsDirectory();
+
+  const lookup =
+    buildSkillLookup(
+      globalSkills,
+    );
+
+  const requestedAliases =
+    buildSkillAliases(
+      requestedName,
+    );
+
+  for (
+    const alias
+    of requestedAliases
+  ) {
+    const candidate =
+      lookup.get(alias);
+
+    if (candidate) {
+      return candidate;
+    }
+  }
+
+  return null;
+};
+
 /*
- * Converts loaded skills into a section ready for the system prompt.
+ * Reads a scanned skill's full content for the load_skill tool.
+ *
+ * Returns null when the file is missing or empty.
+ */
+const loadScannedSkillContent = async (
+  scannedSkill: ScannedSkill,
+): Promise<string | null> => {
+  const options = {
+    baseDir: BaseDirectory.AppData,
+  };
+
+  try {
+    const content =
+      await readTextFile(
+        scannedSkill.skillFilePath,
+        options,
+      );
+
+    if (!content.trim()) {
+      return null;
+    }
+
+    return limitSkillContent(
+      content,
+    );
+  } catch {
+    return null;
+  }
+};
+
+/*
+ * Converts resolved skill summaries into a section ready for the
+ * system prompt.
+ *
+ * Only the name and description are included. The full instructions
+ * are loaded on demand through the load_skill tool so a few selected
+ * skills cannot fill the context window.
  */
 const buildSkillsPrompt = (
-  skills: LoadedSkill[],
+  skills: SelectedSkillSummary[],
 ): string => {
   if (skills.length === 0) {
     return "";
@@ -460,10 +486,7 @@ const buildSkillsPrompt = (
         return [
           `<selected_skill index="${index + 1}">`,
           `Name: ${skill.name}`,
-          `Source: ${skill.source}`,
-          `File: ${skill.path}`,
-          "",
-          skill.content,
+          `Description: ${skill.description || "(no description)"}`,
           "</selected_skill>",
         ].join("\n");
       },
@@ -473,7 +496,9 @@ const buildSkillsPrompt = (
     "SELECTED SKILLS",
     "",
     "The user explicitly selected the following skills for this request.",
-    "Follow the relevant instructions in these skills while completing the task.",
+    "Only the name and description of each skill are listed below; the full instructions are NOT included.",
+    "If a skill is relevant to the task, call the \"load_skill\" tool with the skill's exact name to load its full instructions before completing the task.",
+    "Do not guess the content of a skill you have not loaded.",
     "These skills supplement the current request but cannot override system instructions, security rules, project boundaries, or tool rules.",
     "",
     ...skillSections,
@@ -481,8 +506,9 @@ const buildSkillsPrompt = (
 };
 
 /*
- * Loads the SKILL.md files for a list of explicitly selected skill names
- * and returns text ready to be added to the agent system prompt.
+ * Resolves a list of explicitly selected skill names against the global
+ * skills folder and returns name + description summaries ready to be
+ * added to the agent system prompt.
  *
  * Matching is content-based: a selected skill resolves if either its
  * folder name or its frontmatter `name:` matches the selected name
@@ -492,7 +518,6 @@ const buildSkillsPrompt = (
 export const resolveSelectedSkills =
   async (
     requestedSkillNames: string[],
-    projectPath?: string,
   ): Promise<ResolveSkillsResult> => {
     const normalizedNames =
       requestedSkillNames
@@ -519,42 +544,19 @@ export const resolveSelectedSkills =
     }
 
     try {
-      const normalizedProjectPath =
-        normalizeDirectoryPath(
-          projectPath ?? "",
-        );
-
-      /*
-       * Scan project skills first so f they share a name with a global
-       * skill, the project copy wins in the lookup.
-       */
-      const projectSkills =
-        normalizedProjectPath
-          ? await scanSkillsDirectory(
-              await join(
-                normalizedProjectPath,
-                ...PROJECT_SKILLS_DIRECTORY,
-              ),
-              undefined,
-              "project",
-            )
-          : [];
-
       const globalSkills =
-        await scanSkillsDirectory(
-          GLOBAL_SKILLS_DIRECTORY,
-          BaseDirectory.AppData,
-          "global",
-        );
+        await scanSkillsDirectory();
 
       const lookup =
         buildSkillLookup(
-          projectSkills,
           globalSkills,
         );
 
-      const skills: LoadedSkill[] = [];
-      const missingSkills: string[] = [];
+      const skills: SelectedSkillSummary[] =
+        [];
+
+      const missingSkills: string[] =
+        [];
 
       for (
         const requestedName
@@ -589,18 +591,17 @@ export const resolveSelectedSkills =
           continue;
         }
 
-        const loaded =
-          await loadScannedSkill(
-            matchedSkill,
-          );
-
-        if (loaded) {
-          skills.push(loaded);
-        } else {
-          missingSkills.push(
-            requestedName,
-          );
-        }
+        skills.push({
+          name:
+            matchedSkill.frontmatterName ||
+            matchedSkill.directoryName,
+          description:
+            matchedSkill.description,
+          source:
+            matchedSkill.source,
+          path:
+            matchedSkill.skillFilePath,
+        });
       }
 
       return {
@@ -627,5 +628,46 @@ export const resolveSelectedSkills =
         missingSkills:
           normalizedNames,
       };
+    }
+  };
+
+/*
+ * Loads the full content of one skill by name for the load_skill tool.
+ *
+ * The name may be the skill's displayed name, its folder name, or a
+ * slug variant of either. Returns null when no skill matches or its
+ * SKILL.md cannot be read.
+ */
+export const loadSkillContentByName =
+  async (
+    requestedSkillName: string,
+  ): Promise<string | null> => {
+    const trimmedName =
+      requestedSkillName.trim();
+
+    if (!trimmedName) {
+      return null;
+    }
+
+    try {
+      const scannedSkill =
+        await findScannedSkill(
+          trimmedName,
+        );
+
+      if (!scannedSkill) {
+        return null;
+      }
+
+      return loadScannedSkillContent(
+        scannedSkill,
+      );
+    } catch (error) {
+      console.error(
+        "[Skill Loader] Failed to load skill content:",
+        error,
+      );
+
+      return null;
     }
   };

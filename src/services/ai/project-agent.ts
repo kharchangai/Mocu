@@ -70,6 +70,14 @@ import {
 } from "./tools/perplexity_search_tool";
 
 import {
+  skillLoaderTool,
+} from "./tools/skill_loader_tool";
+
+import {
+  createAgentTool,
+} from "./tools/create_agent_tool";
+
+import {
   saveProjectMemory,
 } from "../../chat/project/memory/saveProjectMemory";
 
@@ -366,7 +374,7 @@ const buildProjectAgentSystemPrompt = (
   promptParts.push(
     "",
     "AVAILABLE TOOLS",
-    "terminal_executor, perplexity_search",
+    "terminal_executor, perplexity_search, create_agent",
     "",
     `Current date and time: ${getCurrentDateTime()}`,
   );
@@ -431,6 +439,58 @@ const createProjectToolExecutor = (
             getStringArg(
               toolArgs,
               "query",
+            ),
+        },
+        config,
+      );
+    },
+  });
+
+  toolExecutor.registerTool({
+    name:
+      "create_agent",
+
+    description:
+      "Creates a new persistent agent from the user's description.",
+
+    execute: async (
+      args,
+    ) => {
+      const toolArgs =
+        args as ToolArgs;
+
+      return createAgentTool.invoke(
+        {
+          userRequest:
+            getStringArg(
+              toolArgs,
+              "userRequest",
+            ),
+        },
+        config,
+      );
+    },
+  });
+
+  toolExecutor.registerTool({
+    name:
+      "load_skill",
+
+    description:
+      "Loads the full instructions of a selected skill by its exact name.",
+
+    execute: async (
+      args,
+    ) => {
+      const toolArgs =
+        args as ToolArgs;
+
+      return skillLoaderTool.invoke(
+        {
+          skillName:
+            getStringArg(
+              toolArgs,
+              "skillName",
             ),
         },
         config,
@@ -734,7 +794,6 @@ export const callProjectAgent =
     const skillResolution =
       await resolveSelectedSkills(
         selectedSkillNames,
-        normalizedProjectPath,
       );
 
     throwIfAborted(
@@ -825,7 +884,7 @@ export const callProjectAgent =
     );
 
     console.log(
-      "[Project Agent] Loaded skills:",
+      "[Project Agent] Selected skills (summaries):",
       skillResolution.skills.map(
         (
           skill,
@@ -833,14 +892,11 @@ export const callProjectAgent =
           name:
             skill.name,
 
-          source:
-            skill.source,
+          description:
+            skill.description,
 
           path:
             skill.path,
-
-          contentLength:
-            skill.content.length,
         }),
       ),
     );
@@ -925,6 +981,8 @@ export const callProjectAgent =
       llm.bindTools([
         terminalTool,
         perplexitySearchTool,
+        skillLoaderTool,
+        createAgentTool,
         ...extensionTools.tools,
         ...agentTools.tools,
       ]);

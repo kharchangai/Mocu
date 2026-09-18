@@ -26,10 +26,14 @@ export function findActiveSlashCommand(
   /*
    * Match a forward slash that begins at the start of the input or
    * after whitespace, followed by an optional command token and an
-   * optional whitespace-separated query.
+   * optional query. Queries may contain spaces because resource names
+   * commonly do (for example, "/skill Code Reviewer"), but they must
+   * not contain another "/": a slash always starts a new command, so
+   * typing "/skill a /skill b" yields two separate mentions instead of
+   * one mention whose query swallows the second slash.
    */
   const match = textBeforeCaret.match(
-    /(^|\s)\/([a-zA-Z0-9_-]*)(?:\s+(\S*))?$/,
+    /(^|\s)\/([a-zA-Z0-9_-]*)(?:\s+([^/]+?))?$/,
   );
 
   if (!match) {
@@ -77,33 +81,9 @@ export function filterSkills(
 export function sortSkills(
   skills: AvailableSkill[],
 ): AvailableSkill[] {
-  return [...skills].sort((firstSkill, secondSkill) => {
-    if (firstSkill.source !== secondSkill.source) {
-      return firstSkill.source === 'project' ? -1 : 1;
-    }
-
-    return firstSkill.name.localeCompare(secondSkill.name);
-  });
-}
-
-/**
- * Project skills override global skills with the same name.
- */
-export function mergeSkills(
-  globalSkills: AvailableSkill[],
-  projectSkills: AvailableSkill[],
-): AvailableSkill[] {
-  const skillsByName = new Map<string, AvailableSkill>();
-
-  for (const skill of globalSkills) {
-    skillsByName.set(skill.name.toLowerCase(), skill);
-  }
-
-  for (const skill of projectSkills) {
-    skillsByName.set(skill.name.toLowerCase(), skill);
-  }
-
-  return sortSkills([...skillsByName.values()]);
+  return [...skills].sort((firstSkill, secondSkill) =>
+    firstSkill.name.localeCompare(secondSkill.name),
+  );
 }
 
 /*

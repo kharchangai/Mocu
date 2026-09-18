@@ -6,7 +6,7 @@ import {
 
 import {
   loadProjectSkills,
-  saveProjectSkill,
+  saveSkill,
 } from '../services/skills/projectSkillService';
 
 import type {
@@ -45,9 +45,7 @@ function getErrorMessage(
   return String(error);
 }
 
-export function useProjectSkills(
-  projectPath: string | null,
-): UseProjectSkillsResult {
+export function useProjectSkills(): UseProjectSkillsResult {
   const [
     skills,
     setSkills,
@@ -68,11 +66,7 @@ export function useProjectSkills(
   const [
     source,
     setSource,
-  ] = useState<SkillsSource>(
-    projectPath?.trim()
-      ? 'project'
-      : 'global',
-  );
+  ] = useState<SkillsSource>('global');
 
   const [
     isLoading,
@@ -98,14 +92,12 @@ export function useProjectSkills(
 
       try {
         /*
-         * Null or an empty path is intentional. The service then uses:
+         * Skills are always loaded from:
          *
          * BaseDirectory.AppData/skills
          */
         const result =
-          await loadProjectSkills(
-            projectPath,
-          );
+          await loadProjectSkills();
 
         setSkills(result.skills);
 
@@ -135,7 +127,7 @@ export function useProjectSkills(
       } finally {
         setIsLoading(false);
       }
-    }, [projectPath]);
+    }, []);
 
   useEffect(() => {
     void reloadSkills();
@@ -151,7 +143,7 @@ export function useProjectSkills(
 
         try {
           const savedSkill =
-            await saveProjectSkill(
+            await saveSkill(
               skillFile,
             );
 

@@ -25,6 +25,7 @@ import { isAbortError } from '../../services/aiService';
 
 import { useToolActivity } from '../hooks/useToolActivity';
 import { useMemorySaveStatus } from '../hooks/useMemorySaveStatus';
+import { useMentionResources } from './useMentionResources';
 
 import {
   loadShortTermMemory,
@@ -106,6 +107,12 @@ export function ChatBox({
    * answers it, so they stay visible above each response.
    */
   const toolActivity = useToolActivity();
+
+  /*
+   * Names of every available skill, extension, and agent, so sent user
+   * messages highlight exactly the selected resource names.
+   */
+  const mentionResourceNames = useMentionResources();
 
   /*
    * Background project-memory save status. Tracked here (always
@@ -391,7 +398,7 @@ export function ChatBox({
       setIsLoading(false);
 
       /*
-       * Let ChatInput restore the draft and selected tags. Swallowing this
+       * Let ChatInput restore the draft and selected resources. Swallowing this
        * error makes a failed project resume look like a successful send and
        * leaves the user on an empty New chat page with no explanation.
        */
@@ -712,6 +719,7 @@ export function ChatBox({
                   <UserMessage
                     key={message.id}
                     content={message.content}
+                    resourceNames={mentionResourceNames}
                     onEdit={() =>
                       handleEditMessage(
                         message,

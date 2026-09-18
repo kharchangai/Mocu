@@ -1,12 +1,7 @@
-export type SkillInstallTarget =
-  | 'global'
-  | 'project'
-  | 'both';
+export type SkillInstallTarget = 'global';
 
 export type InstallSkillInput = {
   zipPath: string;
-  target: SkillInstallTarget;
-  projectPath: string | null;
 };
 
 export type InstalledSkillResult = {

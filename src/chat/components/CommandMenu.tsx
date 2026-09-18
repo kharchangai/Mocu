@@ -1,4 +1,4 @@
-import { Bot, Box, FolderOpen, Puzzle, TerminalSquare } from 'lucide-react';
+import { Bot, Box, Puzzle, TerminalSquare } from 'lucide-react';
 import { useEffect, useRef } from 'react';
 import type { AvailableSkill } from './skillTypes';
 import type { AvailableExtension } from './extensionTypes';
@@ -79,6 +79,7 @@ export function CommandMenu({
 
   return (
     <div
+      id="command-menu-list"
       className="command-menu"
       role="listbox"
       aria-label={title}
@@ -161,11 +162,7 @@ export function CommandMenu({
                   }}
                 >
                   <span className="command-menu-icon">
-                    {skill.source === 'project' ? (
-                      <FolderOpen size={17} />
-                    ) : (
-                      <Box size={17} />
-                    )}
+                    <Box size={17} />
                   </span>
 
                   <span className="command-menu-information">
@@ -183,9 +180,7 @@ export function CommandMenu({
                   <span
                     className={`command-source-badge command-source-badge--${skill.source}`}
                   >
-                    {skill.source === 'project'
-                      ? 'Project'
-                      : 'Global'}
+                    Global
                   </span>
                 </button>
               );

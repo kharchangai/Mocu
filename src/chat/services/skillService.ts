@@ -7,7 +7,7 @@ import {
 } from '@tauri-apps/plugin-fs';
 import type { AvailableSkill } from '../components/skillTypes';
 
-type SkillSource = 'global' | 'project';
+type SkillSource = 'global';
 
 type SkillMetadata = {
   name?: string;
@@ -18,27 +18,13 @@ type DirectoryEntry = Awaited<
   ReturnType<typeof readDir>
 >[number];
 
-export async function listAvailableSkills(
-  projectPath: string | null,
-): Promise<AvailableSkill[]> {
-  /*
-   * Normalize once at the entry point so a missing, empty, or
-   * whitespace-only path can never reach a project-skills read.
-   */
-  const normalizedProjectPath =
-    projectPath?.trim() ?? '';
-
-  const globalSkills = await readGlobalSkills();
-
-  /*
-   * Project skills are loaded only when a valid project is actively
-   * selected. Otherwise only global skills are used.
-   */
-  const projectSkills = normalizedProjectPath
-    ? await readProjectSkills(normalizedProjectPath)
-    : [];
-
-  return mergeSkills(globalSkills, projectSkills);
+/*
+ * Skills are always read from the global folder:
+ *
+ *   BaseDirectory.AppData/skills
+ */
+export async function listAvailableSkills(): Promise<AvailableSkill[]> {
+  return readGlobalSkills();
 }
 
 async function readGlobalSkills(): Promise<AvailableSkill[]> {
@@ -62,40 +48,6 @@ async function readGlobalSkills(): Promise<AvailableSkill[]> {
     'global',
     BaseDirectory.AppData,
   );
-}
-
-async function readProjectSkills(
-  projectPath: string,
-): Promise<AvailableSkill[]> {
-  const normalizedProjectPath = trimTrailingSeparators(
-    projectPath.trim(),
-  );
-
-  /*
-   * Guard clause: without a valid project path, never scan, enumerate,
-   * or read a project skills directory.
-   */
-  if (!normalizedProjectPath) {
-    return [];
-  }
-
-  const skillsDirectory = joinPath(
-    normalizedProjectPath,
-    '.mocu',
-    'skills',
-  );
-
-  const directoryExists = await exists(skillsDirectory);
-
-  if (!directoryExists) {
-    await mkdir(skillsDirectory, {
-      recursive: true,
-    });
-
-    return [];
-  }
-
-  return readSkillsDirectory(skillsDirectory, 'project');
 }
 
 async function readSkillsDirectory(
@@ -239,32 +191,6 @@ function removeWrappingQuotes(value: string): string {
   }
 
   return value;
-}
-
-function mergeSkills(
-  globalSkills: AvailableSkill[],
-  projectSkills: AvailableSkill[],
-): AvailableSkill[] {
-  const skillsByName = new Map<string, AvailableSkill>();
-
-  for (const skill of globalSkills) {
-    skillsByName.set(skill.name.toLowerCase(), skill);
-  }
-
-  // Project skill overrides a global skill with the same name.
-  for (const skill of projectSkills) {
-    skillsByName.set(skill.name.toLowerCase(), skill);
-  }
-
-  return Array.from(skillsByName.values()).sort(
-    (first, second) => {
-      if (first.source !== second.source) {
-        return first.source === 'project' ? -1 : 1;
-      }
-
-      return first.name.localeCompare(second.name);
-    },
-  );
 }
 
 function joinPath(...parts: string[]): string {

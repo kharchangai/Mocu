@@ -2,10 +2,8 @@ import {
   FolderOpen,
   Mic,
   Paperclip,
-  Puzzle,
   SendHorizontal,
   Square,
-  X,
 } from 'lucide-react';
 import {
   useCallback,
@@ -33,6 +31,7 @@ import type {
   SelectedExtension,
 } from './extensionTypes';
 import { filterAgents } from './agentMention';
+import { SlashMentionText } from './SlashMentionText';
 import type {
   AvailableAgent,
   SelectedAgent,
@@ -45,6 +44,9 @@ export type SendOptions = {
   selectedExtensions: SelectedExtension[];
   selectedAgent: SelectedAgent | null;
 };
+
+const RTL_CHARACTER_PATTERN = /[\u0590-\u08ff\ufb1d-\ufdff\ufe70-\ufefc]/;
+const STRONG_CHARACTER_PATTERN = /[A-Za-z\u0590-\u08ff\ufb1d-\ufdff\ufe70-\ufefc]/;
 
 export type ChatInputProps = {
   value?: string;
@@ -79,6 +81,16 @@ export function ChatInput({
   onStop,
 }: ChatInputProps) {
   const textareaRef = useRef<HTMLTextAreaElement | null>(null);
+  const highlightRef = useRef<HTMLDivElement | null>(null);
+
+  /*
+   * Ranges of mentions that were already chosen from the menu. While the
+   * caret stays inside or after one of them the command menu stays closed,
+   * so continuing to write does not reopen the chooser.
+   */
+  const settledMentionsRef = useRef<
+    { start: number; end: number; text: string }[]
+  >([]);
 
   const [availableSkills, setAvailableSkills] = useState<
     AvailableSkill[]
@@ -128,6 +140,41 @@ export function ChatInput({
     safeProjectPath.trim().length > 0
       ? safeProjectPath.trim()
       : null;
+
+  const inputDirection = (() => {
+    const firstStrongCharacter = safeValue.match(
+      STRONG_CHARACTER_PATTERN,
+    )?.[0];
+
+    return firstStrongCharacter && RTL_CHARACTER_PATTERN.test(firstStrongCharacter)
+      ? 'rtl'
+      : 'ltr';
+  })();
+
+  const mentionResourceNames = useMemo(
+    () => ({
+      skill: [
+        ...availableSkills.map((skill) => skill.name),
+        ...selectedSkills.map((skill) => skill.name),
+      ],
+      extension: [
+        ...availableExtensions.map((extension) => extension.name),
+        ...selectedExtensions.map((extension) => extension.name),
+      ],
+      agent: [
+        ...availableAgents.map((agent) => agent.name),
+        ...(selectedAgent ? [selectedAgent.name] : []),
+      ],
+    }),
+    [
+      availableSkills,
+      availableExtensions,
+      availableAgents,
+      selectedSkills,
+      selectedExtensions,
+      selectedAgent,
+    ],
+  );
 
   const canSend = safeValue.trim().length > 0 && !isLoading;
   const hasProjectPath = normalizedProjectPath !== null;
@@ -193,9 +240,7 @@ export function ChatInput({
     setSkillsError(null);
 
     try {
-      const skills = await listAvailableSkills(
-        normalizedProjectPath,
-      );
+      const skills = await listAvailableSkills();
 
       setAvailableSkills(skills);
     } catch (error) {
@@ -210,7 +255,7 @@ export function ChatInput({
     } finally {
       setIsLoadingSkills(false);
     }
-  }, [normalizedProjectPath]);
+  }, []);
 
   const loadExtensions = useCallback(async () => {
     setIsLoadingExtensions(true);
@@ -293,6 +338,10 @@ export function ChatInput({
       textarea.scrollHeight,
       180,
     )}px`;
+
+    if (highlightRef.current) {
+      highlightRef.current.style.transform = `translateY(-${textarea.scrollTop}px)`;
+    }
   }, [safeValue]);
 
   useEffect(() => {
@@ -323,12 +372,53 @@ export function ChatInput({
     nextValue: string,
     caretPosition: number,
   ) => {
+    /*
+     * Re-anchor settled mentions after edits. When the exact text is no
+     * longer present, the mention was deleted and is forgotten.
+     */
+    settledMentionsRef.current = settledMentionsRef.current.flatMap(
+      (mention) => {
+        if (
+          nextValue.slice(
+            mention.start,
+            mention.start + mention.text.length,
+          ) === mention.text
+        ) {
+          return [mention];
+        }
+
+        const reanchoredStart = nextValue.indexOf(mention.text);
+
+        return reanchoredStart >= 0
+          ? [
+              {
+                ...mention,
+                start: reanchoredStart,
+                end: reanchoredStart + mention.text.length,
+              },
+            ]
+          : [];
+      },
+    );
+
     const command = findActiveSlashCommand(
       nextValue,
       caretPosition,
     );
 
-    setActiveCommand(command);
+    /*
+     * The caret is at or beyond the end of an already chosen mention, so
+     * this match is the settled mention itself and not a new command.
+     */
+    const matchesSettledMention =
+      command !== null &&
+      settledMentionsRef.current.some(
+        (mention) =>
+          command.start === mention.start &&
+          command.end >= mention.end,
+      );
+
+    setActiveCommand(matchesSettledMention ? null : command);
     setSelectedItemIndex(0);
   };
 
@@ -350,12 +440,32 @@ export function ChatInput({
     });
   };
 
+  const keepSelectedResourcesInSync = (nextValue: string) => {
+    setSelectedSkills((currentSkills) =>
+      currentSkills.filter((skill) =>
+        nextValue.includes(`/skill ${skill.name}`),
+      ),
+    );
+    setSelectedExtensions((currentExtensions) =>
+      currentExtensions.filter((extension) =>
+        nextValue.includes(`/extension ${extension.name}`),
+      ),
+    );
+
+    setSelectedAgent((currentAgent) =>
+      currentAgent && nextValue.includes(`/agent ${currentAgent.name}`)
+        ? currentAgent
+        : null,
+    );
+  };
+
   const handleMessageChange = (
     event: React.ChangeEvent<HTMLTextAreaElement>,
   ) => {
     const nextValue = event.target.value;
     const caretPosition = event.target.selectionStart;
 
+    keepSelectedResourcesInSync(nextValue);
     onValueChange(nextValue);
     updateActiveCommand(nextValue, caretPosition);
   };
@@ -424,117 +534,93 @@ export function ChatInput({
   };
 
   /*
-   * Selecting a skill removes the "/skill <query>" command from the
-   * message text and records the skill as a removable tag instead.
+   * Keep the selected resource in the message. Apart from making the
+   * request understandable when it is copied, this lets the composer render
+   * the resource name inline instead of placing a second row of tags above
+   * the input.
    */
-  const handleSkillSelect = (skill: AvailableSkill) => {
+  const replaceActiveMention = (mention: string) => {
     if (!activeCommand) {
-      return;
-    }
-
-    const textBeforeMention = safeValue.slice(
-      0,
-      activeCommand.start,
-    );
-
-    const textAfterMention = safeValue.slice(activeCommand.end);
-
-    const nextValue = textBeforeMention + textAfterMention;
-
-    const alreadySelected = selectedSkills.some(
-      (selected) => selected.name === skill.name,
-    );
-
-    if (!alreadySelected) {
-      setSelectedSkills((currentSkills) => [
-        ...currentSkills,
-        {
-          name: skill.name,
-          source: skill.source,
-          path: skill.path,
-        },
-      ]);
-    }
-
-    onValueChange(nextValue);
-    closeCommandMenu();
-    setTextareaCaret(textBeforeMention.length);
-  };
-
-  /*
-   * Selecting an extension removes the "/extension <query>" command from
-   * the message text and records the extension as a removable tag.
-   */
-  const handleExtensionSelect = (extension: AvailableExtension) => {
-    if (!activeCommand) {
-      return;
-    }
-
-    const textBeforeMention = safeValue.slice(
-      0,
-      activeCommand.start,
-    );
-
-    const textAfterMention = safeValue.slice(activeCommand.end);
-
-    const nextValue = textBeforeMention + textAfterMention;
-
-    const alreadySelected = selectedExtensions.some(
-      (selected) => selected.id === extension.id,
-    );
-
-    if (!alreadySelected) {
-      setSelectedExtensions((currentExtensions) => [
-        ...currentExtensions,
-        {
-          id: extension.id,
-          name: extension.name,
-          path: extension.path,
-        },
-      ]);
-    }
-
-    onValueChange(nextValue);
-    closeCommandMenu();
-    setTextareaCaret(textBeforeMention.length);
-  };
-
-  const handleAgentSelect = (agent: AvailableAgent) => {
-    if (!activeCommand) {
-      return;
+      return null;
     }
 
     const textBeforeMention = safeValue.slice(0, activeCommand.start);
     const textAfterMention = safeValue.slice(activeCommand.end);
+    const nextValue = textBeforeMention + mention + textAfterMention;
+    const nextCaretPosition = textBeforeMention.length + mention.length;
+
+    settledMentionsRef.current = [
+      ...settledMentionsRef.current,
+      {
+        start: activeCommand.start,
+        end: nextCaretPosition,
+        text: mention,
+      },
+    ];
+
+    onValueChange(nextValue);
+    closeCommandMenu();
+    setTextareaCaret(nextCaretPosition);
+
+    return nextValue;
+  };
+
+  const handleSkillSelect = (skill: AvailableSkill) => {
+    const nextValue = replaceActiveMention(`/skill ${skill.name}`);
+
+    if (nextValue === null) {
+      return;
+    }
+
+    setSelectedSkills((currentSkills) =>
+      currentSkills.some((selected) => selected.name === skill.name)
+        ? currentSkills
+        : [
+            ...currentSkills,
+            {
+              name: skill.name,
+              source: skill.source,
+              path: skill.path,
+            },
+          ],
+    );
+  };
+
+  const handleExtensionSelect = (extension: AvailableExtension) => {
+    const nextValue = replaceActiveMention(
+      `/extension ${extension.name}`,
+    );
+
+    if (nextValue === null) {
+      return;
+    }
+
+    setSelectedExtensions((currentExtensions) =>
+      currentExtensions.some((selected) => selected.id === extension.id)
+        ? currentExtensions
+        : [
+            ...currentExtensions,
+            {
+              id: extension.id,
+              name: extension.name,
+              path: extension.path,
+            },
+          ],
+    );
+  };
+
+  const handleAgentSelect = (agent: AvailableAgent) => {
+    const nextValue = replaceActiveMention(`/agent ${agent.name}`);
+
+    if (nextValue === null) {
+      return;
+    }
 
     setSelectedAgent({
       id: agent.id,
       name: agent.name,
       path: agent.path,
     });
-    onValueChange(textBeforeMention + textAfterMention);
-    closeCommandMenu();
-    setTextareaCaret(textBeforeMention.length);
-  };
-
-  const handleRemoveSkill = (skill: SelectedSkill) => {
-    setSelectedSkills((currentSkills) =>
-      currentSkills.filter(
-        (selected) => selected.name !== skill.name,
-      ),
-    );
-  };
-
-  const handleRemoveExtension = (extension: SelectedExtension) => {
-    setSelectedExtensions((currentExtensions) =>
-      currentExtensions.filter(
-        (selected) => selected.id !== extension.id,
-      ),
-    );
-  };
-
-  const handleRemoveAgent = () => {
-    setSelectedAgent(null);
   };
 
   const handleSend = async () => {
@@ -562,6 +648,8 @@ export function ChatInput({
         selectedExtensions: extensionsToSend,
         selectedAgent: agentToSend,
       });
+
+      settledMentionsRef.current = [];
     } catch (error) {
       /*
        * Restore the message and the selected skills/extensions when
@@ -677,6 +765,14 @@ export function ChatInput({
     }
   };
 
+  const handleTextareaScroll = (
+    event: React.UIEvent<HTMLTextAreaElement>,
+  ) => {
+    if (highlightRef.current) {
+      highlightRef.current.style.transform = `translateY(-${event.currentTarget.scrollTop}px)`;
+    }
+  };
+
   const loadSuffix =
     commandMenuMode === 'extensions'
       ? {
@@ -712,7 +808,6 @@ export function ChatInput({
         )}
 
         <div className="chat-composer">
-
           {isCommandMenuOpen && (
             <CommandMenu
               mode={commandMenuMode ?? 'commands'}
@@ -731,79 +826,22 @@ export function ChatInput({
             />
           )}
 
-          {selectedSkills.length > 0 && (
-            <div className="skill-tags-row" aria-label="Selected skills">
-              {selectedSkills.map((skill) => (
-                <span
-                  key={`${skill.source}:${skill.name}`}
-                  className="skill-tag"
-                  title={skill.name}
-                >
-                  <span className="skill-tag-name">
-                    {skill.source === 'project'
-                      ? '📁'
-                      : '📦'}{' '}
-                    {skill.name}
-                  </span>
-
-                  <button
-                    type="button"
-                    className="skill-tag-remove"
-                    onClick={() => handleRemoveSkill(skill)}
-                    aria-label={`Remove skill ${skill.name}`}
-                  >
-                    <X size={12} />
-                  </button>
-                </span>
-              ))}
-            </div>
-          )}
-
-          {selectedAgent && (
-            <div className="skill-tags-row" aria-label="Selected agent">
-              <span className="skill-tag agent-tag" title={selectedAgent.name}>
-                <span className="skill-tag-name">🤖 {selectedAgent.name}</span>
-                <button
-                  type="button"
-                  className="skill-tag-remove"
-                  onClick={handleRemoveAgent}
-                  aria-label={`Remove agent ${selectedAgent.name}`}
-                >
-                  <X size={12} />
-                </button>
-              </span>
-            </div>
-          )}
-
-          {selectedExtensions.length > 0 && (
+          <div className="chat-input-editor">
             <div
-              className="skill-tags-row"
-              aria-label="Selected extensions"
+              ref={highlightRef}
+              className="chat-input-highlight"
+              aria-hidden="true"
+              dir={inputDirection}
+              style={{ direction: inputDirection }}
             >
-              {selectedExtensions.map((extension) => (
-                <span
-                  key={`extension:${extension.id}`}
-                  className="skill-tag"
-                  title={extension.name}
-                >
-                  <span className="skill-tag-name">
-                    <Puzzle size={12} /> {extension.name}
-                  </span>
-
-                  <button
-                    type="button"
-                    className="skill-tag-remove"
-                    onClick={() => handleRemoveExtension(extension)}
-                    aria-label={`Remove extension ${extension.name}`}
-                  >
-                    <X size={12} />
-                  </button>
-                </span>
-              ))}
+              <SlashMentionText
+                content={safeValue}
+                className="chat-input-highlight-content"
+                resourceNames={mentionResourceNames}
+              />
             </div>
-          )}
 
-          <textarea
+            <textarea
             ref={textareaRef}
             value={safeValue}
             onChange={handleMessageChange}
@@ -820,9 +858,10 @@ export function ChatInput({
                 handleTextareaSelection(event);
               }
             }}
+            onScroll={handleTextareaScroll}
             placeholder={`Message ${agentName}`}
             rows={1}
-            dir="auto"
+            dir={inputDirection}
             disabled={isLoading}
             aria-label={`Message ${agentName}`}
             aria-expanded={isCommandMenuOpen}
@@ -831,7 +870,8 @@ export function ChatInput({
                 ? 'command-menu-list'
                 : undefined
             }
-          />
+            />
+          </div>
 
           <div className="chat-composer-footer">
             <div className="chat-composer-left-actions">

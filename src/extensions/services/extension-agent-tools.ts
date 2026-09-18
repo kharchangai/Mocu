@@ -147,7 +147,8 @@ const buildExtensionToolsPrompt = (
     .join("\n");
 
   return [
-    "YOU SOULD Use this tool and do what the user asked.",
+    "The user explicitly selected the following extensions for this request.",
+    "Use these tools when the user's request matches them, and do what the user asked.",
     "",
     toolLines,
   ].join("\n");

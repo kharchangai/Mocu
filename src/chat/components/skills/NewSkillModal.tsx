@@ -12,23 +12,16 @@ import {
   open,
 } from '@tauri-apps/plugin-dialog';
 
-import type {
-  SkillInstallTarget,
-} from '../../types/skillInstaller';
-
 type NewSkillModalProps = {
-  hasProject: boolean;
   isInstalling: boolean;
   installationError: string | null;
   onClose: () => void;
   onInstall: (
     zipPath: string,
-    target: SkillInstallTarget,
   ) => Promise<void>;
 };
 
 export function NewSkillModal({
-  hasProject,
   isInstalling,
   installationError,
   onClose,
@@ -43,27 +36,6 @@ export function NewSkillModal({
     zipName,
     setZipName,
   ] = useState('');
-
-  const [
-    target,
-    setTarget,
-  ] = useState<SkillInstallTarget>(
-    hasProject
-      ? 'project'
-      : 'global',
-  );
-
-  useEffect(() => {
-    if (
-      !hasProject &&
-      target !== 'global'
-    ) {
-      setTarget('global');
-    }
-  }, [
-    hasProject,
-    target,
-  ]);
 
   useEffect(() => {
     const handleKeyDown = (
@@ -144,13 +116,11 @@ export function NewSkillModal({
 
         await onInstall(
           zipPath,
-          target,
         );
       },
       [
         isInstalling,
         onInstall,
-        target,
         zipPath,
       ],
     );
@@ -186,8 +156,9 @@ export function NewSkillModal({
             </h2>
 
             <p>
-              Choose a ZIP archive and select
-              where the skill should be installed.
+              Choose a ZIP archive. The skill is
+              installed into the global skills
+              folder.
             </p>
           </div>
 
@@ -261,101 +232,15 @@ export function NewSkillModal({
             </button>
           </div>
 
-          <fieldset
-            className="new-skill-targets"
-            disabled={isInstalling}
-          >
-            <legend>
+          <div className="new-skill-field">
+            <span className="new-skill-label">
               Installation location
-            </legend>
+            </span>
 
-            <label
-              className={
-                target === 'global'
-                  ? 'new-skill-target selected'
-                  : 'new-skill-target'
-              }
-            >
-              <input
-                type="radio"
-                name="skill-target"
-                value="global"
-                checked={
-                  target === 'global'
-                }
-                onChange={() =>
-                  setTarget('global')
-                }
-              />
-
-              <span>
-                <strong>Global</strong>
-                <small>
-                  Available across Mocu
-                </small>
-              </span>
-            </label>
-
-            <label
-              className={
-                target === 'project'
-                  ? 'new-skill-target selected'
-                  : 'new-skill-target'
-              }
-              aria-disabled={!hasProject}
-            >
-              <input
-                type="radio"
-                name="skill-target"
-                value="project"
-                checked={
-                  target === 'project'
-                }
-                disabled={!hasProject}
-                onChange={() =>
-                  setTarget('project')
-                }
-              />
-
-              <span>
-                <strong>Project</strong>
-                <small>
-                  {hasProject
-                    ? 'Only available in the active project'
-                    : 'Select a project first'}
-                </small>
-              </span>
-            </label>
-
-            <label
-              className={
-                target === 'both'
-                  ? 'new-skill-target selected'
-                  : 'new-skill-target'
-              }
-              aria-disabled={!hasProject}
-            >
-              <input
-                type="radio"
-                name="skill-target"
-                value="both"
-                checked={
-                  target === 'both'
-                }
-                disabled={!hasProject}
-                onChange={() =>
-                  setTarget('both')
-                }
-              />
-
-              <span>
-                <strong>Both</strong>
-                <small>
-                  Install globally and in the project
-                </small>
-              </span>
-            </label>
-          </fieldset>
+            <p className="new-skill-label">
+              Global (BaseDirectory.AppData/skills)
+            </p>
+          </div>
 
           {installationError ? (
             <div

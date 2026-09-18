@@ -16,10 +16,6 @@ import type {
   ProjectSkillFile,
 } from '../../types/skill';
 
-import type {
-  SkillInstallTarget,
-} from '../../types/skillInstaller';
-
 import {
   NewSkillModal,
 } from './NewSkillModal';
@@ -37,10 +33,6 @@ import {
 } from './SkillsEmptyState';
 
 import './skills.css';
-
-type SkillsPageProps = {
-  projectPath: string | null;
-};
 
 function createSearchableMetadataText(
   metadata:
@@ -80,9 +72,7 @@ function getErrorMessage(
   return fallbackMessage;
 }
 
-export function SkillsPage({
-  projectPath,
-}: SkillsPageProps) {
+export function SkillsPage() {
   const [
     searchQuery,
     setSearchQuery,
@@ -116,68 +106,16 @@ export function SkillsPage({
     skills,
     invalidSkills,
     skillsDirectory,
-    source,
     isLoading,
     isSaving,
     error,
     reloadSkills,
     updateSkill,
-  } = useProjectSkills(projectPath);
-
-  const normalizedProjectPath =
-    projectPath?.trim() ?? '';
-
-  const hasProject =
-    normalizedProjectPath.length > 0;
-
-  const isProjectSource =
-    source === 'project';
-
-  const sourceTitle =
-    isProjectSource
-      ? 'Project Skills'
-      : 'Global Skills';
-
-  const sourceDescription =
-    isProjectSource
-      ? 'View, install, and edit Agent Skills stored inside the active project.'
-      : 'View, install, and edit Agent Skills available globally across Mocu.';
-
-  const sourceLabel =
-    isProjectSource
-      ? 'Active project'
-      : 'Global skills';
-
-  const loadingLabel =
-    isProjectSource
-      ? 'Loading project skills...'
-      : 'Loading global skills...';
-
-  const skillsAriaLabel =
-    isProjectSource
-      ? 'Project skills'
-      : 'Global skills';
-
-  const searchPlaceholder =
-    isProjectSource
-      ? 'Search project skills...'
-      : 'Search global skills...';
-
-  const searchAriaLabel =
-    isProjectSource
-      ? 'Search project skills'
-      : 'Search global skills';
-
-  const reloadLabel =
-    isProjectSource
-      ? 'Reload project skills'
-      : 'Reload global skills';
+  } = useProjectSkills();
 
   const displayedDirectory =
-    isProjectSource
-      ? normalizedProjectPath
-      : skillsDirectory ||
-        'BaseDirectory.AppData/skills';
+    skillsDirectory ||
+    'BaseDirectory.AppData/skills';
 
   const filteredSkills =
     useMemo(() => {
@@ -287,24 +225,11 @@ export function SkillsPage({
     useCallback(
       async (
         zipPath: string,
-        target: SkillInstallTarget,
       ): Promise<void> => {
         if (
           isInstalling ||
           !zipPath.trim()
         ) {
-          return;
-        }
-
-        if (
-          (target === 'project' ||
-            target === 'both') &&
-          !hasProject
-        ) {
-          setInstallationError(
-            'Select a project before installing a project skill.',
-          );
-
           return;
         }
 
@@ -314,10 +239,6 @@ export function SkillsPage({
         try {
           await installSkillFromZip({
             zipPath,
-            target,
-            projectPath: hasProject
-              ? normalizedProjectPath
-              : null,
           });
 
           await reloadSkills();
@@ -338,9 +259,7 @@ export function SkillsPage({
         }
       },
       [
-        hasProject,
         isInstalling,
-        normalizedProjectPath,
         reloadSkills,
       ],
     );
@@ -350,15 +269,13 @@ export function SkillsPage({
       <header className="skills-page-header">
         <div>
           <p className="skills-page-eyebrow">
-            {isProjectSource
-              ? 'Project capabilities'
-              : 'Global capabilities'}
+            Global capabilities
           </p>
 
-          <h1>{sourceTitle}</h1>
+          <h1>Global Skills</h1>
 
           <p className="skills-page-subtitle">
-            {sourceDescription}
+            View, install, and edit Agent Skills available globally across Mocu.
           </p>
         </div>
 
@@ -394,7 +311,7 @@ export function SkillsPage({
       </header>
 
       <div className="skills-project-path">
-        <span>{sourceLabel}</span>
+        <span>Global skills</span>
 
         <strong>
           {displayedDirectory}
@@ -431,13 +348,9 @@ export function SkillsPage({
                 event.target.value,
               );
             }}
-            placeholder={
-              searchPlaceholder
-            }
+            placeholder="Search global skills..."
             disabled={isLoading}
-            aria-label={
-              searchAriaLabel
-            }
+            aria-label="Search global skills"
           />
 
           {searchQuery ? (
@@ -475,8 +388,8 @@ export function SkillsPage({
             isLoading ||
             isInstalling
           }
-          title={reloadLabel}
-          aria-label={reloadLabel}
+          title="Reload global skills"
+          aria-label="Reload global skills"
         >
           <svg
             viewBox="0 0 24 24"
@@ -494,15 +407,6 @@ export function SkillsPage({
           </svg>
         </button>
       </div>
-
-      {skillsDirectory &&
-      isProjectSource &&
-      skillsDirectory !==
-        normalizedProjectPath ? (
-        <p className="skills-directory">
-          {skillsDirectory}
-        </p>
-      ) : null}
 
       {error ? (
         <div
@@ -570,12 +474,12 @@ export function SkillsPage({
             aria-hidden="true"
           />
 
-          <p>{loadingLabel}</p>
+          <p>Loading global skills...</p>
         </div>
       ) : filteredSkills.length > 0 ? (
         <section
           className="skills-grid"
-          aria-label={skillsAriaLabel}
+          aria-label="Global skills"
         >
           {filteredSkills.map(
             (skillFile) => (
@@ -591,14 +495,6 @@ export function SkillsPage({
         </section>
       ) : (
         <SkillsEmptyState
-          /*
-           * Global skills remain available when
-           * no project is selected.
-           */
-          hasProject={
-            hasProject ||
-            !isProjectSource
-          }
           hasSearchQuery={
             Boolean(
               searchQuery.trim(),
@@ -622,7 +518,6 @@ export function SkillsPage({
 
       {isNewSkillModalOpen ? (
         <NewSkillModal
-          hasProject={hasProject}
           isInstalling={
             isInstalling
           }

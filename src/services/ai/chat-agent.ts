@@ -80,6 +80,14 @@ import {
   perplexitySearchTool,
 } from "./tools/perplexity_search_tool";
 
+import {
+  skillLoaderTool,
+} from "./tools/skill_loader_tool";
+
+import {
+  createAgentTool,
+} from "./tools/create_agent_tool";
+
 /*
  * Change only this import path if your file-manager directory has a
  * different name.
@@ -98,14 +106,6 @@ import {
 } from "./tools/personalMemory/generateMainAgentPrompt";
 
 const MAX_TOOL_STEPS = 5;
-
-/*
- * chat-agent.ts is used when no project is selected.
- *
- * Therefore, selected skills must be loaded only from the global skill
- * location.
- */
-const CHAT_AGENT_PROJECT_PATH = "";
 
 type ToolArgs =
   Record<string, unknown>;
@@ -741,6 +741,60 @@ const createToolExecutor = (
     },
   });
 
+  toolExecutor.registerTool({
+    name:
+      "create_agent",
+
+    description:
+      "Creates a new persistent agent from the user's description.",
+
+    execute: async (
+      args,
+    ) => {
+      const toolArgs =
+        args as ToolArgs;
+
+      return createAgentTool.invoke(
+        {
+          userRequest:
+            requireStringArg(
+              toolArgs,
+              "userRequest",
+              "create_agent",
+            ),
+        },
+        config,
+      );
+    },
+  });
+
+  toolExecutor.registerTool({
+    name:
+      "load_skill",
+
+    description:
+      "Loads the full instructions of a selected skill by its exact name.",
+
+    execute: async (
+      args,
+    ) => {
+      const toolArgs =
+        args as ToolArgs;
+
+      return skillLoaderTool.invoke(
+        {
+          skillName:
+            requireStringArg(
+              toolArgs,
+              "skillName",
+              "load_skill",
+            ),
+        },
+        config,
+      );
+    },
+  });
+
   /*
    * Register the high-level file-manager tool.
    *
@@ -946,7 +1000,6 @@ export const callChatAgent =
     const skillResolution =
       await resolveSelectedSkills(
         selectedSkillNames,
-        CHAT_AGENT_PROJECT_PATH,
       );
 
     throwIfAborted(
@@ -987,7 +1040,7 @@ export const callChatAgent =
     );
 
     console.log(
-      "[Chat Agent] Loaded global skills:",
+      "[Chat Agent] Selected skills (summaries):",
       skillResolution.skills.map(
         (
           skill,
@@ -995,14 +1048,11 @@ export const callChatAgent =
           name:
             skill.name,
 
-          source:
-            skill.source,
+          description:
+            skill.description,
 
           path:
             skill.path,
-
-          contentLength:
-            skill.content.length,
         }),
       ),
     );
@@ -1138,6 +1188,8 @@ export const callChatAgent =
         desktopVisionTool,
         terminalTool,
         perplexitySearchTool,
+        skillLoaderTool,
+        createAgentTool,
         fileManagerTool,
         ...extensionTools.tools,
       ]);

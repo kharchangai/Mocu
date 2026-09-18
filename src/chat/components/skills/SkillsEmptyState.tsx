@@ -1,23 +1,16 @@
 type SkillsEmptyStateProps = {
-  hasProject: boolean;
   hasSearchQuery: boolean;
 };
 
 export function SkillsEmptyState({
-  hasProject,
   hasSearchQuery,
 }: SkillsEmptyStateProps) {
   let title = 'No skills yet';
 
   let description =
-    'Create a skill folder containing a SKILL.md file inside .mocu/skills.';
+    'Create a skill folder containing a SKILL.md file inside the global skills folder.';
 
-  if (!hasProject) {
-    title = 'Select a project folder';
-
-    description =
-      'Skills belong to a project. Select a project before viewing or editing its skills.';
-  } else if (hasSearchQuery) {
+  if (hasSearchQuery) {
     title = 'No matching skills';
 
     description =

@@ -499,20 +499,11 @@ function ChatPage() {
     switch (activeItem) {
       case 'skills':
         /*
-         * This condition was missing from your original code.
+         * Skills are always loaded from the global folder:
          *
-         * SkillsPage receives the root project path and internally reads:
-         *
-         * <projectPath>/.mocu/skills/<skill-folder>/SKILL.md
+         * BaseDirectory.AppData/skills/<skill-folder>/SKILL.md
          */
-        return (
-          <SkillsPage
-            projectPath={
-              normalizedProjectPath ||
-              null
-            }
-          />
-        );
+        return <SkillsPage />;
 
       case 'extensions':
         return (

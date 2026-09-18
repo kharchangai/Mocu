@@ -72,7 +72,51 @@
     0 0 0 3px rgba(17, 24, 39, 0.03);
 }
 
+.chat-input-editor {
+  position: relative;
+  width: 100%;
+  min-height: 28px;
+}
+
+.chat-input-highlight {
+  position: absolute;
+  z-index: 0;
+  inset: 0;
+  overflow: hidden;
+  padding: 2px 4px 8px;
+  box-sizing: border-box;
+  color: #111827;
+  font: inherit;
+  font-size: 14px;
+  line-height: 1.55;
+  pointer-events: none;
+  white-space: pre-wrap;
+  overflow-wrap: break-word;
+  word-break: normal;
+  unicode-bidi: plaintext;
+  text-align: start;
+  direction: inherit;
+}
+
+.chat-input-highlight-content {
+  display: block;
+  min-height: 28px;
+  direction: inherit;
+  unicode-bidi: plaintext;
+}
+
+/* The highlight layer must occupy exactly the same width as the hidden
+ * textarea. Color and decoration are safe; a heavier font would move the
+ * caret alignment, especially in RTL text. */
+.chat-input-highlight .slash-mention,
+.chat-input-highlight .slash-mention-command,
+.chat-input-highlight .slash-mention-name {
+  font-weight: inherit;
+}
+
 .chat-composer textarea {
+  position: relative;
+  z-index: 1;
   display: block;
   width: 100%;
   min-height: 28px;
@@ -81,7 +125,9 @@
   box-sizing: border-box;
   overflow-y: auto;
   resize: none;
-  color: #111827;
+  color: transparent;
+  -webkit-text-fill-color: transparent;
+  caret-color: #111827;
   background: transparent;
   border: 0;
   outline: none;
@@ -100,6 +146,52 @@
 .chat-composer textarea:disabled {
   cursor: not-allowed;
   opacity: 0.65;
+}
+
+.chat-composer textarea::selection {
+  color: transparent;
+  background: rgba(59, 130, 246, 0.18);
+}
+
+/* Inline resource mentions. Their underline keeps the original message
+ * readable while the tint makes skills, extensions, agents, and mistakes
+ * immediately distinguishable. */
+.slash-mention {
+  border-bottom: 2px solid currentColor;
+  border-radius: 3px;
+  font-weight: 600;
+}
+
+.slash-mention-command {
+  font-weight: 700;
+}
+
+.slash-mention-name {
+  font-weight: 600;
+}
+
+.slash-mention--skill {
+  color: #2563eb;
+  background: rgba(219, 234, 254, 0.58);
+  border-bottom-color: #3b82f6;
+}
+
+.slash-mention--extension {
+  color: #7c3aed;
+  background: rgba(237, 233, 254, 0.68);
+  border-bottom-color: #8b5cf6;
+}
+
+.slash-mention--agent {
+  color: #047857;
+  background: rgba(209, 250, 229, 0.65);
+  border-bottom-color: #10b981;
+}
+
+.slash-mention--error {
+  color: #dc2626;
+  background: rgba(254, 226, 226, 0.72);
+  border-bottom-color: #ef4444;
 }
 
 .chat-composer-footer {
@@ -348,54 +440,6 @@
 
 .command-menu-status--error {
   color: #dc2626;
-}
-
-/* Selected skill tags */
-
-.skill-tags-row {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 6px;
-  margin-bottom: 6px;
-}
-
-.skill-tag {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  max-width: 220px;
-  padding: 4px 8px;
-  color: #1d4ed8;
-  background: #eff6ff;
-  border: 1px solid #bfdbfe;
-  border-radius: 999px;
-  font-size: 11px;
-  font-weight: 600;
-}
-
-.skill-tag-name {
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.skill-tag-remove {
-  display: grid;
-  width: 16px;
-  height: 16px;
-  padding: 0;
-  color: #2563eb;
-  background: transparent;
-  border: 0;
-  border-radius: 50%;
-  place-items: center;
-  cursor: pointer;
-}
-
-.skill-tag-remove:hover {
-  color: #ffffff;
-  background: #dc2626;
 }
 
 @media (max-width: 640px) {

@@ -23,13 +23,10 @@ import {
   serializeSkillMarkdown,
 } from './skillMarkdown';
 
-const MOCU_DIRECTORY_NAME = '.mocu';
 const SKILLS_DIRECTORY_NAME = 'skills';
 const SKILL_FILE_NAME = 'SKILL.md';
 
-export type SkillsSource =
-  | 'project'
-  | 'global';
+export type SkillsSource = 'global';
 
 type ResolvedSkillsDirectory = {
   /*
@@ -55,44 +52,16 @@ type ResolvedSkillsDirectory = {
 };
 
 /*
- * Returns the correct skills location:
+ * Skills always live in the global folder:
  *
- * Project selected:
- *   <projectPath>/.mocu/skills
- *
- * No project selected:
  *   BaseDirectory.AppData/skills
+ *
+ * File operations receive:
+ *
+ * path: "skills"
+ * baseDir: BaseDirectory.AppData
  */
-async function resolveSkillsDirectory(
-  projectPath: string | null,
-): Promise<ResolvedSkillsDirectory> {
-  const normalizedProjectPath =
-    projectPath?.trim() ?? '';
-
-  if (normalizedProjectPath) {
-    const absoluteProjectSkillsPath =
-      await join(
-        normalizedProjectPath,
-        MOCU_DIRECTORY_NAME,
-        SKILLS_DIRECTORY_NAME,
-      );
-
-    return {
-      fsPath: absoluteProjectSkillsPath,
-      displayPath:
-        absoluteProjectSkillsPath,
-      source: 'project',
-    };
-  }
-
-  /*
-   * Global skills are relative to BaseDirectory.AppData.
-   *
-   * File operations receive:
-   *
-   * path: "skills"
-   * baseDir: BaseDirectory.AppData
-   */
+async function resolveSkillsDirectory(): Promise<ResolvedSkillsDirectory> {
   return {
     fsPath: SKILLS_DIRECTORY_NAME,
     baseDir: BaseDirectory.AppData,
@@ -121,15 +90,11 @@ function getFsOptions(
 }
 
 /*
- * Creates the selected skills directory if it does not exist.
+ * Creates the skills directory if it does not exist.
  */
-async function ensureSkillsDirectory(
-  projectPath: string | null,
-): Promise<ResolvedSkillsDirectory> {
+async function ensureSkillsDirectory(): Promise<ResolvedSkillsDirectory> {
   const directory =
-    await resolveSkillsDirectory(
-      projectPath,
-    );
+    await resolveSkillsDirectory();
 
   const options =
     getFsOptions(directory);
@@ -277,18 +242,11 @@ async function loadSkillDirectory(
 }
 
 /*
- * Loads skills from:
- *
- * - project/.mocu/skills when projectPath exists
- * - BaseDirectory.AppData/skills when projectPath is null or empty
+ * Loads skills from BaseDirectory.AppData/skills.
  */
-export async function loadProjectSkills(
-  projectPath: string | null,
-): Promise<LoadProjectSkillsResult> {
+export async function loadProjectSkills(): Promise<LoadProjectSkillsResult> {
   const directory =
-    await ensureSkillsDirectory(
-      projectPath,
-    );
+    await ensureSkillsDirectory();
 
   const options =
     getFsOptions(directory);
@@ -384,10 +342,9 @@ export async function loadProjectSkills(
 }
 
 /*
- * Saves either a project skill or a global skill back to its original
- * SKILL.md file.
+ * Saves a skill back to its original SKILL.md file.
  */
-export async function saveProjectSkill(
+export async function saveSkill(
   skillFile: ProjectSkillFile,
 ): Promise<ProjectSkillFile> {
   const options =

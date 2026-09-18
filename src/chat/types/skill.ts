@@ -2,9 +2,7 @@ import type {
   BaseDirectory,
 } from '@tauri-apps/plugin-fs';
 
-export type SkillsSource =
-  | 'project'
-  | 'global';
+export type SkillsSource = 'global';
 
 export type SkillMetadataValue =
   unknown;
@@ -33,20 +31,12 @@ export interface ProjectSkillFile {
   directoryName: string;
 
   /*
-   * Project skills:
-   *   absolute path
-   *
-   * Global skills:
-   *   path relative to BaseDirectory.AppData
+   * Path relative to BaseDirectory.AppData.
    */
   directoryPath: string;
 
   /*
-   * Project skills:
-   *   absolute path
-   *
-   * Global skills:
-   *   path relative to BaseDirectory.AppData
+   * Path relative to BaseDirectory.AppData.
    */
   skillFilePath: string;
 
@@ -55,9 +45,6 @@ export interface ProjectSkillFile {
 
   source: SkillsSource;
 
-  /*
-   * Defined only for global skills.
-   */
   baseDir?: BaseDirectory;
 }
 

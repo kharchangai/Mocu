@@ -244,54 +244,26 @@ async function prepareArchive(
   };
 }
 
+/*
+ * Skills are always installed into the global folder:
+ *
+ *   AppData/skills/<skillName>
+ */
 async function getTargetDirectories(
-  input: InstallSkillInput,
   skillName: string,
 ): Promise<string[]> {
-  const directories: string[] = [];
-
-  if (
-    input.target === 'global' ||
-    input.target === 'both'
-  ) {
-    const globalSkillsDirectory =
-      await join(
-        await appDataDir(),
-        'skills',
-      );
-
-    directories.push(
-      await join(
-        globalSkillsDirectory,
-        skillName,
-      ),
+  const globalSkillsDirectory =
+    await join(
+      await appDataDir(),
+      'skills',
     );
-  }
 
-  if (
-    input.target === 'project' ||
-    input.target === 'both'
-  ) {
-    const normalizedProjectPath =
-      input.projectPath?.trim();
-
-    if (!normalizedProjectPath) {
-      throw new Error(
-        'Select a project before installing a project skill.',
-      );
-    }
-
-    directories.push(
-      await join(
-        normalizedProjectPath,
-        '.mocu',
-        'skills',
-        skillName,
-      ),
-    );
-  }
-
-  return directories;
+  return [
+    await join(
+      globalSkillsDirectory,
+      skillName,
+    ),
+  ];
 }
 
 async function installFilesIntoDirectory(
@@ -362,7 +334,6 @@ export async function installSkillFromZip(
 
   const targetDirectories =
     await getTargetDirectories(
-      input,
       preparedArchive.skillName,
     );
 
@@ -385,8 +356,8 @@ export async function installSkillFromZip(
     }
   } catch (error) {
     /*
-     * If "Both" installation partially succeeds,
-     * remove the previously installed copy.
+     * If installation partially succeeds, remove
+     * the previously installed copy.
      */
     for (
       const installedDirectory
