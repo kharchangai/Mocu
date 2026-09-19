@@ -107,6 +107,11 @@ export const Settings: React.FC<SettingsProps> = ({
   const [perplexityModel, setPerplexityModel] = useState("");
   const [searchDepth, setSearchDepth] = useState(3);
 
+  // Decision (Jev) settings
+  const [decisionApiKey, setDecisionApiKey] = useState("");
+  const [decisionBaseUrl, setDecisionBaseUrl] = useState("");
+  const [decisionModel, setDecisionModel] = useState("");
+
   const [isLoading, setIsLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
 
@@ -155,6 +160,11 @@ export const Settings: React.FC<SettingsProps> = ({
         setPerplexityBaseUrl(settings.perplexityBaseUrl);
         setPerplexityModel(settings.perplexityModel);
         setSearchDepth(settings.searchDepth);
+
+        // Decision (Jev) settings
+        setDecisionApiKey(settings.decisionApiKey);
+        setDecisionBaseUrl(settings.decisionBaseUrl);
+        setDecisionModel(settings.decisionModel);
       } catch (error) {
         console.error("Failed to load settings:", error);
       } finally {
@@ -212,6 +222,11 @@ export const Settings: React.FC<SettingsProps> = ({
         perplexityBaseUrl,
         perplexityModel,
         searchDepth,
+
+        // Decision (Jev) settings
+        decisionApiKey,
+        decisionBaseUrl,
+        decisionModel,
       });
 
       /*
@@ -514,6 +529,49 @@ export const Settings: React.FC<SettingsProps> = ({
                   className="settings-input"
                 />
               </div>
+            </div>
+          </div>
+        </section>
+
+        {/* ---------- Decision (Jev) ---------- */}
+        <section className="settings-section">
+          <h5 className="settings-section-label">Decision (Jev)</h5>
+
+          <div className="settings-card">
+            <div className="settings-field">
+              <label className="settings-label">API Key</label>
+              <input
+                type="password"
+                value={decisionApiKey}
+                disabled={isSaving}
+                onChange={(event) => setDecisionApiKey(event.target.value)}
+                placeholder="Enter OpenRouter API key"
+                className="settings-input"
+              />
+            </div>
+
+            <div className="settings-field">
+              <label className="settings-label">Base URL</label>
+              <input
+                type="text"
+                value={decisionBaseUrl}
+                disabled={isSaving}
+                onChange={(event) => setDecisionBaseUrl(event.target.value)}
+                placeholder="https://openrouter.ai/api"
+                className="settings-input"
+              />
+            </div>
+
+            <div className="settings-field">
+              <label className="settings-label">Model</label>
+              <input
+                type="text"
+                value={decisionModel}
+                disabled={isSaving}
+                onChange={(event) => setDecisionModel(event.target.value)}
+                placeholder="~typesafe/jev-latest"
+                className="settings-input"
+              />
             </div>
           </div>
         </section>

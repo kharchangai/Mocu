@@ -33,6 +33,10 @@ import {
   ExtensionsPage,
 } from '../extensions/components/ExtensionsPage';
 
+import {
+  McpPage,
+} from '../mcp/components/McpPage';
+
 import { AgentsPage } from './components/agents/AgentsPage';
 
 import {
@@ -445,16 +449,6 @@ function ChatPage() {
       ],
     );
 
-  const renderPlaceholderPage = (
-    title: string,
-    description: string,
-  ) => (
-    <section className="chat-placeholder-page">
-      <h1>{title}</h1>
-      <p>{description}</p>
-    </section>
-  );
-
   const renderConversation = () => (
     <>
       <header className="chat-header">
@@ -511,9 +505,8 @@ function ChatPage() {
         );
 
       case 'mcp':
-        return renderPlaceholderPage(
-          'MCP',
-          'Browse and manage MCP connections here.',
+        return (
+          <McpPage />
         );
 
       case 'agents':

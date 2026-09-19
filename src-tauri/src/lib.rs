@@ -12,7 +12,11 @@ mod commands;
 // Extension host module (manages Node.js / Python extension processes)
 mod extension_host;
 
+// MCP stdio host (manages local MCP server child processes)
+mod mcp_stdio;
+
 use extension_host::manager::ExtensionManager;
+use mcp_stdio::McpStdioHost;
 
 #[tauri::command]
 fn greet(name: &str) -> String {
@@ -74,9 +78,14 @@ pub fn run() {
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_store::Builder::new().build())
 
+        .plugin(tauri_plugin_http::init())
+
         .plugin(tauri_plugin_sql::Builder::default().build())
         // Register the extension manager state
         .manage(ExtensionManager::default())
+
+        // Register the MCP stdio process host state
+        .manage(McpStdioHost::default())
 
         // Register all Tauri commands
         .invoke_handler(tauri::generate_handler![
@@ -85,7 +94,11 @@ pub fn run() {
             commands::desktop::capture_desktop,
             extension_host::extension_execute,
             extension_host::extension_respond,
-            extension_host::extension_stop
+            extension_host::extension_stop,
+            mcp_stdio::mcp_stdio_start,
+            mcp_stdio::mcp_stdio_send,
+            mcp_stdio::mcp_stdio_stderr,
+            mcp_stdio::mcp_stdio_stop
         ])
 
         .setup(|app| {
@@ -221,6 +234,12 @@ pub fn run() {
                 tauri::RunEvent::Exit => {
                     app_handle
                         .state::<ExtensionManager>()
+                        .stop_all();
+
+                    // Kill every running MCP server process on shutdown so
+                    // no orphaned children survive the app.
+                    app_handle
+                        .state::<McpStdioHost>()
                         .stop_all();
                 }
 

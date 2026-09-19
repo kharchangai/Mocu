@@ -1,6 +1,6 @@
 import type { ReactNode } from 'react';
 
-type MentionCommand = 'skill' | 'extension' | 'agent';
+type MentionCommand = 'skill' | 'extension' | 'agent' | 'mcp';
 
 export type MentionResourceNames = Partial<
   Record<MentionCommand, string[]>
@@ -50,7 +50,9 @@ export function SlashMentionText({
           ? 'extension'
           : command === 'agent'
             ? 'agent'
-            : 'error';
+            : command === 'mcp'
+              ? 'mcp'
+              : 'error';
 
     const commandText = `/${match[1]}`;
     const commandEnd = matchStart + commandText.length;

@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { listAvailableSkills } from '../services/skillService';
 import { listAvailableAgents } from '../agent/agent-loader';
 import { scanInstalledExtensions } from '../../extensions/services/extension-scanner';
+import { listMcpServers } from '../../mcp/manager';
 import type { MentionResourceNames } from './SlashMentionText';
 
 /*
@@ -19,10 +20,11 @@ export function useMentionResources(): MentionResourceNames {
     let cancelled = false;
 
     const load = async () => {
-      const [skills, extensions, agents] = await Promise.all([
+      const [skills, extensions, agents, mcpServers] = await Promise.all([
         listAvailableSkills().catch(() => []),
         scanInstalledExtensions().catch(() => []),
         listAvailableAgents().catch(() => []),
+        listMcpServers().catch(() => []),
       ]);
 
       if (cancelled) {
@@ -35,6 +37,9 @@ export function useMentionResources(): MentionResourceNames {
           (extension) => extension.manifest.name,
         ),
         agent: agents.map((agent) => agent.agentName),
+        mcp: mcpServers
+          .filter((server) => server.config.enabled)
+          .map((server) => server.config.name),
       });
     };
 

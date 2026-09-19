@@ -1,15 +1,16 @@
-import { Bot, Box, Puzzle, TerminalSquare } from 'lucide-react';
+import { Bot, Box, Puzzle, Server, TerminalSquare } from 'lucide-react';
 import { useEffect, useRef } from 'react';
 import type { AvailableSkill } from './skillTypes';
 import type { AvailableExtension } from './extensionTypes';
 import type { AvailableAgent } from './agentTypes';
+import type { AvailableMcpServer } from './mcpTypes';
 
 /*
  * The command menu shows the available slash commands while the caret is
  * on a bare "/", then switches to the matching skill or extension list
  * once the user types or selects "/skill" or "/extension".
  */
-type CommandMenuMode = 'commands' | 'skills' | 'extensions' | 'agents';
+type CommandMenuMode = 'commands' | 'skills' | 'extensions' | 'agents' | 'mcp';
 
 type CommandMenuProps = {
   mode: CommandMenuMode;
@@ -17,6 +18,7 @@ type CommandMenuProps = {
   skills: AvailableSkill[];
   extensions: AvailableExtension[];
   agents: AvailableAgent[];
+  mcpServers: AvailableMcpServer[];
   selectedIndex: number;
   isLoading: boolean;
   error: string | null;
@@ -24,10 +26,11 @@ type CommandMenuProps = {
   onSelectSkill: (skill: AvailableSkill) => void;
   onSelectExtension: (extension: AvailableExtension) => void;
   onSelectAgent: (agent: AvailableAgent) => void;
+  onSelectMcpServer: (server: AvailableMcpServer) => void;
   onHover: (index: number) => void;
 };
 
-const COMMANDS = [
+export const COMMANDS = [
   {
     command: 'skill',
     name: '/skill',
@@ -43,6 +46,11 @@ const COMMANDS = [
     name: '/agent',
     description: 'Delegate this request to a saved specialist agent',
   },
+  {
+    command: 'mcp',
+    name: '/mcp',
+    description: 'Use tools from a connected MCP server in this request',
+  },
 ] as const;
 
 export function CommandMenu({
@@ -51,6 +59,7 @@ export function CommandMenu({
   skills,
   extensions,
   agents,
+  mcpServers,
   selectedIndex,
   isLoading,
   error,
@@ -58,6 +67,7 @@ export function CommandMenu({
   onSelectSkill,
   onSelectExtension,
   onSelectAgent,
+  onSelectMcpServer,
   onHover,
 }: CommandMenuProps) {
   const selectedItemRef = useRef<HTMLButtonElement | null>(null);
@@ -75,7 +85,9 @@ export function CommandMenu({
       ? 'Skills'
       : mode === 'extensions'
         ? 'Extensions'
-        : 'Agents';
+        : mode === 'mcp'
+          ? 'MCP Servers'
+          : 'Agents';
 
   return (
     <div
@@ -112,6 +124,8 @@ export function CommandMenu({
                   <TerminalSquare size={17} />
                 ) : commandItem.command === 'extension' ? (
                   <Puzzle size={17} />
+                ) : commandItem.command === 'mcp' ? (
+                  <Server size={17} />
                 ) : (
                   <Bot size={17} />
                 )}
@@ -229,6 +243,39 @@ export function CommandMenu({
                 <span className="command-source-badge command-source-badge--global">
                   Extension
                 </span>
+              </button>
+            );
+          })
+        ) : mode === 'mcp' ? mcpServers.length === 0 ? (
+          <div className="command-menu-status">
+            {commandQuery.trim() === ''
+              ? 'No MCP servers configured'
+              : 'No MCP servers match that query'}
+          </div>
+        ) : (
+          mcpServers.map((server, index) => {
+            const isSelected = index === selectedIndex;
+
+            return (
+              <button
+                key={server.id}
+                ref={isSelected ? selectedItemRef : null}
+                type="button"
+                role="option"
+                aria-selected={isSelected}
+                className={`command-menu-skill ${isSelected ? 'command-menu-skill--selected' : ''}`}
+                onMouseEnter={() => onHover(index)}
+                onMouseDown={(event) => {
+                  event.preventDefault();
+                  onSelectMcpServer(server);
+                }}
+              >
+                <span className="command-menu-icon"><Server size={17} /></span>
+                <span className="command-menu-information">
+                  <span className="command-menu-skill-name">{server.name}</span>
+                  <span className="command-menu-skill-description">{server.description}</span>
+                </span>
+                <span className="command-source-badge command-source-badge--global">MCP</span>
               </button>
             );
           })

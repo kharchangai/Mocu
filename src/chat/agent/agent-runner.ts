@@ -30,6 +30,10 @@ import { skillLoaderTool } from '../../services/ai/tools/skill_loader_tool';
 import { resolveSelectedSkills } from '../components/skills/selected-skill-loader';
 import { loadExtensionAgentTools } from '../../extensions/services/extension-agent-tools';
 import { scanInstalledExtensions } from '../../extensions/services/extension-scanner';
+import {
+  loadMcpAgentTools,
+  parseMcpToolReference,
+} from '../../mcp/tool-adapter';
 import { findAvailableAgent, type AvailableAgent } from './agent-loader';
 
 const MAX_TOOL_STEPS = 5;
@@ -141,6 +145,26 @@ async function runAgentNode(
   const extensionTools = await loadExtensionAgentTools(extensionIds);
   throwIfAborted(signal);
 
+  /*
+   * MCP tools are request-scoped. A saved agent must not inherit access just
+   * because an MCP server was connected (or because an old version stored an
+   * mcp:* entry in its tools list). The only way this agent sees MCP tools is
+   * when the user explicitly selects a server with /mcp for this request.
+   */
+  const mcpSelections = getConfigReferences(
+    runnableConfig,
+    'selectedMcpServers',
+  ).map((serverId) => ({ serverId }));
+  const mcpTools = await loadMcpAgentTools(mcpSelections);
+  throwIfAborted(signal);
+
+  if (mcpTools.unresolved.length > 0) {
+    console.warn(
+      '[Agent Runner] Selected MCP servers/tools unavailable (not connected or unknown):',
+      mcpTools.unresolved,
+    );
+  }
+
   const terminalTool = terminalExecutionTool({
     ...(normalizedProjectPath ? { projectPath: normalizedProjectPath } : {}),
   });
@@ -150,6 +174,7 @@ async function runAgentNode(
     perplexitySearchTool,
     skillLoaderTool,
     ...extensionTools.tools,
+    ...mcpTools.tools,
     ...childAgents.tools,
   ];
 
@@ -182,6 +207,7 @@ async function runAgentNode(
       ),
   });
   extensionTools.registerAll(executor);
+  mcpTools.registerAll(executor);
   childAgents.registerAll(executor);
 
   const systemPrompt = buildAgentSystemPrompt(
@@ -189,6 +215,7 @@ async function runAgentNode(
     normalizedProjectPath,
     selectedSkills.skillsPrompt,
     extensionTools.prompt,
+    mcpTools.prompt,
     childAgents.prompt,
   );
 
@@ -290,6 +317,7 @@ function buildAgentSystemPrompt(
   projectPath: string,
   skillsPrompt: string,
   extensionsPrompt: string,
+  mcpToolsPrompt: string,
   childAgentsPrompt: string,
 ): string {
   return [
@@ -305,12 +333,17 @@ function buildAgentSystemPrompt(
     '',
     skillsPrompt.trim(),
     extensionsPrompt.trim(),
+    mcpToolsPrompt.trim(),
     childAgentsPrompt.trim(),
     '',
     'AVAILABLE TOOLS',
-    'terminal_executor, perplexity_search, selected extension tools, and configured child agents.',
-    agent.tools.length > 0
-      ? `TOOLS REQUESTED BY THIS AGENT: ${agent.tools.join(', ')}`
+    mcpToolsPrompt.trim()
+      ? 'terminal_executor, perplexity_search, selected extension tools, selected MCP tools, and configured child agents.'
+      : 'terminal_executor, perplexity_search, selected extension tools, no MCP tools selected, and configured child agents.',
+    agent.tools.filter((tool) => !parseMcpToolReference(tool)).length > 0
+      ? `TOOLS REQUESTED BY THIS AGENT: ${agent.tools
+          .filter((tool) => !parseMcpToolReference(tool))
+          .join(', ')}`
       : 'No specific tool list was saved; use the available tools only when they help complete the instruction.',
   ].filter((part, index) => index < 8 || part.trim()).join('\n');
 }

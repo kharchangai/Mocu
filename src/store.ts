@@ -33,6 +33,11 @@ export type AppSettings = {
   perplexityBaseUrl: string;
   perplexityModel: string;
   searchDepth: number;
+
+  // Decision (Jev) settings
+  decisionApiKey: string;
+  decisionBaseUrl: string;
+  decisionModel: string;
 };
 
 let settingsStore: Store | null = null;
@@ -163,6 +168,19 @@ export async function readSettings(): Promise<AppSettings> {
       (await store.get<string>("MOCU_PERPLEXITY_MODEL")) || "sonar"
     ).trim(),
     searchDepth: getValidSearchDepth(rawDepth),
+
+    // Decision (Jev) settings
+    decisionApiKey: (
+      (await store.get<string>("MOCU_DECISION_API_KEY")) || ""
+    ).trim(),
+    decisionBaseUrl: (
+      (await store.get<string>("MOCU_DECISION_BASE_URL")) ||
+      "https://openrouter.ai/api"
+    ).trim(),
+    decisionModel: (
+      (await store.get<string>("MOCU_DECISION_MODEL")) ||
+      "~typesafe/jev-latest"
+    ).trim(),
   };
 }
 
@@ -246,6 +264,22 @@ export async function saveSettings(settings: AppSettings): Promise<void> {
   await store.set(
     "MOCU_PERPLEXITY_MODEL",
     (settings.perplexityModel || "sonar").trim(),
+  );
+
+  // Decision (Jev) settings
+  await store.set(
+    "MOCU_DECISION_API_KEY",
+    (settings.decisionApiKey || "").trim(),
+  );
+  await store.set(
+    "MOCU_DECISION_BASE_URL",
+    (
+      settings.decisionBaseUrl || "https://openrouter.ai/api"
+    ).trim(),
+  );
+  await store.set(
+    "MOCU_DECISION_MODEL",
+    (settings.decisionModel || "~typesafe/jev-latest").trim(),
   );
   await store.set(
     "MOCU_SEARCH_DEPTH",

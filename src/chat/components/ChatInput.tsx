@@ -15,13 +15,14 @@ import {
 import { listAvailableSkills } from '../services/skillService';
 import { listAvailableAgents } from '../agent/agent-loader';
 import { scanInstalledExtensions } from '../../extensions/services/extension-scanner';
-import { CommandMenu } from './CommandMenu';
+import { COMMANDS, CommandMenu } from './CommandMenu';
 import {
   filterSkills,
   findActiveSlashCommand,
   type ActiveSlashCommand,
 } from './skillMention';
 import { filterExtensions } from './extensionMention';
+import { filterMcpServers } from './mcpMention';
 import type {
   AvailableSkill,
   SelectedSkill,
@@ -30,6 +31,14 @@ import type {
   AvailableExtension,
   SelectedExtension,
 } from './extensionTypes';
+import type {
+  AvailableMcpServer,
+  SelectedMcpServer,
+} from './mcpTypes';
+import {
+  listMcpServers,
+  subscribeToMcpManager,
+} from '../../mcp/manager';
 import { filterAgents } from './agentMention';
 import { SlashMentionText } from './SlashMentionText';
 import type {
@@ -42,6 +51,7 @@ export type SendOptions = {
   projectPath: string | null;
   selectedSkills: SelectedSkill[];
   selectedExtensions: SelectedExtension[];
+  selectedMcpServers: SelectedMcpServer[];
   selectedAgent: SelectedAgent | null;
 };
 
@@ -65,7 +75,7 @@ export type ChatInputProps = {
   onStop?: () => void;
 };
 
-type CommandMenuMode = 'commands' | 'skills' | 'extensions' | 'agents';
+type CommandMenuMode = 'commands' | 'skills' | 'extensions' | 'agents' | 'mcp';
 
 export function ChatInput({
   value = '',
@@ -102,6 +112,10 @@ export function ChatInput({
 
   const [availableAgents, setAvailableAgents] = useState<AvailableAgent[]>([]);
 
+  const [availableMcpServers, setAvailableMcpServers] = useState<
+    AvailableMcpServer[]
+  >([]);
+
   const [activeCommand, setActiveCommand] =
     useState<ActiveSlashCommand | null>(null);
 
@@ -114,6 +128,10 @@ export function ChatInput({
   >([]);
 
   const [selectedAgent, setSelectedAgent] = useState<SelectedAgent | null>(null);
+
+  const [selectedMcpServers, setSelectedMcpServers] = useState<
+    SelectedMcpServer[]
+  >([]);
 
   const [selectedItemIndex, setSelectedItemIndex] = useState(0);
   const [isLoadingSkills, setIsLoadingSkills] = useState(false);
@@ -129,6 +147,9 @@ export function ChatInput({
 
   const [isLoadingAgents, setIsLoadingAgents] = useState(false);
   const [agentsError, setAgentsError] = useState<string | null>(null);
+
+  const [isLoadingMcp, setIsLoadingMcp] = useState(false);
+  const [mcpError, setMcpError] = useState<string | null>(null);
 
   const [sendError, setSendError] = useState<string | null>(null);
 
@@ -165,14 +186,20 @@ export function ChatInput({
         ...availableAgents.map((agent) => agent.name),
         ...(selectedAgent ? [selectedAgent.name] : []),
       ],
+      mcp: [
+        ...availableMcpServers.map((server) => server.name),
+        ...selectedMcpServers.map((server) => server.name),
+      ],
     }),
     [
       availableSkills,
       availableExtensions,
       availableAgents,
+      availableMcpServers,
       selectedSkills,
       selectedExtensions,
       selectedAgent,
+      selectedMcpServers,
     ],
   );
 
@@ -193,12 +220,15 @@ export function ChatInput({
           ? 'extensions'
           : activeCommand.command === 'agent'
             ? 'agents'
-            : 'commands';
+            : activeCommand.command === 'mcp'
+              ? 'mcp'
+              : 'commands';
 
   const activeCommandQuery =
     (activeCommand?.command === 'skill' ||
       activeCommand?.command === 'extension' ||
-      activeCommand?.command === 'agent'
+      activeCommand?.command === 'agent' ||
+      activeCommand?.command === 'mcp'
       ? activeCommand.query
       : '') ?? '';
 
@@ -215,6 +245,17 @@ export function ChatInput({
       activeCommandQuery,
     );
   }, [commandMenuMode, availableSkills, activeCommandQuery]);
+
+  const filteredMcpServers = useMemo(() => {
+    if (commandMenuMode !== 'mcp') {
+      return [];
+    }
+
+    return filterMcpServers(
+      availableMcpServers,
+      activeCommandQuery,
+    );
+  }, [commandMenuMode, availableMcpServers, activeCommandQuery]);
 
   const filteredExtensions = useMemo(() => {
     if (commandMenuMode !== 'extensions') {
@@ -314,6 +355,38 @@ export function ChatInput({
     }
   }, []);
 
+  const loadMcpServers = useCallback(async () => {
+    setIsLoadingMcp(true);
+    setMcpError(null);
+
+    try {
+      const servers = await listMcpServers();
+
+      setAvailableMcpServers(
+        servers
+          .filter((server) => server.config.enabled)
+          .map((server) => ({
+            id: server.config.id,
+            name: server.config.name,
+            description:
+              server.config.transport === 'stdio'
+                ? `Local MCP server: ${server.config.command}`
+                : `Remote MCP server: ${server.config.url}`,
+          })),
+      );
+    } catch (error) {
+      console.error('Failed to load MCP servers:', error);
+      setAvailableMcpServers([]);
+      setMcpError(
+        error instanceof Error
+          ? error.message
+          : 'Failed to load MCP servers.',
+      );
+    } finally {
+      setIsLoadingMcp(false);
+    }
+  }, []);
+
   useEffect(() => {
     void loadSkills();
   }, [loadSkills]);
@@ -325,6 +398,17 @@ export function ChatInput({
   useEffect(() => {
     void loadAgents();
   }, [loadAgents]);
+
+  useEffect(() => {
+    void loadMcpServers();
+
+    // The MCP page can add, remove, or enable a server while the chat
+    // composer is mounted. Keep the slash menu in sync without requiring a
+    // full app reload.
+    return subscribeToMcpManager(() => {
+      void loadMcpServers();
+    });
+  }, [loadMcpServers]);
 
   useEffect(() => {
     const textarea = textareaRef.current;
@@ -352,7 +436,9 @@ export function ChatInput({
           ? filteredExtensions.length
           : commandMenuMode === 'agents'
             ? filteredAgents.length
-            : 3;
+            : commandMenuMode === 'mcp'
+              ? filteredMcpServers.length
+              : COMMANDS.length;
 
     if (
       selectedItemIndex >= menuItemCount &&
@@ -364,6 +450,7 @@ export function ChatInput({
     filteredSkills.length,
     filteredExtensions.length,
     filteredAgents.length,
+    filteredMcpServers.length,
     selectedItemIndex,
     commandMenuMode,
   ]);
@@ -457,6 +544,12 @@ export function ChatInput({
         ? currentAgent
         : null,
     );
+
+    setSelectedMcpServers((currentServers) =>
+      currentServers.filter((server) =>
+        nextValue.includes(`/mcp ${server.name}`),
+      ),
+    );
   };
 
   const handleMessageChange = (
@@ -503,7 +596,10 @@ export function ChatInput({
   const handleSelectCommand = (command: string) => {
     if (
       !activeCommand ||
-      (command !== 'skill' && command !== 'extension' && command !== 'agent')
+      (command !== 'skill' &&
+        command !== 'extension' &&
+        command !== 'agent' &&
+        command !== 'mcp')
     ) {
       return;
     }
@@ -623,6 +719,26 @@ export function ChatInput({
     });
   };
 
+  const handleMcpServerSelect = (server: AvailableMcpServer) => {
+    const nextValue = replaceActiveMention(`/mcp ${server.name}`);
+
+    if (nextValue === null) {
+      return;
+    }
+
+    setSelectedMcpServers((currentServers) =>
+      currentServers.some((selected) => selected.id === server.id)
+        ? currentServers
+        : [
+            ...currentServers,
+            {
+              id: server.id,
+              name: server.name,
+            },
+          ],
+    );
+  };
+
   const handleSend = async () => {
     const message = safeValue.trim();
 
@@ -632,6 +748,7 @@ export function ChatInput({
 
     const skillsToSend = [...selectedSkills];
     const extensionsToSend = [...selectedExtensions];
+    const mcpServersToSend = [...selectedMcpServers];
     const agentToSend = selectedAgent;
 
     setSendError(null);
@@ -639,6 +756,7 @@ export function ChatInput({
     setSelectedSkills([]);
     setSelectedExtensions([]);
     setSelectedAgent(null);
+    setSelectedMcpServers([]);
     onValueChange('');
 
     try {
@@ -646,19 +764,20 @@ export function ChatInput({
         projectPath: normalizedProjectPath,
         selectedSkills: skillsToSend,
         selectedExtensions: extensionsToSend,
+        selectedMcpServers: mcpServersToSend,
         selectedAgent: agentToSend,
       });
 
       settledMentionsRef.current = [];
     } catch (error) {
       /*
-       * Restore the message and the selected skills/extensions when
-       * sending fails.
+       * Restore the message and the selected resources when sending fails.
        */
       onValueChange(message);
       setSelectedSkills(skillsToSend);
       setSelectedExtensions(extensionsToSend);
       setSelectedAgent(agentToSend);
+      setSelectedMcpServers(mcpServersToSend);
       setSendError(
         error instanceof Error
           ? error.message
@@ -679,7 +798,9 @@ export function ChatInput({
             ? filteredExtensions.length
             : commandMenuMode === 'agents'
               ? filteredAgents.length
-              : 3;
+              : commandMenuMode === 'mcp'
+                ? filteredMcpServers.length
+                : COMMANDS.length;
 
       if (event.key === 'ArrowDown') {
         event.preventDefault();
@@ -735,15 +856,21 @@ export function ChatInput({
           if (selectedAgentItem) {
             handleAgentSelect(selectedAgentItem);
           }
-        } else {
-          const commandItem =
-            selectedItemIndex === 0
-              ? 'skill'
-              : selectedItemIndex === 1
-                ? 'extension'
-                : 'agent';
+        } else if (commandMenuMode === 'mcp') {
+          const selectedServer = filteredMcpServers[selectedItemIndex];
 
-          handleSelectCommand(commandItem);
+          if (selectedServer) {
+            handleMcpServerSelect(selectedServer);
+          }
+        } else {
+          // Use the same command definition that renders the menu. This
+          // prevents keyboard selection from drifting away from the item
+          // the user sees (the old index map swapped MCP and Agent).
+          const commandItem = COMMANDS[selectedItemIndex]?.command;
+
+          if (commandItem) {
+            handleSelectCommand(commandItem);
+          }
         }
 
         return;
@@ -784,11 +911,15 @@ export function ChatInput({
             isLoading: isLoadingAgents,
             error: agentsError,
           }
-        : {
-            isLoading: isLoadingSkills,
-            error: skillsError,
-          };
-
+        : commandMenuMode === 'mcp'
+          ? {
+              isLoading: isLoadingMcp,
+              error: mcpError,
+            }
+          : {
+              isLoading: isLoadingSkills,
+              error: skillsError,
+            };
   return (
     <div className="chat-input-shell">
       <div className="chat-input-inner">
@@ -815,6 +946,7 @@ export function ChatInput({
               skills={filteredSkills}
               extensions={filteredExtensions}
               agents={filteredAgents}
+              mcpServers={filteredMcpServers}
               selectedIndex={selectedItemIndex}
               isLoading={loadSuffix.isLoading}
               error={loadSuffix.error}
@@ -822,6 +954,7 @@ export function ChatInput({
               onSelectSkill={handleSkillSelect}
               onSelectExtension={handleExtensionSelect}
               onSelectAgent={handleAgentSelect}
+              onSelectMcpServer={handleMcpServerSelect}
               onHover={setSelectedItemIndex}
             />
           )}
@@ -950,8 +1083,9 @@ export function ChatInput({
         ) : null}
 
         <p className="chat-input-disclaimer">
-          Type /skill, /extension, or /agent to select resources for this
-          request. Mocu can make mistakes. Check important information.
+          Type /skill, /extension, /mcp, or /agent to select resources for this
+          request. MCP tools are available only for requests where you select a
+          server. Mocu can make mistakes. Check important information.
         </p>
       </div>
     </div>

@@ -1,24 +1,25 @@
-import { parseAgentDefinition } from "./chat/agent/agent-definition-parser";
+import { getJevDecision } from "./services/ai/tools/decision/Jev_model";
 
-// const TEST_AGENT_MESSAGE =
-//   "I want an agent that reads all .log files in the logs folder, summarizes the errors, and writes the summary to errors-report.md. Use the file-reader tool and the filesystem extension. Use GPT-4o.";
+// const MEMORY_QUESTION = {
+//   type: "choice" as const,
+//   instructions:
+//     "Determine which conversation history the user needs. Classify retrieval, not storage. If the request depends on past content but its age is unclear, choose short.",
+//   criteria: {
+//     none: "No conversation history is needed.",
+//     short: "Needs information from the last few messages, or past content of unspecified age.",
+//     long: "Needs information from much earlier messages or previous conversations.",
+//     both: "Needs information from both recent messages and much older history.",
+//   },
+// };
 
 export async function runTest(): Promise<void> {
-  // console.log("=== agent definition parser: start ===");
+  // const result = await getJevDecision({
+  //   state:
+  //     "کد پیاتونی که برای پیدا کردن پینگ داده بودی رو دوباره بده",
+  //   questions: {
+  //     memory: MEMORY_QUESTION,
+  //   },
+  // });
 
-  // try {
-  //   const definition = await parseAgentDefinition(
-  //     TEST_AGENT_MESSAGE,
-  //   );
-
-  //   console.log("=== parsed agent definition ===");
-  //   console.log(JSON.stringify(definition, null, 2));
-  // } catch (error) {
-  //   console.error(
-  //     "agent definition parser failed:",
-  //     error,
-  //   );
-  // }
-
+  // console.dir(result, { depth: null });
 }
-

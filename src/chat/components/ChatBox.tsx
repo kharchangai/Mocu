@@ -37,6 +37,7 @@ import type { ChatMessage } from '../types/chat';
 import type { SelectedSkill } from './skillTypes';
 import type { SelectedExtension } from './extensionTypes';
 import type { SelectedAgent } from './agentTypes';
+import type { SelectedMcpServer } from './mcpTypes';
 
 import './ChatBox.css';
 
@@ -53,6 +54,7 @@ type SendOptions = {
   projectPath?: string | null;
   selectedSkills?: SelectedSkill[];
   selectedExtensions?: SelectedExtension[];
+  selectedMcpServers?: SelectedMcpServer[];
   selectedAgent?: SelectedAgent | null;
 };
 
@@ -515,6 +517,14 @@ export function ChatBox({
           selectedExtensions:
             options?.selectedExtensions?.map(
               (extension) => extension.id,
+            ) ?? [],
+          /*
+           * MCP servers selected with the /mcp command expose their
+           * discovered tools to the agent as callable tools.
+           */
+          selectedMcpServers:
+            options?.selectedMcpServers?.map(
+              (server) => server.id,
             ) ?? [],
           selectedAgent:
             options?.selectedAgent?.name ?? null,
