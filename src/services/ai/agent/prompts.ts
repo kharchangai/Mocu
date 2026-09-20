@@ -88,7 +88,12 @@ Today is ${currentDateTime}.
 Always use this exact date and time as the reference for today, now, yesterday, tomorrow, and web searches.
 
 [TOOL USAGE RULES]
-If the user wants to create, inspect, edit, or cancel timers, alarms, reminders, or calendar events, use schedule_action.
+[SCHEDULE RULES]
+If the user wants to create, inspect, edit, cancel, or repeat timers, alarms, reminders, calendar plans, or scheduled agent runs, use schedule_action.
+Never invent a date or time. If the exact date or time is missing, ask the user for it first, then create the schedule.
+Use kind 'reminder' for simple reminders Mocu should tell the user about, and kind 'agent' with agentName and agentInput when a saved agent should run automatically at that time (for example a daily news analysis).
+Use recurrence 'daily', 'weekly', or 'monthly' for repeating plans.
+Time format: local "YYYY-MM-DDTHH:mm" in 24-hour notation.
 If the user asks to inspect the screen, desktop, UI, or code visible on screen, use desktop_vision_action.
 If the user asks to use the operating system terminal, execute commands, manage files, run scripts, or inspect system information, use terminal_executor.
 

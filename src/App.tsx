@@ -2,6 +2,12 @@
 import { useEffect, useRef, useState } from 'react';
 import { listen } from '@tauri-apps/api/event';
 
+import {
+  SCHEDULE_REMINDER_EVENT,
+  startScheduler,
+  type ScheduleReminderPayload,
+} from './schedule/scheduler';
+
 import { Mocu, MocuState } from './components/Mocu';
 import { CUBE_SIZE } from './components/Mocu';
 import ChatPage from './chat/ChatPage';
@@ -14,7 +20,6 @@ import {
 } from './services/aiService';
 
 import { chatWithMocu } from './services/ai/index';
-import { useScheduleTrigger } from './hooks/useScheduleTrigger';
 import { useMocuWindowSize } from './hooks/useMocuWindowSize';
 import { useMocuClickThrough } from './hooks/useMocuClickThrough';
 
@@ -465,10 +470,49 @@ function App() {
     }
   };
 
-  useScheduleTrigger(
-    handleScheduleTrigger,
-    !isMocuWindow,
-  );
+  /*
+   * The main chat webview owns the scheduler. It runs both reminders and
+   * automatic agent tasks, then broadcasts reminder events to the avatar
+   * webview. Keeping one owner prevents duplicate reminders when both
+   * Tauri windows are alive.
+   */
+  useEffect(() => {
+    if (!isChatWindow) {
+      return;
+    }
+
+    return startScheduler();
+  }, [isChatWindow]);
+
+  /* The avatar webview receives reminder events and speaks them. */
+  useEffect(() => {
+    if (!isMocuWindow) {
+      return;
+    }
+
+    let disposed = false;
+    let unlisten: (() => void) | undefined;
+
+    void listen<ScheduleReminderPayload>(
+      SCHEDULE_REMINDER_EVENT,
+      (event) => {
+        void handleScheduleTrigger(event.payload.text);
+      },
+    ).then((cleanup) => {
+      if (disposed) {
+        cleanup();
+      } else {
+        unlisten = cleanup;
+      }
+    }).catch((error) => {
+      console.error('Failed to listen for schedule reminders:', error);
+    });
+
+    return () => {
+      disposed = true;
+      unlisten?.();
+    };
+  }, [handleScheduleTrigger, isMocuWindow]);
 
   const handleToggleRecording = async () => {
     if (mocuState === 'listening') {

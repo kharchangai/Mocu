@@ -26,7 +26,7 @@ const STATUS_LABELS: Record<string, string> = {
   memory_action: 'Accessing long-term memory…',
   terminal_executor: 'Running a terminal command…',
   desktop_vision_action: 'Looking at your screen…',
-  schedule_action: 'Checking the schedule…',
+  schedule_action: 'Managing the schedule…',
   generate_personalized_prompt: 'Crafting a personalized prompt…',
   happy: 'Done!',
 };

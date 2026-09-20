@@ -38,7 +38,10 @@ import { getAsyncLLM } from "./llm";
 
 import { ToolExecutor } from "./agent/tool-executor";
 
-import { scheduleTool } from "./tools/schedule-tool";
+import {
+  scheduleTool,
+  type ScheduleActionInput,
+} from "../../schedule/schedule-tool";
 import { desktopVisionTool } from "./tools/desktop-vision-tool";
 import { terminalExecutionTool } from "./tools/terminal_execution_tool";
 import { perplexitySearchTool } from "./tools/perplexity_search_tool";
@@ -262,7 +265,6 @@ const createToolExecutor = (
       config?: RunnableConfig,
     ) => Promise<unknown>;
   },
-  state: typeof GraphState.State,
   config: RunnableConfig,
 ): ToolExecutor => {
   const toolExecutor = new ToolExecutor();
@@ -270,18 +272,10 @@ const createToolExecutor = (
   toolExecutor.registerTool({
     name: "schedule_action",
     description:
-      "Creates, updates, or manages schedule actions.",
+      "Creates, lists, updates, or deletes schedules, reminders, and scheduled agent runs.",
     execute: async (args) => {
-      const toolArgs = args as ToolArgs;
-
       return scheduleTool.invoke(
-        {
-          userRequest: getStringArg(
-            toolArgs,
-            "userRequest",
-          ),
-          chatHistory: state.messages,
-        },
+        args as ScheduleActionInput,
         config,
       );
     },
@@ -443,7 +437,6 @@ export const callMainAgent = async (
 
   const toolExecutor = createToolExecutor(
     terminalTool,
-    state,
     runnableConfig,
   );
 

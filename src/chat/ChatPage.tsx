@@ -1,8 +1,11 @@
 import {
   useCallback,
+  useEffect,
   useMemo,
   useState,
 } from 'react';
+import { listen } from '@tauri-apps/api/event';
+import { BellRing, Bot, X } from 'lucide-react';
 
 import {
   open,
@@ -20,6 +23,14 @@ import {
 import {
   SkillsPage,
 } from './components/skills/SkillsPage';
+
+import { SchedulePage } from '../schedule/components/SchedulePage';
+import {
+  SCHEDULE_AGENT_COMPLETE_EVENT,
+  SCHEDULE_REMINDER_EVENT,
+  type ScheduleAgentCompletionPayload,
+  type ScheduleReminderPayload,
+} from '../schedule/scheduler';
 
 import {
   Settings,
@@ -51,6 +62,13 @@ import type {
 
 import './ChatPage.css';
 
+type ScheduleNotice = {
+  kind: 'reminder' | 'agent';
+  title: string;
+  message: string;
+  status?: 'completed' | 'failed';
+};
+
 function ChatPage() {
   const [
     activeItem,
@@ -68,6 +86,62 @@ function ChatPage() {
     isProjectsOpen,
     setIsProjectsOpen,
   ] = useState(false);
+
+  const [scheduleNotice, setScheduleNotice] =
+    useState<ScheduleNotice | null>(null);
+
+  useEffect(() => {
+    let disposed = false;
+    let cleanups: Array<() => void> = [];
+
+    const setupListeners = async () => {
+      const [removeReminderListener, removeAgentListener] = await Promise.all([
+        listen<ScheduleReminderPayload>(SCHEDULE_REMINDER_EVENT, (event) => {
+          setScheduleNotice({
+            kind: 'reminder',
+            title: event.payload.title,
+            message: event.payload.text,
+          });
+        }),
+        listen<ScheduleAgentCompletionPayload>(SCHEDULE_AGENT_COMPLETE_EVENT, (event) => {
+          setScheduleNotice({
+            kind: 'agent',
+            title: event.payload.title,
+            message: event.payload.message,
+            status: event.payload.status,
+          });
+        }),
+      ]);
+
+      if (disposed) {
+        removeReminderListener();
+        removeAgentListener();
+      } else {
+        cleanups = [removeReminderListener, removeAgentListener];
+      }
+    };
+
+    void setupListeners().catch((error) => {
+      console.error('[Chat Page] Failed to listen for schedule events:', error);
+    });
+
+    return () => {
+      disposed = true;
+      cleanups.forEach((cleanup) => cleanup());
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!scheduleNotice) {
+      return;
+    }
+
+    const timeout = window.setTimeout(() => {
+      setScheduleNotice(null);
+    }, 10000);
+
+    return () => window.clearTimeout(timeout);
+  }, [scheduleNotice]);
 
   /*
    * This path is used by a new chat before a chat record exists.
@@ -337,6 +411,14 @@ function ChatPage() {
             return;
           }
 
+          case 'schedule': {
+            setActiveItem('schedule');
+            setIsChatsOpen(false);
+            setIsProjectsOpen(false);
+
+            return;
+          }
+
           case 'extensions': {
             setActiveItem('extensions');
             setIsChatsOpen(false);
@@ -499,6 +581,9 @@ function ChatPage() {
          */
         return <SkillsPage />;
 
+      case 'schedule':
+        return <SchedulePage />;
+
       case 'extensions':
         return (
           <ExtensionsPage />
@@ -567,6 +652,38 @@ function ChatPage() {
       />
 
       <main className="chat-main">
+        {scheduleNotice ? (
+          <div
+            className={`chat-schedule-notice chat-schedule-notice-${scheduleNotice.kind} ${scheduleNotice.status === 'failed' ? 'chat-schedule-notice-failed' : ''}`}
+            role="status"
+          >
+            <span className="chat-schedule-notice-icon" aria-hidden="true">
+              {scheduleNotice.kind === 'agent' ? <Bot size={17} /> : <BellRing size={17} />}
+            </span>
+            <span className="chat-schedule-notice-copy">
+              <strong>
+                {scheduleNotice.kind === 'agent'
+                  ? scheduleNotice.status === 'failed'
+                    ? 'Scheduled agent failed'
+                    : 'Scheduled agent completed'
+                  : 'Scheduled reminder'}
+              </strong>
+              <span>
+                <b>{scheduleNotice.title}</b>
+                {scheduleNotice.message ? ` — ${scheduleNotice.message}` : ''}
+              </span>
+            </span>
+            <button
+              type="button"
+              className="chat-schedule-notice-close"
+              onClick={() => setScheduleNotice(null)}
+              aria-label="Dismiss schedule notification"
+              title="Dismiss"
+            >
+              <X size={15} />
+            </button>
+          </div>
+        ) : null}
         {renderMainContent()}
       </main>
     </div>

@@ -31,6 +31,10 @@ import { resolveSelectedSkills } from '../components/skills/selected-skill-loade
 import { loadExtensionAgentTools } from '../../extensions/services/extension-agent-tools';
 import { scanInstalledExtensions } from '../../extensions/services/extension-scanner';
 import {
+  scheduleTool,
+  type ScheduleActionInput,
+} from '../../schedule/schedule-tool';
+import {
   loadMcpAgentTools,
   parseMcpToolReference,
 } from '../../mcp/tool-adapter';
@@ -173,6 +177,7 @@ async function runAgentNode(
     terminalTool,
     perplexitySearchTool,
     skillLoaderTool,
+    scheduleTool,
     ...extensionTools.tools,
     ...mcpTools.tools,
     ...childAgents.tools,
@@ -203,6 +208,15 @@ async function runAgentNode(
     execute: (args) =>
       skillLoaderTool.invoke(
         args as { skillName: string },
+        runnableConfig,
+      ),
+  });
+  executor.registerTool({
+    name: 'schedule_action',
+    description: scheduleTool.description,
+    execute: (args) =>
+      scheduleTool.invoke(
+        args as ScheduleActionInput,
         runnableConfig,
       ),
   });
@@ -338,8 +352,8 @@ function buildAgentSystemPrompt(
     '',
     'AVAILABLE TOOLS',
     mcpToolsPrompt.trim()
-      ? 'terminal_executor, perplexity_search, selected extension tools, selected MCP tools, and configured child agents.'
-      : 'terminal_executor, perplexity_search, selected extension tools, no MCP tools selected, and configured child agents.',
+      ? 'terminal_executor, perplexity_search, schedule_action, selected extension tools, selected MCP tools, and configured child agents.'
+      : 'terminal_executor, perplexity_search, schedule_action, selected extension tools, no MCP tools selected, and configured child agents.',
     agent.tools.filter((tool) => !parseMcpToolReference(tool)).length > 0
       ? `TOOLS REQUESTED BY THIS AGENT: ${agent.tools
           .filter((tool) => !parseMcpToolReference(tool))

@@ -70,7 +70,8 @@ import {
 
 import {
   scheduleTool,
-} from "./tools/schedule-tool";
+  type ScheduleActionInput,
+} from "../../schedule/schedule-tool";
 
 import {
   desktopVisionTool,
@@ -679,7 +680,6 @@ const getCurrentDateTime =
  */
 const createToolExecutor = (
   terminalTool: TerminalTool,
-  state: typeof GraphState.State,
   config: RunnableConfig,
 ): ToolExecutor => {
   const toolExecutor =
@@ -690,26 +690,13 @@ const createToolExecutor = (
       "schedule_action",
 
     description:
-      "Creates, updates, or manages schedule actions.",
+      "Creates, lists, updates, or deletes schedules, reminders, and scheduled agent runs.",
 
     execute: async (
       args,
     ) => {
-      const toolArgs =
-        args as ToolArgs;
-
       return scheduleTool.invoke(
-        {
-          userRequest:
-            requireStringArg(
-              toolArgs,
-              "userRequest",
-              "schedule_action",
-            ),
-
-          chatHistory:
-            state.messages,
-        },
+        args as ScheduleActionInput,
         config,
       );
     },
@@ -1299,7 +1286,6 @@ export const callChatAgent =
     const toolExecutor =
       createToolExecutor(
         terminalTool,
-        state,
         runnableConfig,
       );
 
