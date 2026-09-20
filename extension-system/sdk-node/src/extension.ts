@@ -3,10 +3,13 @@ import { EXTENSION_METHODS } from "@mocu/extension-contracts";
 import type { ExtensionExecuteParams } from "@mocu/extension-contracts";
 
 import { LlmApi } from "./llm.js";
+import { DecisionApi } from "./decision.js";
+import { EmbeddingApi } from "./embedding.js";
 import { JsonRpcProtocolClient } from "./protocol-client.js";
 
 import type {
   ExtensionCommandHandler,
+  ExtensionConfig,
   MocuExtensionDefinition,
 } from "./types.js";
 
@@ -23,10 +26,18 @@ export class MocuExtension {
   /** Call the Mocu host LLM from inside a command. */
   public readonly llm: LlmApi;
 
+  /** Ask typed probabilistic questions via the Jev decision model. */
+  public readonly decision: DecisionApi;
+
+  /** Create embedding vectors with Mocu's configured embedding model. */
+  public readonly embedding: EmbeddingApi;
+
   public constructor(
     private readonly definition: MocuExtensionDefinition = {},
   ) {
     this.llm = new LlmApi(this.protocol);
+    this.decision = new DecisionApi(this.protocol);
+    this.embedding = new EmbeddingApi(this.protocol);
 
     for (const [command, handler] of Object.entries(definition.commands ?? {})) {
       this.commands.set(command, handler);
@@ -77,7 +88,21 @@ export class MocuExtension {
           };
         }
 
-        output = await handler(params.input, params.context ?? {});
+        const context: Record<string, unknown> =
+          params.context && typeof params.context === "object"
+            ? (params.context as Record<string, unknown>)
+            : {};
+
+        const config: ExtensionConfig =
+          params.config && typeof params.config === "object"
+            ? (params.config as ExtensionConfig)
+            : {};
+
+        output = await handler(
+          params.input,
+          context,
+          config,
+        );
       }
 
       return { success: true, output };

@@ -200,6 +200,7 @@ impl ExtensionManager {
         command: String,
         input: Option<Value>,
         context: Option<Value>,
+        config: Option<Value>,
     ) -> Result<Value, String> {
         let id = manifest.id.trim().to_string();
 
@@ -216,6 +217,7 @@ impl ExtensionManager {
                 "command": command,
                 "input": input.unwrap_or(Value::Null),
                 "context": context.unwrap_or(json!({})),
+                "config": config.unwrap_or(json!({})),
             }
         });
 

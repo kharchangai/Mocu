@@ -19,8 +19,17 @@ Ask (or infer) from the user's request:
      performance. **Default choice.**
    - `python` — user prefers Python or needs Python-only libraries.
    See [architecture.md](architecture.md).
-3. **Does it need AI?** If yes, use the host LLM — [llm-calls.md](llm-calls.md).
-4. **Long-running?** If yes, add `streaming: true` and a suitable
+3. **Does it need AI?** If yes, three host models are available — the LLM
+   ([llm-calls.md](llm-calls.md)), the **Jev decision model** for typed
+   yes/no / choice / score questions ([decision-model.md](decision-model.md))
+   and the **embedding model** for vectors
+   ([embedding-model.md](embedding-model.md)).
+4. **Does it need credentials or other user input?** (API key, base URL,
+   account id, ...) Declare them in the manifest's `config` array — Mocu
+   shows a Settings form on the extension's card and delivers the values to
+   every command. See [user-config.md](user-config.md). Then the user never
+   has to edit any file.
+5. **Long-running?** If yes, add `streaming: true` and a suitable
    `timeoutSeconds` — [streaming-activity.md](streaming-activity.md),
    [manifest-reference.md](manifest-reference.md).
 
@@ -52,9 +61,13 @@ Full field reference: [manifest-reference.md](manifest-reference.md).
   `extension.start()`. Redirect `console.log` to stderr.
 - Python: [python-sdk.md](python-sdk.md) — `@extension.command` +
   `extension.run()`. Never `print()` to stdout.
-- Handler signature: `(input, context)`; return JSON-serializable values;
-  throw `Error` for failures.
+- Handler signature: `(input, context, config)`; return JSON-serializable
+  values; throw `Error` for failures.
 - Need the LLM? `extension.llm.generate({...})` → `{ text }`.
+- Need probabilities? `extension.decision.ask({ state, questions })`.
+- Need vectors? `extension.embedding.embedText("...")`.
+- Need user input (API key, URL)? Declare it in `config` and read the third
+  handler argument — [user-config.md](user-config.md).
 - Never write to stdout except through the SDK.
 
 ## Step 3 — Validate
@@ -110,6 +123,9 @@ Use the repo examples as templates: `extensions-examples/time-node` (basic),
 | Node code | [node-sdk.md](node-sdk.md) |
 | Python code | [python-sdk.md](python-sdk.md) |
 | AI/LLM features | [llm-calls.md](llm-calls.md) |
+| Jev decision model | [decision-model.md](decision-model.md) |
+| Embedding model | [embedding-model.md](embedding-model.md) |
+| User settings (API keys, URLs) | [user-config.md](user-config.md) |
 | Progress streaming | [streaming-activity.md](streaming-activity.md) |
 | Packaging/install | [installation.md](installation.md) |
 | Wire protocol details | [protocol-reference.md](protocol-reference.md) |

@@ -1,4 +1,6 @@
 import { LLM_GENERATE_METHOD } from "./llm.js";
+import { DECISION_ASK_METHOD } from "./decision.js";
+import { EMBEDDING_EMBED_METHOD } from "./embedding.js";
 
 export type JsonRpcId = string | number;
 
@@ -45,6 +47,17 @@ export type JsonRpcMessage =
 export interface ExtensionExecuteParams {
   command: string;
   input?: unknown;
+  /**
+   * Host-provided metadata (e.g. `toolCallId` / `toolName` for streaming
+   * commands). Sent by the Rust host; empty object when absent.
+   */
+  context?: unknown;
+  /**
+   * Values the user filled in on the extension's card (manifest `config`
+   * fields), e.g. API keys or URLs. Merged with declared defaults by the
+   * host; absent when the manifest declares no config fields.
+   */
+  config?: unknown;
 }
 
 /**
@@ -71,4 +84,6 @@ export const EXTENSION_METHODS = {
  */
 export const HOST_METHODS = {
   llmGenerate: LLM_GENERATE_METHOD,
+  decisionAsk: DECISION_ASK_METHOD,
+  embeddingEmbed: EMBEDDING_EMBED_METHOD,
 } as const;

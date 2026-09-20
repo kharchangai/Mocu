@@ -45,7 +45,7 @@ import { createExtension } from "@mocu/extension-sdk";
 
 const extension = createExtension({
   commands: {
-    // handler signature: (input, context) => result (sync or async)
+    // handler signature: (input, context, config) => result (sync or async)
     hello(input) {
       return `Hello, ${input?.name ?? "world"}!`;
     },
@@ -76,7 +76,7 @@ extension.start(); // start the stdin JSON-RPC loop — required!
 | Member | Description |
 |--------|-------------|
 | `createExtension(definition)` | Factory; same as `new MocuExtension(definition)`. |
-| `definition.commands` | `Record<string, (input, context) => result>`. One entry per command id. |
+| `definition.commands` | `Record<string, (input, context, config) => result>`. One entry per command id. |
 | `definition.execute` | Advanced: take over the whole `extension.execute` handling yourself (receives `{ command, input }`). Mutually exclusive in practice with `commands`. |
 | `extension.registerCommand(name, handler)` | Register a command after construction. Throws on empty or duplicate names. |
 | `extension.start()` | Begin reading JSON-RPC from stdin. **Must be called** or Mocu calls will hang until timeout. |

@@ -16,6 +16,7 @@ export async function executeExtension(
   command: string,
   input?: unknown,
   context?: Record<string, unknown>,
+  config?: Record<string, unknown>,
 ): Promise<unknown> {
   return invoke("extension_execute", {
     input: {
@@ -24,6 +25,7 @@ export async function executeExtension(
       command,
       input: input ?? null,
       context: context ?? null,
+      config: config ?? null,
     },
   });
 }

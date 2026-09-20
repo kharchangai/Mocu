@@ -46,6 +46,27 @@ weather(input) {
 }
 ```
 
+## Recipe: asking the user for settings (API key / URL)
+
+Declare the inputs in the manifest and read the third handler argument:
+
+```js
+const extension = createExtension({
+  commands: {
+    async current(input, context, config) {
+      if (!config.apiKey) {
+        throw new Error("API key not set — open Extensions → Weather → Settings.");
+      }
+
+      return await fetchWeather(config.baseUrl, config.apiKey, input?.city);
+    },
+  },
+});
+extension.start();
+```
+
+Full field reference: [user-config.md](user-config.md).
+
 ## Recipe: long-running command with progress
 
 Use `streaming: true` + `extension.notify` — see
@@ -76,6 +97,17 @@ Use `streaming: true` + `extension.notify` — see
 **LLM call fails**
 - The host LLM needs the user's configured provider/API key; handle the
   rejection and return a friendly error. See [llm-calls.md](llm-calls.md).
+
+**Decision / embedding call fails**
+- The Jev decision model needs the Decision API key and the embedding model
+  needs the Embedding settings in Mocu Settings; both fail with a clear
+  error when unset. See [decision-model.md](decision-model.md) /
+  [embedding-model.md](embedding-model.md).
+
+**Extension settings (config values) empty / command says "not configured"**
+- Open the Extensions page → find the extension's card → **Settings** →
+  fill in the values and save. New values are used by the very next command
+  call. See [user-config.md](user-config.md).
 
 **Extension state lost**
 - Processes can be restarted (e.g. reinstall at a new path). Persist state

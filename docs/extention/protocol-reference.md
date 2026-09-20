@@ -3,8 +3,9 @@
 **Search keywords:** protocol, jsonrpc, json-rpc 2.0, wire format, stdin,
 stdout, newline-delimited, ndjson, extension.execute, request, response,
 notification, id, params, result, error, success, output, host methods,
-mocu.llm.generate, mocu.extension.activity, timeout, error handling,
-spawn, entry point, message framing
+mocu.llm.generate, mocu.decision.ask, mocu.embedding.embed,
+mocu.extension.activity, timeout, error handling, spawn, entry point,
+message framing, config param
 
 The host and the extension communicate with **JSON-RPC 2.0** messages, one
 JSON object per line, over the extension's **stdin** (host → extension) and
@@ -34,9 +35,8 @@ The only method the host calls on extensions:
 |-------|------|---------|
 | `command` | string | Command id from the manifest's `commands[].id`. |
 | `input` | any | Caller-supplied input (often an object). |
-
-The host may also include a `context` object in params (metadata such as
-`toolCallId`, `toolName` for streaming commands).
+| `context` | object | Host-provided metadata (`toolCallId`, `toolName` for streaming commands). Empty object when absent. |
+| `config` | object | User-filled values for the manifest's `config` fields (API keys, URLs, ...), merged with declared defaults. Empty object when the manifest declares no config fields. See [user-config.md](user-config.md). |
 
 ## Extension → Host: execute response
 
@@ -73,6 +73,29 @@ text by `extension-agent-loader.ts`).
 Host reply: `{ "jsonrpc": "2.0", "id": 7, "result": { "text": "..." } }`.
 Details: [llm-calls.md](llm-calls.md).
 
+## Extension → Host: `mocu.decision.ask` (request)
+
+```json
+{ "jsonrpc": "2.0", "id": 9, "method": "mocu.decision.ask",
+  "params": { "state": "...", "questions": { "...": {} } } }
+```
+
+Host reply: `{ "jsonrpc": "2.0", "id": 9, "result": { ... } }` — the raw
+OpenRouter Decisions API result via Mocu's configured Jev model.
+Details: [decision-model.md](decision-model.md).
+
+## Extension → Host: `mocu.embedding.embed` (request)
+
+```json
+{ "jsonrpc": "2.0", "id": 11, "method": "mocu.embedding.embed",
+  "params": { "texts": ["hello"] } }
+```
+
+Host reply: `{ "jsonrpc": "2.0", "id": 11,
+"result": { "embeddings": [[...]] } }` — one vector per input text, via
+Mocu's configured embedding model. Details:
+[embedding-model.md](embedding-model.md).
+
 ## Extension → Host: `mocu.extension.activity` (notification)
 
 One-way progress streaming; no response is ever sent:
@@ -96,6 +119,8 @@ If a request cannot be processed at all, respond with a JSON-RPC error:
 
 - `EXTENSION_METHODS.execute` = `"extension.execute"`
 - `HOST_METHODS.llmGenerate` = `"mocu.llm.generate"` (`llm.ts`)
+- `HOST_METHODS.decisionAsk` = `"mocu.decision.ask"` (`decision.ts`)
+- `HOST_METHODS.embeddingEmbed` = `"mocu.embedding.embed"` (`embedding.ts`)
 - Activity method (used by SDKs/examples): `"mocu.extension.activity"`
 
 ## Timeout behavior

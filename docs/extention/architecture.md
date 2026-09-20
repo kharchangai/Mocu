@@ -20,18 +20,24 @@ demand and the extension returns a result.
 1. **The host (Rust, Tauri)** — `src-tauri/src/extension_host/`
    - Keeps a registry of installed extensions (read from `manifest.json`).
    - Spawns the extension process **lazily**, only when a command is run.
-   - Routes `extension.execute` requests and resolves responses.
+   - Routes `extension.execute` requests (including the user-filled
+     `config` values) and resolves responses.
    - Enforces per-command timeouts (default **900 seconds**; `timeoutSeconds: 0`
      means no timeout; hard cap 24h).
 
 2. **The SDK (Node or Python)** — `extension-system/sdk-node/`,
    `extension-system/sdk-python/`
    - Handles the JSON-RPC protocol over stdin/stdout for you.
-   - Lets you register command handlers and call host APIs (the LLM).
+   - Lets you register command handlers and call host APIs: the **LLM**
+     (`extension.llm`), the **Jev decision model** (`extension.decision`)
+     and the **embedding model** (`extension.embedding`).
 
 3. **The frontend (TypeScript)** — `src/extensions/`
    - Scans the installed-extensions folder for `manifest.json` files.
    - Installs / uninstalls extensions (from ZIP files).
+   - Renders the **Settings form** on each extension's card from the
+     manifest's `config` fields and persists the user-filled values
+     (`extension-config.ts`).
    - Exposes installed extension commands as **agent tools** so the AI can
      call them (tool names like `extension_pi_node_ask`).
 
@@ -63,9 +69,11 @@ Extensions are **never started by the user or the frontend explicitly**:
   `console.log()` / `print()` to stdout — it corrupts the JSON-RPC stream.
   Route logs to **stderr** instead.
 - Messages are single-line JSON, newline-delimited.
-- Requests from Mocu → `extension.execute`; requests from the extension →
-  host methods such as `mocu.llm.generate`. See
-  [protocol-reference.md](protocol-reference.md).
+- Requests from Mocu → `extension.execute` (with `context` and the
+  user-filled `config` in params); requests from the extension → host
+  methods such as `mocu.llm.generate`, `mocu.decision.ask` and
+  `mocu.embedding.embed`. See [protocol-reference.md](protocol-reference.md),
+  [user-config.md](user-config.md).
 
 ## Where extensions are installed
 
@@ -76,5 +84,6 @@ Installed extensions live under the app data directory,
 ## Related documents
 
 - Manifest format and validation: [manifest-reference.md](manifest-reference.md)
+- User settings (API keys, URLs): [user-config.md](user-config.md)
 - Wire protocol details: [protocol-reference.md](protocol-reference.md)
 - Streaming live progress: [streaming-activity.md](streaming-activity.md)

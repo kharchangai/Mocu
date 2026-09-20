@@ -3,7 +3,8 @@
 **Search keywords:** manifest.json, manifest fields, id, name, version,
 runtime, entry, commands, streaming, timeoutSeconds, permissions, engines,
 configuration, manifestVersion, validation, reverse-domain, semver,
-invalid manifest, validation error, command id, title, description
+invalid manifest, validation error, command id, title, description,
+config, user settings, api key, form
 
 Every extension must have a `manifest.json` at the **root of its folder**.
 The host (Rust) and the frontend scanner both parse this file; invalid
@@ -29,6 +30,14 @@ manifests are rejected at install/scan time.
       "streaming": true,
       "timeoutSeconds": 900
     }
+  ],
+  "config": [
+    {
+      "key": "apiKey",
+      "label": "Service API key",
+      "type": "password",
+      "required": true
+    }
   ]
 }
 ```
@@ -52,6 +61,7 @@ manifests are rejected at install/scan time.
 | `engines` | object | Runtime compatibility hints, e.g. `{ "node": ">=20", "python": ">=3.10", "mocu": ">=0.1" }`. |
 | `permissions` | string[] | Descriptive only (e.g. `"filesystem"`, `"shell"`). They do **not** provide a sandbox in the current implementation. |
 | `configuration` | object | Reserved for extension-specific config schema/defaults. |
+| `config` | array | **Inputs the user must fill in** for the extension to work (API keys, base URLs, ...). Rendered as a Settings form on the extension's card in the Extensions page; saved values are delivered to every command as the `config` param. Full field reference and examples: [user-config.md](user-config.md). |
 | `manifestVersion` | number | Must be `1` in the contracts validator. |
 
 ## The `commands` array
@@ -68,6 +78,25 @@ Each entry:
 
 Note the casing: inside `commands` entries the field is `timeoutSeconds`
 (camelCase) because the Rust host deserializes with `rename_all = "camelCase"`.
+
+## The `config` array (user settings)
+
+Each entry declares one input the user fills in on the extension's card:
+
+| Field | Type | Meaning |
+|-------|------|---------|
+| `key` | string | Required. Key the value is delivered under. |
+| `label` | string | Required. Label shown in the form. |
+| `description` | string | Helper text below the input. |
+| `type` | string | `"string"` (default), `"number"`, `"boolean"`, or `"password"` (masked — for API keys). |
+| `required` | bool | Form refuses to save when empty. |
+| `default` | string / number / bool | Used when the user has not filled anything in. |
+| `placeholder` | string | Placeholder text in the empty input. |
+
+Entries without a non-empty string `key` and `label` are ignored by the
+scanner. Saved values are merged with `default`s and sent to the extension
+as the `config` param of `extension.execute` on **every** command call.
+Details: [user-config.md](user-config.md).
 
 ## Common validation errors and fixes
 

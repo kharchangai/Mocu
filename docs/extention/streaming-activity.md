@@ -22,7 +22,7 @@ rendered inside the tool card of the calling agent, in a `<pre>` block.
 ```js
 const extension = createExtension({
   commands: {
-    ask: async (input, context) => {
+    ask: async (input, context, config) => {
       const notify = (text) =>
         extension.notify("mocu.extension.activity", {
           toolCallId: context?.toolCallId,

@@ -5,12 +5,21 @@ import type {
 export type MaybePromise<T> = T | Promise<T>;
 
 /**
- * A command handler. Receives the caller-supplied input and an optional
- * context object, and returns whatever the extension wants to send back.
+ * User-filled values for the manifest's `config` fields (API keys, URLs,
+ * ...). Empty object when the extension declares no config fields or the
+ * user has not filled anything in yet.
+ */
+export type ExtensionConfig = Record<string, unknown>;
+
+/**
+ * A command handler. Receives the caller-supplied input, an optional
+ * context object, and the user-filled config values, and returns whatever
+ * the extension wants to send back.
  */
 export type ExtensionCommandHandler = (
   input: unknown,
   context: Record<string, unknown>,
+  config: ExtensionConfig,
 ) => MaybePromise<unknown>;
 
 /**
@@ -19,7 +28,9 @@ export type ExtensionCommandHandler = (
  */
 export interface MocuExtensionDefinition {
   commands?: Record<string, ExtensionCommandHandler>;
-  execute?: (params: ExtensionExecuteParams) => MaybePromise<unknown>;
+  execute?: (
+    params: ExtensionExecuteParams,
+  ) => MaybePromise<unknown>;
 }
 
 /**

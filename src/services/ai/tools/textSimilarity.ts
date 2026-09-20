@@ -165,7 +165,10 @@ export class TextSimilarity {
     return this.embeddings;
   }
 
-  private async embedTexts(texts: string[]): Promise<number[][]> {
+  /**
+   * Embeds a batch of texts with one provider call, preserving order.
+   */
+  public async embedTexts(texts: string[]): Promise<number[][]> {
     if (texts.length === 0) {
       return [];
     }

@@ -131,7 +131,36 @@ class JsonRpcProtocol:
             return
 
         try:
-            result = handler(request.get("params"))
+            """
+            Run the handler on a worker thread so the stdin loop keeps
+            reading. This is what allows a handler to call back into the
+            host (`request()`) and await the answer: the host's response
+            arrives on stdin and is resolved by the loop while the handler
+            is still running. Running the handler synchronously here would
+            deadlock every host call (llm / decision / embedding).
+            """
+            worker = threading.Thread(
+                target=self._run_handler,
+                args=(request_id, handler, request.get("params")),
+                daemon=True,
+            )
+
+            worker.start()
+        except Exception as error:
+            self._write_error(
+                request_id,
+                -32603,
+                str(error),
+            )
+
+    def _run_handler(
+        self,
+        request_id: Any,
+        handler: RequestHandler,
+        params: Any,
+    ) -> None:
+        try:
+            result = handler(params)
 
             self._write_message({
                 "jsonrpc": "2.0",

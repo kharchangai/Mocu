@@ -9,6 +9,7 @@ import {
 import { appDataDir, join } from "@tauri-apps/api/path";
 
 import type {
+  ExtensionConfigField,
   ExtensionManifest,
   ExtensionRuntime,
   InstalledExtension,
@@ -64,6 +65,29 @@ function parseManifest(
     );
   }
 
+  /*
+   * Config fields the extension asks the user to fill in (API keys, URLs,
+   * ...). Entries without a usable key/label pair are ignored.
+   */
+  const config = Array.isArray(manifest.config)
+    ? (manifest.config as unknown[]).filter(
+        (entry): entry is ExtensionConfigField => {
+          if (!entry || typeof entry !== "object" || Array.isArray(entry)) {
+            return false;
+          }
+
+          const record = entry as Record<string, unknown>;
+
+          return (
+            typeof record.key === "string" &&
+            record.key.trim().length > 0 &&
+            typeof record.label === "string" &&
+            record.label.trim().length > 0
+          );
+        },
+      )
+    : undefined;
+
   return {
     id: manifest.id as string,
     name: manifest.name as string,
@@ -74,6 +98,7 @@ function parseManifest(
     commands: Array.isArray(manifest.commands)
       ? (manifest.commands as ExtensionManifest["commands"])
       : [],
+    config,
   };
 }
 

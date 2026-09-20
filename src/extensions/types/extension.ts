@@ -17,6 +17,29 @@ export interface ExtensionCommand {
   timeoutSeconds?: number;
 }
 
+/**
+ * One input an extension asks the user to fill in on its card in the
+ * Extensions page (API key, base URL, ...). Declared in the manifest's
+ * `config` array; the user-filled values are delivered to the extension
+ * with every `extension.execute` call.
+ */
+export interface ExtensionConfigField {
+  /** Key the value is delivered under in the extension's `config` object. */
+  key: string;
+  /** Human-readable label shown in the settings form. */
+  label: string;
+  /** Optional helper text below the input. */
+  description?: string;
+  /** Input type. `"password"` masks the value (for API keys). */
+  type?: "string" | "number" | "boolean" | "password";
+  /** Whether the extension refuses to work without a value. */
+  required?: boolean;
+  /** Value used when the user has not filled anything in. */
+  default?: string | number | boolean;
+  /** Placeholder text inside the empty input. */
+  placeholder?: string;
+}
+
 export interface ExtensionManifest {
   id: string;
   name: string;
@@ -25,6 +48,12 @@ export interface ExtensionManifest {
   runtime: ExtensionRuntime;
   entry: string;
   commands?: ExtensionCommand[];
+  /**
+   * Inputs the extension needs from the user. Rendered as a settings form
+   * on the extension's card; values are merged with `default`s and sent to
+   * the extension as the `config` param of `extension.execute`.
+   */
+  config?: ExtensionConfigField[];
 }
 
 export interface InstalledExtension {

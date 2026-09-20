@@ -32,6 +32,11 @@ pub struct ExtensionExecuteInput {
     /// tool-card id so extensions can stream live progress back to chat.
     #[serde(default)]
     pub context: Option<Value>,
+    /// User-filled values for the manifest's `config` fields (API keys,
+    /// URLs, ...) resolved by the frontend; forwarded verbatim inside the
+    /// `extension.execute` params as `config`.
+    #[serde(default)]
+    pub config: Option<Value>,
 }
 
 #[tauri::command]
@@ -46,9 +51,18 @@ pub async fn extension_execute(
     let command = input.command;
     let input_value = input.input;
     let context_value = input.context;
+    let config_value = input.config;
 
     tauri::async_runtime::spawn_blocking(move || {
-        manager.execute(app_handle, path, manifest, command, input_value, context_value)
+        manager.execute(
+            app_handle,
+            path,
+            manifest,
+            command,
+            input_value,
+            context_value,
+            config_value,
+        )
     })
     .await
     .map_err(|error| format!("Extension execution task failed: {error}"))?

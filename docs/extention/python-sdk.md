@@ -3,7 +3,8 @@
 **Search keywords:** python extension, mocu_extension_sdk, pip, pyproject,
 create_extension, @command decorator, register_command, run, main.py,
 async def, await, event loop, asyncio, tutorial, example, print stdout,
-stderr, requires-python, snake_case, camelCase
+stderr, requires-python, snake_case, camelCase, config, decision,
+embedding
 
 ## Project layout
 
@@ -23,7 +24,7 @@ from mocu_extension_sdk import create_extension
 extension = create_extension()
 
 @extension.command("hello")
-def hello(input_value, context):
+def hello(input_value, context, config):
     name = (input_value or {}).get("name", "world") if isinstance(input_value, dict) else "world"
     return f"Hello, {name}!"
 
@@ -57,12 +58,18 @@ if __name__ == "__main__":
 | `extension.register_command(name, handler)` | Programmatic registration (same rules). |
 | `extension.run()` | Start the blocking stdin JSON-RPC loop. **Must be called.** |
 | `extension.llm.generate(prompt, *, system_prompt=None, temperature=None, max_tokens=None)` | Call the Mocu host LLM. Returns `{"text": ...}`. Note the **snake_case** keyword arguments; the SDK converts them to camelCase on the wire. See [llm-calls.md](llm-calls.md). |
+| `extension.decision.ask(*, state, questions)` | Ask typed probabilistic questions via the Jev decision model. See [decision-model.md](decision-model.md). |
+| `extension.embedding.embed(texts)` / `extension.embedding.embed_text(text)` | Create embedding vectors with Mocu's configured embedding model. See [embedding-model.md](embedding-model.md). |
 
 ### Handler contract
 
-- Handler signature: `handler(input, context)`.
+- Handler signature: `handler(input, context, config)`.
   - `input` — the caller-supplied JSON value (often a dict).
   - `context` — a dict of host-provided metadata (empty dict if absent).
+  - `config` — a dict of the user-filled values for the manifest's `config`
+    fields (API keys, URLs, ...), merged with declared defaults. Empty dict
+    when the manifest declares no config fields. Details:
+    [user-config.md](user-config.md).
 - May be sync or async (`async def`); the SDK awaits coroutines.
 - Return value (any JSON value) is wrapped into `{"success": True, "output": ...}`.
 - Raise an exception to return `{"success": False, "error": str(error)}`.
@@ -102,6 +109,9 @@ error message.
 
 ## Related documents
 
-- Manifest fields: [manifest-reference.md](manifest-reference.md)
+- Manifest fields (incl. `config`): [manifest-reference.md](manifest-reference.md)
+- User settings (API keys, URLs): [user-config.md](user-config.md)
 - Wire protocol: [protocol-reference.md](protocol-reference.md)
+- Jev decision model: [decision-model.md](decision-model.md)
+- Embedding model: [embedding-model.md](embedding-model.md)
 - Node SDK: [node-sdk.md](node-sdk.md)

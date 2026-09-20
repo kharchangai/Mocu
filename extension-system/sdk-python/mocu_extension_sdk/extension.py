@@ -2,6 +2,8 @@ from __future__ import annotations
 
 from typing import Any
 
+from .decision import DecisionApi
+from .embedding import EmbeddingApi
 from .llm import LlmApi
 from .protocol import JsonRpcProtocol
 from .types import CommandHandler
@@ -11,16 +13,22 @@ class MocuExtension:
     """
     Minimal Mocu extension. An extension registers command handlers and calls
     `run()`; Mocu invokes the requested command on demand via
-    `extension.execute`. Extensions may also call the host LLM through
-    `extension.llm.generate()`.
+    `extension.execute`. Extensions may also call host APIs from inside a
+    command: `extension.llm.generate()`, `extension.decision.ask()` and
+    `extension.embedding.embed()`. Handlers receive `(input, context, config)`
+    where `config` holds the values the user filled in on the extension's
+    card in the Extensions page (manifest `config` fields).
     """
 
     def __init__(self) -> None:
         self._protocol = JsonRpcProtocol()
         self._commands: dict[str, CommandHandler] = {}
 
-        # Let extensions call the Mocu host LLM.
+        # Let extensions call the Mocu host LLM, Jev decision model and
+        # embedding model.
         self.llm = LlmApi(self._protocol)
+        self.decision = DecisionApi(self._protocol)
+        self.embedding = EmbeddingApi(self._protocol)
 
         self._protocol.register_handler(
             "extension.execute",
@@ -81,12 +89,16 @@ class MocuExtension:
 
         input_value = params.get("input")
         context = params.get("context", {})
+        config = params.get("config", {})
 
         if not isinstance(context, dict):
             context = {}
 
+        if not isinstance(config, dict):
+            config = {}
+
         try:
-            output = handler(input_value, context)
+            output = handler(input_value, context, config)
 
             return {
                 "success": True,

@@ -63,6 +63,13 @@ text = result["text"]
 - Each command's total time counts against its `timeoutSeconds` — LLM calls
   can be slow, so consider a larger timeout in the manifest for LLM-heavy
   commands (see [manifest-reference.md](manifest-reference.md)).
+- Need an API key or URL for *other* services your extension calls? Ask the
+  user via the manifest's `config` fields —
+  [user-config.md](user-config.md). The Mocu LLM / decision / embedding
+  calls themselves need **no** key handling in your extension.
+- Other host models: probabilistic questions via `extension.decision.ask`
+  ([decision-model.md](decision-model.md)) and vectors via
+  `extension.embedding.embed` ([embedding-model.md](embedding-model.md)).
 
 ## Example: LLM call outside a command handler
 
@@ -107,4 +114,7 @@ Success response from the host:
 ## Related documents
 
 - Wire protocol: [protocol-reference.md](protocol-reference.md)
+- Jev decision model: [decision-model.md](decision-model.md)
+- Embedding model: [embedding-model.md](embedding-model.md)
+- User settings (API keys, URLs): [user-config.md](user-config.md)
 - Streaming LLM progress to chat: [streaming-activity.md](streaming-activity.md)
