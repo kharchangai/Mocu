@@ -259,6 +259,13 @@
   background: #f3f4f6;
 }
 
+/* Highlights the resources button while the toggle menu is open or at
+   least one resource is pinned to the conversation. */
+.composer-icon-button--active {
+  color: #2f8f5b;
+  background: rgba(76, 167, 114, 0.12);
+}
+
 .composer-menu-button {
   display: inline-flex;
   align-items: center;

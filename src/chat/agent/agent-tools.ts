@@ -130,8 +130,9 @@ function buildAgentToolsPrompt(entries: AgentToolEntry[]): string {
 
   return [
     'SELECTED SPECIALIST AGENT TOOLS',
-    'The user explicitly selected these specialist agents. You must call each selected agent tool before answering the request.',
-    'The specialist receives the request you put in the request argument, runs to completion, and returns its result to you.',
+    'The user activated these specialist agents for this conversation. They are available to you as tools — do NOT call them automatically for every request.',
+    'Call a specialist tool only when the current request clearly matches that agent\'s purpose and would genuinely benefit from it; otherwise answer directly yourself.',
+    'When you do call a specialist, give it a complete, self-contained request in the request argument. The specialist runs to completion and returns its result to you.',
     'Do not claim the specialist completed work unless its tool result confirms it.',
     ...entries.map((entry) => `- ${entry.name}: ${entry.description}`),
   ].join('\n');

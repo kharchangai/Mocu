@@ -138,6 +138,17 @@ export function normalizeMcpServerEntry(
     notes.push(`Field 'title' was used as the display name.`);
   }
 
+  const description =
+    typeof entry.description === 'string' && entry.description.trim()
+      ? entry.description.trim()
+      : undefined;
+
+  if (entry.description !== undefined && description === undefined) {
+    notes.push(
+      `Field 'description' was empty and was ignored.`,
+    );
+  }
+
   // Transport: explicit field (also accepts the common `type` alias).
   let transport: McpTransportKind | undefined;
   const rawTransport =
@@ -328,6 +339,7 @@ export function normalizeMcpServerEntry(
   reportUnsupportedFields(entry, notes, rawId, [
     'id',
     'name',
+    'description',
     'title',
     'transport',
     'type',
@@ -357,6 +369,10 @@ export function normalizeMcpServerEntry(
     enabled,
     authType,
   };
+
+  if (description) {
+    config.description = description;
+  }
 
   if (transport === 'stdio') {
     config.command = command;
@@ -541,6 +557,7 @@ export function validateMcpServerConfig(config: McpServerConfig): McpServerConfi
     transport: config.transport,
     enabled: config.enabled,
     auth: config.authType,
+    ...(config.description ? { description: config.description } : {}),
     ...(config.command ? { command: config.command } : {}),
     ...(config.args ? { args: config.args } : {}),
     ...(config.cwd ? { cwd: config.cwd } : {}),

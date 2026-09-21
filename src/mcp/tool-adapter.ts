@@ -138,7 +138,14 @@ function describeMcpServer(config: {
   transport: string;
   command?: string;
   url?: string;
+  description?: string;
 }): string {
+  // Prefer the user-provided description; fall back to transport details.
+  const description = config.description?.trim();
+  if (description) {
+    return description;
+  }
+
   return config.transport === 'stdio'
     ? `Local MCP server: ${config.command ?? ''}`.trim()
     : `Remote MCP server: ${config.url ?? ''}`.trim();

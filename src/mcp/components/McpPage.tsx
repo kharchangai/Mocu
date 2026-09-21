@@ -25,6 +25,7 @@ import './mcp.css';
 type FormState = {
   id: string;
   name: string;
+  description: string;
   transport: 'stdio' | 'streamable-http' | 'sse';
   enabled: boolean;
   command: string;
@@ -43,6 +44,7 @@ type FormState = {
 const emptyForm = (): FormState => ({
   id: '',
   name: '',
+  description: '',
   transport: 'streamable-http',
   enabled: true,
   command: '',
@@ -88,6 +90,10 @@ function formToDraft(form: FormState): { config: McpServerConfig; secrets: Recor
     enabled: form.enabled,
     authType: form.authType,
   };
+
+  if (form.description.trim()) {
+    config.description = form.description.trim();
+  }
 
   if (form.transport === 'stdio') {
     config.command = form.command.trim();
@@ -239,6 +245,7 @@ export function McpPage() {
     setForm({
       id: config.id,
       name: config.name,
+      description: config.description ?? '',
       transport: config.transport,
       enabled: config.enabled,
       command: config.command ?? '',
@@ -486,9 +493,10 @@ export function McpPage() {
               </header>
 
               <p className="mcp-card-description">
-                {config.transport === 'stdio'
-                  ? `${config.command} ${(config.args ?? []).join(' ')}`
-                  : config.url}
+                {config.description?.trim() ||
+                  (config.transport === 'stdio'
+                    ? `${config.command} ${(config.args ?? []).join(' ')}`
+                    : config.url)}
               </p>
 
               <div className="mcp-card-meta">
@@ -697,6 +705,18 @@ export function McpPage() {
                   }
                 />
               </div>
+            </div>
+
+            <div className="mcp-field">
+              <label htmlFor="mcp-description">Description (shown to the agent)</label>
+              <input
+                id="mcp-description"
+                value={form.description}
+                onChange={(event) =>
+                  setForm((current) => ({ ...current, description: event.target.value }))
+                }
+                placeholder="What this server provides, e.g. Browser automation and page inspection"
+              />
             </div>
 
             <div className="mcp-field-row">

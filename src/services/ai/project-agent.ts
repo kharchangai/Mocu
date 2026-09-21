@@ -383,6 +383,7 @@ const buildProjectAgentSystemPrompt = (
   relatedMemoryPrompt: string,
   agentToolsPrompt: string,
   docsContextPrompt: string,
+  availableToolNames: string[],
 ): string => {
   const promptParts: string[] = [
     "You are Mocu, a helpful AI assistant.",
@@ -434,10 +435,17 @@ const buildProjectAgentSystemPrompt = (
     );
   }
 
+  const toolNameList = availableToolNames
+    .map((name) => name.trim())
+    .filter(Boolean);
+
   promptParts.push(
     "",
     "AVAILABLE TOOLS",
-    "terminal_executor, perplexity_search, create_agent, selected extension tools, and selected MCP tools",
+    "The tools below are callable in this session. Each one is described by its own tool schema; the sections above describe the selected skills, extensions, MCP servers, and specialist agents in more detail.",
+    ...(toolNameList.length > 0
+      ? toolNameList.map((name) => `- ${name}`)
+      : ["(no tools are available in this session)"]),
     "",
     `Current date and time: ${getCurrentDateTime()}`,
   );
@@ -1276,6 +1284,21 @@ export const callProjectAgent =
       toolExecutor,
     );
 
+    /*
+     * The exact tool names exposed to the model, so the system prompt can
+     * list them concretely instead of a vague summary.
+     */
+    const availableToolNames = [
+      "terminal_executor",
+      perplexitySearchTool.name,
+      skillLoaderTool.name,
+      createAgentTool.name,
+      ...docTools.map((docTool) => docTool.name),
+      ...extensionTools.entries.map((entry) => entry.name),
+      ...mcpTools.tools.map((mcpTool) => mcpTool.name),
+      ...agentTools.entries.map((entry) => entry.name),
+    ];
+
     const systemPrompt = addMcpToolsToProjectSystemPrompt(
       buildProjectAgentSystemPrompt(
         normalizedProjectPath,
@@ -1284,6 +1307,7 @@ export const callProjectAgent =
         relatedMemoryPrompt,
         agentTools.prompt,
         docsContextPrompt,
+        availableToolNames,
       ),
       mcpTools.prompt,
     );

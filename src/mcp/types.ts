@@ -29,6 +29,12 @@ export type McpServerConfig = {
   /** Human-readable display name. */
   name: string;
 
+  /**
+   * Human-readable description of what the server provides. Shown to the
+   * agent in the system prompt when the server is selected for a request.
+   */
+  description?: string;
+
   transport: McpTransportKind;
 
   enabled: boolean;

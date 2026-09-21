@@ -47,6 +47,7 @@ import {
 import { useToolActivity } from '../hooks/useToolActivity';
 import { useMemorySaveStatus } from '../hooks/useMemorySaveStatus';
 import { useMentionResources } from './useMentionResources';
+import { migrateNewChatResourceSelection } from '../services/chatResourceToggles';
 
 import {
   loadShortTermMemory,
@@ -410,6 +411,16 @@ export function ChatBox({
 
       requestChatId = result.chatId;
       wasCreated = result.wasCreated;
+
+      /*
+       * A brand-new chat keeps its pinned resources under the reserved
+       * "new chat" key until the first message creates it. Hand the
+       * selection over to the real chat id so the toggled resources
+       * stay active for the conversation that was just created.
+       */
+      if (wasCreated) {
+        migrateNewChatResourceSelection(requestChatId);
+      }
     } catch (error) {
       console.error(
         '[Chat Box] Failed to create or resume the conversation:',
@@ -874,6 +885,7 @@ export function ChatBox({
 
       <ChatInput
         key={chatId ?? 'new-chat'}
+        chatId={chatId}
         value={draftMessage}
         onValueChange={setDraftMessage}
         onSend={handleSendMessage}

@@ -26,6 +26,7 @@ import { useMocuClickThrough } from './hooks/useMocuClickThrough';
 import { runTest } from './test';
 
 import { startExtensionHost } from './extensions/services/host-service';
+import { connectPinnedMcpServers } from './chat/services/pinnedMcpAutoConnect';
 
 type ActivityEvent = {
   text: string;
@@ -304,6 +305,21 @@ function App() {
     const stopHost = startExtensionHost();
 
     return stopHost;
+  }, [isChatWindow]);
+
+  useEffect(() => {
+    /*
+     * MCP connections live in memory only, so after reopening the app
+     * every server is disconnected. Servers the user pinned to chats
+     * are the ones they want active, so reconnect them automatically
+     * at startup (approval-gated stdio servers are never
+     * auto-approved).
+     */
+    if (!isChatWindow) {
+      return;
+    }
+
+    void connectPinnedMcpServers();
   }, [isChatWindow]);
 
   useEffect(() => {

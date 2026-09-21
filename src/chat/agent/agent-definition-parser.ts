@@ -6,6 +6,7 @@ import type { LlmTier } from "../../services/ai/llm";
 
 export interface AgentDefinition {
   agentName: string;
+  description: string;
   mainInstruction: string;
   agents: string[];
   skills: string[];
@@ -24,6 +25,7 @@ Convert the user's agent description into a structured agent definition.
 Rules:
 - If the user explicitly provides an agent name, preserve and return that name in agentName.
 - If the user does not provide an agent name, create a short and relevant name based on the requested task.
+- Write a concise description of the agent in description: one or two sentences explaining what the agent does and when to use it. Do not copy the full task into description.
 - Preserve the user's complete task in mainInstruction.
 - Preserve the requested operation order, conditions, paths, constraints, and expected output.
 - Extract only the agents explicitly requested by the user.
@@ -53,6 +55,14 @@ const AGENT_DEFINITION_SCHEMA = z
       .min(1)
       .describe(
         "The user-provided agent name, or a short relevant generated name if none was provided.",
+      ),
+
+    description: z
+      .string()
+      .trim()
+      .min(1)
+      .describe(
+        "A concise one or two sentence summary of what the agent does and when to use it.",
       ),
 
     mainInstruction: z
@@ -133,6 +143,7 @@ export async function parseAgentDefinition(
 
   const definition: AgentDefinition = {
     agentName: result.agentName.trim(),
+    description: result.description.trim(),
     mainInstruction: result.mainInstruction.trim(),
     agents: removeDuplicates(result.agents),
     skills: removeDuplicates(result.skills),

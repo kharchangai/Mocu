@@ -32,6 +32,7 @@ export const createAgentTool = tool(
         `Agent created successfully.`,
         "",
         `Name: ${definition.agentName}`,
+        `Description: ${definition.description}`,
         `Instruction: ${definition.mainInstruction}`,
         `Agents: ${definition.agents.length > 0 ? definition.agents.join(", ") : "none"}`,
         `Skills: ${definition.skills.length > 0 ? definition.skills.join(", ") : "none"}`,

@@ -4,6 +4,7 @@ import {
   Paperclip,
   SendHorizontal,
   Square,
+  Blocks,
 } from 'lucide-react';
 import {
   useLayoutEffect,
@@ -42,6 +43,13 @@ import {
 } from '../../mcp/manager';
 import { filterAgents } from './agentMention';
 import { SlashMentionText } from './SlashMentionText';
+import { ResourceToggleMenu } from './ResourceToggleMenu';
+import {
+  NEW_CHAT_RESOURCE_KEY,
+  setChatResourceSelection,
+  useChatResourceSelection,
+} from '../services/chatResourceToggles';
+import { autoConnectMcpServer } from '../services/pinnedMcpAutoConnect';
 import type {
   AvailableAgent,
   SelectedAgent,
@@ -61,6 +69,7 @@ const STRONG_CHARACTER_PATTERN = /[A-Za-z\u0590-\u08ff\ufb1d-\ufdff\ufe70-\ufefc
 
 export type ChatInputProps = {
   value?: string;
+  chatId?: string | null;
   projectPath?: string;
   isLoading?: boolean;
   agentName?: string;
@@ -78,8 +87,62 @@ export type ChatInputProps = {
 
 type CommandMenuMode = 'commands' | 'skills' | 'extensions' | 'agents' | 'mcp';
 
+/*
+ * Keys of a resource selection that identify the same resource. The
+ * slash flow and the toggle flow may both activate one, so the merged
+ * list sent to the agent must not contain duplicates.
+ */
+const mergeSkillByName = (
+  selections: SendOptions['selectedSkills'],
+): SendOptions['selectedSkills'] => {
+  const seen = new Set<string>();
+
+  return selections.filter((skill) => {
+    if (seen.has(skill.name)) {
+      return false;
+    }
+
+    seen.add(skill.name);
+
+    return true;
+  });
+};
+
+const mergeExtensionsById = (
+  selections: SendOptions['selectedExtensions'],
+): SendOptions['selectedExtensions'] => {
+  const seen = new Set<string>();
+
+  return selections.filter((extension) => {
+    if (seen.has(extension.id)) {
+      return false;
+    }
+
+    seen.add(extension.id);
+
+    return true;
+  });
+};
+
+const mergeMcpServersById = (
+  selections: SendOptions['selectedMcpServers'],
+): SendOptions['selectedMcpServers'] => {
+  const seen = new Set<string>();
+
+  return selections.filter((server) => {
+    if (seen.has(server.id)) {
+      return false;
+    }
+
+    seen.add(server.id);
+
+    return true;
+  });
+};
+
 export function ChatInput({
   value = '',
+  chatId = null,
   projectPath = '',
   isLoading = false,
   agentName = 'Mocu',
@@ -142,6 +205,17 @@ export function ChatInput({
     SelectedMcpServer[]
   >([]);
 
+  /*
+   * Resources the user toggled ON for this conversation. They are
+   * stored outside React (persisted per chat) and are sent with every
+   * message automatically, without a /mention in the text.
+   */
+  const pinnedResources = useChatResourceSelection(
+    chatId ?? NEW_CHAT_RESOURCE_KEY,
+  );
+
+  const [isResourceMenuOpen, setIsResourceMenuOpen] = useState(false);
+
   const [selectedItemIndex, setSelectedItemIndex] = useState(0);
   const [isLoadingSkills, setIsLoadingSkills] = useState(false);
   const [skillsError, setSkillsError] = useState<string | null>(
@@ -186,18 +260,22 @@ export function ChatInput({
       skill: [
         ...availableSkills.map((skill) => skill.name),
         ...selectedSkills.map((skill) => skill.name),
+        ...pinnedResources.skills.map((skill) => skill.name),
       ],
       extension: [
         ...availableExtensions.map((extension) => extension.name),
         ...selectedExtensions.map((extension) => extension.name),
+        ...pinnedResources.extensions.map((extension) => extension.name),
       ],
       agent: [
         ...availableAgents.map((agent) => agent.name),
         ...(selectedAgent ? [selectedAgent.name] : []),
+        ...(pinnedResources.agent ? [pinnedResources.agent.name] : []),
       ],
       mcp: [
         ...availableMcpServers.map((server) => server.name),
         ...selectedMcpServers.map((server) => server.name),
+        ...pinnedResources.mcpServers.map((server) => server.name),
       ],
     }),
     [
@@ -209,11 +287,149 @@ export function ChatInput({
       selectedExtensions,
       selectedAgent,
       selectedMcpServers,
+      pinnedResources,
     ],
   );
 
   const canSend = safeValue.trim().length > 0 && !isLoading;
   const hasProjectPath = normalizedProjectPath !== null;
+
+  /*
+   * Names/ids of the pinned resources, used by the toggle menu to mark
+   * which switches are on and by the chip row to render them.
+   */
+  const pinnedSkillNames = pinnedResources.skills.map(
+    (skill) => skill.name,
+  );
+  const pinnedExtensionIds = pinnedResources.extensions.map(
+    (extension) => extension.id,
+  );
+  const pinnedMcpServerIds = pinnedResources.mcpServers.map(
+    (server) => server.id,
+  );
+  const pinnedAgentName = pinnedResources.agent?.name ?? null;
+
+  const hasPinnedResources =
+    pinnedResources.skills.length > 0 ||
+    pinnedResources.extensions.length > 0 ||
+    pinnedResources.mcpServers.length > 0 ||
+    pinnedResources.agent !== null;
+
+  const persistPinnedResources = (
+    next: typeof pinnedResources,
+  ) => {
+    setChatResourceSelection(
+      chatId ?? NEW_CHAT_RESOURCE_KEY,
+      next,
+    );
+  };
+
+  const handleToggleSkill = (
+    skill: AvailableSkill,
+    nextActive: boolean,
+  ) => {
+    if (nextActive) {
+      persistPinnedResources({
+        ...pinnedResources,
+        skills: [
+          ...pinnedResources.skills,
+          {
+            name: skill.name,
+            source: skill.source,
+            path: skill.path,
+          },
+        ],
+      });
+
+      return;
+    }
+
+    persistPinnedResources({
+      ...pinnedResources,
+      skills: pinnedResources.skills.filter(
+        (pinned) => pinned.name !== skill.name,
+      ),
+    });
+  };
+
+  const handleToggleExtension = (
+    extension: AvailableExtension,
+    nextActive: boolean,
+  ) => {
+    if (nextActive) {
+      persistPinnedResources({
+        ...pinnedResources,
+        extensions: [
+          ...pinnedResources.extensions,
+          {
+            id: extension.id,
+            name: extension.name,
+            path: extension.path,
+          },
+        ],
+      });
+
+      return;
+    }
+
+    persistPinnedResources({
+      ...pinnedResources,
+      extensions: pinnedResources.extensions.filter(
+        (pinned) => pinned.id !== extension.id,
+      ),
+    });
+  };
+
+  const handleToggleAgent = (
+    agent: AvailableAgent,
+    nextActive: boolean,
+  ) => {
+    persistPinnedResources({
+      ...pinnedResources,
+      agent: nextActive
+        ? {
+            id: agent.id,
+            name: agent.name,
+            path: agent.path,
+          }
+        : null,
+    });
+  };
+
+  const handleToggleMcpServer = (
+    server: AvailableMcpServer,
+    nextActive: boolean,
+  ) => {
+    if (nextActive) {
+      persistPinnedResources({
+        ...pinnedResources,
+        mcpServers: [
+          ...pinnedResources.mcpServers,
+          {
+            id: server.id,
+            name: server.name,
+          },
+        ],
+      });
+
+      /*
+       * Connect right away so the server is usable without visiting
+       * the MCP page. Approval-gated stdio servers are never
+       * auto-approved; the composer keeps working and the send path
+       * reports the server as unresolved until it is approved.
+       */
+      autoConnectMcpServer(server.id, server.name);
+
+      return;
+    }
+
+    persistPinnedResources({
+      ...pinnedResources,
+      mcpServers: pinnedResources.mcpServers.filter(
+        (pinned) => pinned.id !== server.id,
+      ),
+    });
+  };
 
   /*
    * A bare "/" opens the command menu. Once the user types or selects
@@ -760,13 +976,29 @@ export function ChatInput({
       return;
     }
 
-    const skillsToSend = [...selectedSkills];
-    const extensionsToSend = [...selectedExtensions];
-    const mcpServersToSend = [...selectedMcpServers];
-    const agentToSend = selectedAgent;
+    /*
+     * Pinned resources stay active after sending; only the slash
+     * selections made for THIS message are cleared. Both sets are
+     * merged and de-duplicated so the agent receives each resource
+     * once.
+     */
+    const skillsToSend = mergeSkillByName([
+      ...pinnedResources.skills,
+      ...selectedSkills,
+    ]);
+    const extensionsToSend = mergeExtensionsById([
+      ...pinnedResources.extensions,
+      ...selectedExtensions,
+    ]);
+    const mcpServersToSend = mergeMcpServersById([
+      ...pinnedResources.mcpServers,
+      ...selectedMcpServers,
+    ]);
+    const agentToSend = selectedAgent ?? pinnedResources.agent;
 
     setSendError(null);
     closeCommandMenu();
+    setIsResourceMenuOpen(false);
     setSelectedSkills([]);
     setSelectedExtensions([]);
     setSelectedAgent(null);
@@ -788,10 +1020,26 @@ export function ChatInput({
        * Restore the message and the selected resources when sending fails.
        */
       onValueChange(message);
-      setSelectedSkills(skillsToSend);
-      setSelectedExtensions(extensionsToSend);
-      setSelectedAgent(agentToSend);
-      setSelectedMcpServers(mcpServersToSend);
+      setSelectedSkills(
+        skillsToSend.filter(
+          (skill) => !pinnedSkillNames.includes(skill.name),
+        ),
+      );
+      setSelectedExtensions(
+        extensionsToSend.filter(
+          (extension) => !pinnedExtensionIds.includes(extension.id),
+        ),
+      );
+      setSelectedAgent(
+        agentToSend && agentToSend !== pinnedResources.agent
+          ? agentToSend
+          : null,
+      );
+      setSelectedMcpServers(
+        mcpServersToSend.filter(
+          (server) => !pinnedMcpServerIds.includes(server.id),
+        ),
+      );
       setSendError(
         error instanceof Error
           ? error.message
@@ -892,6 +1140,7 @@ export function ChatInput({
 
       if (event.key === 'Escape') {
         event.preventDefault();
+        setIsResourceMenuOpen(false);
         closeCommandMenu();
         return;
       }
@@ -953,6 +1202,153 @@ export function ChatInput({
         )}
 
         <div className="chat-composer">
+          {isResourceMenuOpen && (
+            <ResourceToggleMenu
+              skills={availableSkills}
+              extensions={availableExtensions}
+              agents={availableAgents}
+              mcpServers={availableMcpServers}
+              pinnedSkillNames={pinnedSkillNames}
+              pinnedExtensionIds={pinnedExtensionIds}
+              pinnedAgentName={pinnedAgentName}
+              pinnedMcpServerIds={pinnedMcpServerIds}
+              onToggleSkill={handleToggleSkill}
+              onToggleExtension={handleToggleExtension}
+              onToggleAgent={handleToggleAgent}
+              onToggleMcpServer={handleToggleMcpServer}
+              isLoading={
+                isLoadingSkills ||
+                isLoadingExtensions ||
+                isLoadingAgents ||
+                isLoadingMcp
+              }
+              error={
+                skillsError ??
+                extensionsError ??
+                agentsError ??
+                mcpError
+              }
+              onClose={() => setIsResourceMenuOpen(false)}
+            />
+          )}
+
+          {hasPinnedResources && (
+            <div
+              className="resource-chips"
+              aria-label="Resources active for this chat"
+            >
+              {pinnedResources.skills.map((skill) => (
+                <span
+                  key={`skill-${skill.name}`}
+                  className="resource-chip"
+                >
+                  <span className="resource-chip-type">skill</span>
+                  {skill.name}
+                  <button
+                    type="button"
+                    className="resource-chip-remove"
+                    onClick={() =>
+                      handleToggleSkill(
+                        {
+                          id: skill.name,
+                          name: skill.name,
+                          description: '',
+                          source: skill.source,
+                          path: skill.path,
+                        },
+                        false,
+                      )
+                    }
+                    aria-label={`Deactivate skill ${skill.name}`}
+                  >
+                    ✕
+                  </button>
+                </span>
+              ))}
+
+              {pinnedResources.extensions.map((extension) => (
+                <span
+                  key={`extension-${extension.id}`}
+                  className="resource-chip"
+                >
+                  <span className="resource-chip-type">ext</span>
+                  {extension.name}
+                  <button
+                    type="button"
+                    className="resource-chip-remove"
+                    onClick={() =>
+                      handleToggleExtension(
+                        {
+                          id: extension.id,
+                          name: extension.name,
+                          description: '',
+                          path: extension.path,
+                          commands: [],
+                        },
+                        false,
+                      )
+                    }
+                    aria-label={`Deactivate extension ${extension.name}`}
+                  >
+                    ✕
+                  </button>
+                </span>
+              ))}
+
+              {pinnedResources.agent && (
+                <span className="resource-chip">
+                  <span className="resource-chip-type">agent</span>
+                  {pinnedResources.agent.name}
+                  <button
+                    type="button"
+                    className="resource-chip-remove"
+                    onClick={() =>
+                      handleToggleAgent(
+                        {
+                          id: pinnedResources.agent!.id,
+                          name: pinnedResources.agent!.name,
+                          description: '',
+                          path: pinnedResources.agent!.path,
+                        },
+                        false,
+                      )
+                    }
+                    aria-label={`Deactivate agent ${pinnedResources.agent!.name}`}
+                  >
+                    ✕
+                  </button>
+                </span>
+              )}
+
+              {pinnedResources.mcpServers.map((server) => (
+                <span
+                  key={`mcp-${server.id}`}
+                  className="resource-chip"
+                >
+                  <span className="resource-chip-type">mcp</span>
+                  {server.name}
+                  <button
+                    type="button"
+                    className="resource-chip-remove"
+                    onClick={() =>
+                      handleToggleMcpServer(
+                        {
+                          id: server.id,
+                          name: server.name,
+                          description: '',
+                        },
+                        false,
+                      )
+                    }
+                    aria-label={`Deactivate MCP server ${server.name}`}
+                  >
+                    ✕
+                  </button>
+                </span>
+              ))}
+            </div>
+          )}
+
           {isCommandMenuOpen && (
             <CommandMenu
               mode={commandMenuMode ?? 'commands'}
@@ -1039,6 +1435,23 @@ export function ChatInput({
 
               <button
                 type="button"
+                className={`composer-icon-button${
+                  hasPinnedResources || isResourceMenuOpen
+                    ? ' composer-icon-button--active'
+                    : ''
+                }`}
+                onClick={() =>
+                  setIsResourceMenuOpen((open) => !open)
+                }
+                aria-label="Choose resources active for this chat"
+                aria-expanded={isResourceMenuOpen}
+                title="Choose resources active for this chat"
+              >
+                <Blocks size={17} />
+              </button>
+
+              <button
+                type="button"
                 className="composer-icon-button"
                 aria-label="Attach a file"
               >
@@ -1102,9 +1515,10 @@ export function ChatInput({
         ) : null}
 
         <p className="chat-input-disclaimer">
-          Type /skill, /extension, /mcp, or /agent to select resources for this
-          request. MCP tools are available only for requests where you select a
-          server. Mocu can make mistakes. Check important information.
+          Use the blocks button to keep resources active for this chat, or type
+          /skill, /extension, /mcp, or /agent to select resources for a single
+          request. MCP tools are available only for requests where a server is
+          selected. Mocu can make mistakes. Check important information.
         </p>
       </div>
     </div>

@@ -55,7 +55,10 @@ import {
   loadMcpAgentTools,
 } from "../../mcp/tool-adapter";
 
-import { runAgentByName } from "../../chat/agent/agent-runner";
+import {
+  loadAgentTools,
+  type AgentToolSet,
+} from "../../chat/agent/agent-tools";
 
 import {
   ToolExecutor,
@@ -270,26 +273,24 @@ const addSkillsToChatSystemPrompt = (
 };
 
 /*
- * Appends the extension tool instructions to the system prompt.
+ * Appends the selected-agent tool instructions to the system prompt.
  *
- * Selected extensions are never executed up front. They are offered to
- * the model as callable tools (via loadExtensionAgentTools) and the
- * model invokes them itself when the user asks to use an extension.
+ * Selected agents are never run up front. They are offered to the model
+ * as callable tools (via loadAgentTools) and the model invokes one only
+ * when the user's request actually needs that specialist.
  */
-const addDelegatedAgentToChatSystemPrompt = (
+const addAgentToolsToChatSystemPrompt = (
   baseSystemPrompt: string,
-  delegatedAgentResult: string,
+  agentToolsPrompt: string,
 ): string => {
-  if (!delegatedAgentResult.trim()) {
+  if (!agentToolsPrompt.trim()) {
     return baseSystemPrompt;
   }
 
   return [
     baseSystemPrompt.trim(),
     "",
-    "DELEGATED AGENT RESULT",
-    "Use this saved-agent result as supporting work for the user's request. Verify it before making claims.",
-    delegatedAgentResult.trim(),
+    agentToolsPrompt.trim(),
   ].join("\n");
 };
 
@@ -418,13 +419,28 @@ const getSelectedSkillNames = (
   );
 };
 
-const getSelectedAgentName = (
+/*
+ * Reads the names of the selected agents from RunnableConfig. Both a
+ * single name (string) and multiple names (array) are accepted so
+ * slash-selected and pinned agents can flow through the same key.
+ */
+const getSelectedAgentNames = (
   config: RunnableConfig,
-): string | null => {
+): string[] => {
   const value = config.configurable?.selectedAgent;
-  return typeof value === "string" && value.trim()
-    ? value.trim()
-    : null;
+
+  if (typeof value === "string" && value.trim()) {
+    return [value.trim()];
+  }
+
+  if (Array.isArray(value)) {
+    return value.filter(
+      (item): item is string =>
+        typeof item === "string" && item.trim().length > 0,
+    );
+  }
+
+  return [];
 };
 
 const getSelectedExtensionIds = (
@@ -1218,20 +1234,24 @@ export const callChatAgent =
         runnableConfig,
       );
 
-    const selectedAgentName = getSelectedAgentName(runnableConfig);
-    let delegatedAgentResult = "";
+    const selectedAgentNames = getSelectedAgentNames(runnableConfig);
 
-    if (selectedAgentName) {
-      try {
-        delegatedAgentResult = await runAgentByName(
-          selectedAgentName,
-          userText,
-          "",
-          runnableConfig,
-        );
-      } catch (error) {
-        console.warn("[Chat Agent] Delegated agent failed:", error);
-      }
+    /*
+     * Selected agents are exposed to the model as callable tools. They
+     * are NOT run here: the main agent decides whether the request
+     * needs a specialist and invokes the matching tool itself.
+     */
+    const agentTools: AgentToolSet = await loadAgentTools(
+      selectedAgentNames,
+      "",
+      runnableConfig,
+    );
+
+    if (agentTools.missingAgents.length > 0) {
+      console.warn(
+        "[Chat Agent] Selected agents not found:",
+        agentTools.missingAgents,
+      );
     }
 
     throwIfAborted(
@@ -1433,6 +1453,7 @@ export const callChatAgent =
         ...docTools,
         ...extensionTools.tools,
         ...mcpTools.tools,
+        ...agentTools.tools,
       ]);
 
     /*
@@ -1452,6 +1473,10 @@ export const callChatAgent =
     );
 
     mcpTools.registerAll(
+      toolExecutor,
+    );
+
+    agentTools.registerAll(
       toolExecutor,
     );
 
@@ -1484,9 +1509,9 @@ export const callChatAgent =
         mcpTools.prompt,
       );
 
-    const delegatedAgentSystemPrompt = addDelegatedAgentToChatSystemPrompt(
+    const agentEnabledSystemPrompt = addAgentToolsToChatSystemPrompt(
       mcpEnabledSystemPrompt,
-      delegatedAgentResult,
+      agentTools.prompt,
     );
 
     /*
@@ -1505,7 +1530,7 @@ export const callChatAgent =
     }
 
     const docsEnabledSystemPrompt = addDocsContextToChatSystemPrompt(
-      delegatedAgentSystemPrompt,
+      agentEnabledSystemPrompt,
       docsContextPrompt,
     );
 
