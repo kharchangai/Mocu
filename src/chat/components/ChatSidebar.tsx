@@ -4,6 +4,7 @@ import { confirm } from '@tauri-apps/plugin-dialog';
 
 import type { RecentChat } from '../types/chat';
 import { listAvailableAgents, type AvailableAgent } from '../agent/agent-loader';
+import { useRunningChatIds } from '../services/chatRuns';
 
 export type ChatSidebarItemId =
   | 'new-chat'
@@ -104,6 +105,12 @@ function ChatList({
   onSelectChat,
   onDeleteChat,
 }: ChatListProps) {
+  /*
+   * Chats whose agent is currently running in the background. Each chat
+   * shows a small live dot, so conversations working in parallel are
+   * visible at a glance even while another chat is open.
+   */
+  const runningChatIds = useRunningChatIds();
   if (chats.length === 0) {
     return (
       <p className="chat-sidebar-chats-empty">
@@ -134,6 +141,13 @@ function ChatList({
                 : undefined
             }
           >
+            {runningChatIds.includes(chat.id) ? (
+              <span
+                className="chat-sidebar-chat-running"
+                aria-hidden="true"
+                title="Mocu is still working on this chat"
+              />
+            ) : null}
             {chat.title}
           </button>
 

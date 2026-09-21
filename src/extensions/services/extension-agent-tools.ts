@@ -322,6 +322,17 @@ export const loadExtensionAgentTools =
 
               status: "running",
               streaming: true,
+
+              /*
+               * The chat id threaded through the tool-call context keeps
+               * this streaming card in the conversation that started the
+               * command, even when other chats run at the same time.
+               */
+              chatId:
+                typeof context?.chatId === "string" &&
+                context.chatId.trim() !== ""
+                  ? context.chatId
+                  : undefined,
             });
           }
 
@@ -336,7 +347,18 @@ export const loadExtensionAgentTools =
 
           registerPendingExtensionJob({
             jobId,
-            chatId: getActiveRequestChatId(),
+
+            /*
+             * Prefer the chat id passed through the tool-call context;
+             * it is exact even when several chats run at once. The global
+             * active-request chat id stays as a fallback for callers that
+             * do not thread the context.
+             */
+            chatId:
+              typeof context?.chatId === "string" &&
+              context.chatId.trim() !== ""
+                ? context.chatId
+                : getActiveRequestChatId(),
             extensionId: extension.manifest.id,
             command: command.id,
             startedAt: new Date().toISOString(),

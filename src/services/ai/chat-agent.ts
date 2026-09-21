@@ -24,6 +24,7 @@ import {
 
 import {
   dispatchAgentToolActivity,
+  getChatIdFromConfig,
 } from "../../chat/services/toolActivity";
 
 import {
@@ -1043,6 +1044,7 @@ const executeToolCall =
     toolCallId,
     stepNumber,
     signal,
+    chatId,
   }: {
     toolExecutor: ToolExecutor;
     toolName: string;
@@ -1050,6 +1052,7 @@ const executeToolCall =
     toolCallId: string;
     stepNumber: number;
     signal?: AbortSignal;
+    chatId?: string;
   }): Promise<ChatToolExecutionResult> => {
     throwIfAborted(
       signal,
@@ -1069,6 +1072,7 @@ const executeToolCall =
       tool: toolName,
       args: toolArgs,
       status: "running",
+      chatId,
     });
 
     let toolResult =
@@ -1079,7 +1083,7 @@ const executeToolCall =
         await toolExecutor.execute(
           toolName,
           toolArgs,
-          { toolCallId, toolName },
+          { toolCallId, toolName, chatId },
         );
 
       throwIfAborted(
@@ -1128,6 +1132,7 @@ const executeToolCall =
         CHAT_TOOL_FAILURE_RESULT
           ? "error"
           : "done",
+      chatId,
     });
 
     return {
@@ -1594,6 +1599,16 @@ export const callChatAgent =
               currentStepNumber,
 
             signal,
+
+            /*
+             * Scope every activity event and extension command of this
+             * tool call to the conversation that owns the run, so
+             * parallel chats never see each other's tool boxes.
+             */
+            chatId:
+              getChatIdFromConfig(
+                runnableConfig,
+              ),
           });
 
         toolMessages.push(

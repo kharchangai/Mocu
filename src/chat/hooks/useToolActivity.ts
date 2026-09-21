@@ -1,160 +1,267 @@
 // src/chat/hooks/useToolActivity.ts
 //
-// Per-turn tool activity store for the chat.
+// Chat-scoped, per-turn tool activity store.
 //
 // The chat/project agents dispatch "mocu_tool_activity" events while
-// they work. This hook accumulates the events of the current request
-// ("pending"), and once the agent's response message is appended the
-// pending activities are committed to that message id. That way each
-// assistant message keeps the tool boxes that were used to produce it
-// (shown below the user's message, above the response), and they stay
-// visible after the answer arrives instead of disappearing.
+// they work. Every event now carries the id of the chat conversation
+// whose agent produced it, and this store keeps a SEPARATE bucket of
+// activities for each chat. That way several conversations can run
+// agents at the same time and each one only ever sees its own tool
+// boxes — switching pages or switching chats never mixes them.
+//
+// The buckets live at module level, outside React, so navigating to
+// Skills/Schedule/Docs/etc. (which unmounts ChatBox) does not lose the
+// live tool boxes of a running request; the view simply resubscribes
+// when the user comes back.
 
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useMemo, useSyncExternalStore } from 'react';
 
 import type { AgentToolActivity } from '../services/toolActivity';
+import { resolveActivityChatId } from '../services/toolActivity';
 
 import {
   loadToolActivities,
   saveToolActivities,
 } from '../storage/tool-activity-storage';
 
-export function useToolActivity() {
-  /*
-   * Tool activities of the request that is currently running.
-   */
-  const [pendingActivities, setPendingActivities] = useState<
-    AgentToolActivity[]
-  >([]);
+/*
+ * Pending (not yet committed) activities of each chat's current request.
+ */
+const pendingByChat = new Map<string, AgentToolActivity[]>();
 
-  /*
-   * Tool activities already attached to a specific assistant message.
-   * Seeded from localStorage so the tool boxes are still visible after
-   * the app is closed and reopened.
-   */
-  const [
-    committedActivities,
-    setCommittedActivities,
-  ] = useState<Record<string, AgentToolActivity[]>>(
-    () => loadToolActivities(),
+/*
+ * Activities already attached to a specific assistant message. Seeded
+ * from localStorage so the tool boxes are still visible after the app is
+ * closed and reopened. Message ids are globally unique, so one shared
+ * record is safe even with many chats.
+ */
+let committedActivities: Record<string, AgentToolActivity[]> =
+  loadToolActivities();
+
+/*
+ * Listeners: one set per chat id plus a set for "committed" changes
+ * (which can be observed from any chat view via getForMessage).
+ */
+const pendingListenersByChat = new Map<string, Set<() => void>>();
+
+const committedListeners = new Set<() => void>();
+
+function notifyPending(chatId: string): void {
+  const chatListeners = pendingListenersByChat.get(chatId);
+
+  if (!chatListeners) {
+    return;
+  }
+
+  for (const listener of chatListeners) {
+    listener();
+  }
+}
+
+function notifyCommitted(): void {
+  for (const listener of committedListeners) {
+    listener();
+  }
+}
+
+/*
+ * Chat a tool activity belongs to. Events dispatched by the agents carry
+ * the chat id directly; follow-up events from places without config
+ * (extension host notifications) are resolved through the activity-id
+ * registry in toolActivity.ts.
+ */
+function resolveChatId(activity: AgentToolActivity): string | null {
+  const direct = activity.chatId;
+
+  if (direct && direct.trim() !== '') {
+    return direct;
+  }
+
+  return resolveActivityChatId(activity.id) ?? null;
+}
+
+function upsertActivity(
+  activities: AgentToolActivity[],
+  activity: AgentToolActivity,
+): AgentToolActivity[] {
+  const existingIndex = activities.findIndex(
+    (entry) => entry.id === activity.id,
   );
 
+  if (existingIndex === -1) {
+    return [...activities, activity];
+  }
+
+  return activities.map((entry, index) =>
+    index === existingIndex ? { ...entry, ...activity } : entry,
+  );
+}
+
+function handleActivityEvent(event: Event): void {
+  const activity = (event as CustomEvent<AgentToolActivity>).detail;
+
+  if (!activity?.id) {
+    return;
+  }
+
+  const chatId = resolveChatId(activity);
+
+  if (!chatId) {
+    return;
+  }
+
+  const next = upsertActivity(
+    pendingByChat.get(chatId) ?? [],
+    activity,
+  );
+
+  pendingByChat.set(chatId, next);
+
+  notifyPending(chatId);
+}
+
+if (typeof window !== 'undefined') {
+  window.addEventListener('mocu_tool_activity', handleActivityEvent);
+}
+
+/*
+ * Called when a chat's new agent request starts, so that chat's tool
+ * boxes start fresh. Other chats' boxes are untouched.
+ */
+export function beginToolActivityRequest(chatId: string): void {
+  pendingByChat.set(chatId, []);
+
+  notifyPending(chatId);
+}
+
+/*
+ * Attaches a chat's current request tool activities to the assistant
+ * message that answers it. Called right after the response message is
+ * appended to that chat.
+ */
+export function commitToolActivities(
+  chatId: string,
+  messageId: string,
+): void {
+  const activities = pendingByChat.get(chatId) ?? [];
+
+  if (activities.length === 0) {
+    return;
+  }
+
+  pendingByChat.set(chatId, []);
+
+  notifyPending(chatId);
+
+  committedActivities = {
+    ...committedActivities,
+    [messageId]: activities,
+  };
+
   /*
-   * Mirror of the pending list so event handlers and commit always see
-   * the latest activities without stale closures.
+   * Persist immediately so the boxes survive an app restart.
    */
-  const pendingRef = useRef<AgentToolActivity[]>([]);
+  saveToolActivities(committedActivities);
 
-  useEffect(() => {
-    const handleActivity = (event: Event) => {
-      const activity = (
-        event as CustomEvent<AgentToolActivity>
-      ).detail;
+  notifyCommitted();
+}
 
-      if (!activity?.id) {
-        return;
-      }
+const EMPTY_ACTIVITIES: AgentToolActivity[] = [];
 
-      const existing =
-        pendingRef.current;
+export function getPendingToolActivities(
+  chatId: string | null,
+): AgentToolActivity[] {
+  if (!chatId) {
+    return EMPTY_ACTIVITIES;
+  }
 
-      const existingIndex =
-        existing.findIndex(
-          (entry) => entry.id === activity.id,
-        );
+  return pendingByChat.get(chatId) ?? EMPTY_ACTIVITIES;
+}
 
-      const next =
-        existingIndex === -1
-          ? [...existing, activity]
-          : existing.map((entry, index) =>
-              index === existingIndex
-                ? { ...entry, ...activity }
-                : entry,
-            );
+export function getCommittedToolActivitiesForMessage(
+  messageId: string,
+): AgentToolActivity[] {
+  return committedActivities[messageId] ?? EMPTY_ACTIVITIES;
+}
 
-      pendingRef.current = next;
+function subscribeToPending(chatId: string | null) {
+  return (listener: () => void): (() => void) => {
+    if (!chatId) {
+      return () => undefined;
+    }
 
-      setPendingActivities(next);
-    };
+    let chatListeners = pendingListenersByChat.get(chatId);
 
-    window.addEventListener(
-      'mocu_tool_activity',
-      handleActivity,
-    );
+    if (!chatListeners) {
+      chatListeners = new Set();
+
+      pendingListenersByChat.set(chatId, chatListeners);
+    }
+
+    chatListeners.add(listener);
 
     return () => {
-      window.removeEventListener(
-        'mocu_tool_activity',
-        handleActivity,
-      );
+      chatListeners?.delete(listener);
     };
-  }, []);
+  };
+}
 
+function subscribeToCommitted(
+  listener: () => void,
+): () => void {
+  committedListeners.add(listener);
+
+  return () => {
+    committedListeners.delete(listener);
+  };
+}
+
+/*
+ * React binding for one chat view. Returns that chat's pending
+ * activities plus a stable reader for committed activities; re-renders
+ * happen when either changes for this chat.
+ */
+export function useToolActivity(chatId: string | null) {
   /*
-   * Called when a new agent request starts, so its boxes start fresh.
+   * Memoized so React only re-subscribes when the displayed chat
+   * changes, not on every render.
    */
-  const beginRequest = useCallback(() => {
-    pendingRef.current = [];
+  const subscribePending = useMemo(
+    () => subscribeToPending(chatId),
+    [chatId],
+  );
 
-    setPendingActivities([]);
-  }, []);
-
-  /*
-   * Attaches the current request's tool activities to the assistant
-   * message that answers it. Called right after the response message
-   * is appended to the chat.
-   */
-  const commit = useCallback(
-    (messageId: string) => {
-      const activities =
-        pendingRef.current;
-
-      if (
-        activities.length === 0
-      ) {
-        return;
-      }
-
-      pendingRef.current = [];
-
-      setPendingActivities([]);
-
-      setCommittedActivities(
-        (previous) => {
-          const next = {
-            ...previous,
-            [messageId]: activities,
-          };
-
-          /*
-           * Persist immediately so the boxes survive an app restart.
-           */
-          saveToolActivities(next);
-
-          return next;
-        },
-      );
-    },
-    [],
+  const pendingActivities = useSyncExternalStore(
+    subscribePending,
+    () => getPendingToolActivities(chatId),
   );
 
   /*
-   * Returns the tool activities recorded for one assistant message.
+   * Subscribing to committed changes makes getForMessage results fresh
+   * as soon as a response is committed, even before the messages state
+   * itself re-renders the list.
    */
+  useSyncExternalStore(
+    subscribeToCommitted,
+    () => committedActivities,
+  );
+
   const getForMessage = useCallback(
-    (
-      messageId: string,
-    ): AgentToolActivity[] =>
-      committedActivities[
-        messageId
-      ] ?? [],
-    [committedActivities],
+    (messageId: string): AgentToolActivity[] =>
+      getCommittedToolActivitiesForMessage(messageId),
+    [],
   );
 
   return {
     pendingActivities,
-    beginRequest,
-    commit,
+    beginRequest: useCallback((requestChatId: string) => {
+      beginToolActivityRequest(requestChatId);
+    }, []),
+    commit: useCallback((messageId: string) => {
+      if (chatId) {
+        commitToolActivities(chatId, messageId);
+      }
+    }, [chatId]),
     getForMessage,
   };
 }

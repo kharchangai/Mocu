@@ -21,7 +21,7 @@ import {
   getTextContent,
   getToolResultText,
 } from '../../services/ai/agent/helpers';
-import { dispatchAgentToolActivity } from '../services/toolActivity';
+import { dispatchAgentToolActivity, getChatIdFromConfig } from '../services/toolActivity';
 import { isAbortError, throwIfAborted } from '../../services/ai/agent/abort';
 import { ToolExecutor } from '../../services/ai/agent/tool-executor';
 import { terminalExecutionTool } from '../../services/ai/tools/terminal_execution_tool';
@@ -257,12 +257,14 @@ async function runAgentNode(
 
       let result = '';
       let toolFailed = false;
+      const ownerChatId = getChatIdFromConfig(runnableConfig);
       dispatchAgentActivity(toolCall.name);
       dispatchAgentToolActivity({
         id: toolCallId,
         tool: toolCall.name,
         args: (toolCall.args ?? {}) as ToolArgs,
         status: 'running',
+        chatId: ownerChatId,
       });
 
       try {
@@ -270,7 +272,7 @@ async function runAgentNode(
           await executor.execute(
             toolCall.name,
             (toolCall.args ?? {}) as ToolArgs,
-            { toolCallId, toolName: toolCall.name },
+            { toolCallId, toolName: toolCall.name, chatId: ownerChatId },
           ),
         ).trim();
       } catch (error) {
@@ -291,6 +293,7 @@ async function runAgentNode(
         args: (toolCall.args ?? {}) as ToolArgs,
         result,
         status: toolFailed ? 'error' : 'done',
+        chatId: ownerChatId,
       });
       toolResults.push(`[${toolCall.name}]\n${result}`);
       toolMessages.push(

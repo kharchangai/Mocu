@@ -32,6 +32,18 @@ import {
   setActiveRequestChat,
 } from '../services/activeChatSession';
 
+import {
+  beginChatRun,
+  endChatRun,
+  abortChatRun,
+  hasAnyChatRun,
+  useIsChatRunActive,
+} from '../services/chatRuns';
+
+import {
+  CHAT_ID_CONFIG_KEY,
+} from '../services/toolActivity';
+
 import { useToolActivity } from '../hooks/useToolActivity';
 import { useMemorySaveStatus } from '../hooks/useMemorySaveStatus';
 import { useMentionResources } from './useMentionResources';
@@ -109,15 +121,32 @@ export function ChatBox({
   onProjectPathChange,
   onChooseProjectFolder,
 }: ChatBoxProps) {
-  const [isLoading, setIsLoading] = useState(false);
+  /*
+   * True only while a send is creating/resuming its conversation (before
+   * a chat id exists that the run store can track). Once the run starts,
+   * the busy flag comes from the per-chat run store instead.
+   */
+  const [isPreparingChat, setIsPreparingChat] = useState(false);
+
   const [draftMessage, setDraftMessage] = useState('');
 
   /*
-   * Per-turn tool activity store: accumulates the tool boxes of the
-   * running request and attaches them to the assistant message that
-   * answers it, so they stay visible above each response.
+   * Busy state of THIS chat. The run store lives outside React, so a
+   * running request keeps going when the user navigates to another page
+   * or switches chats, and this flag picks the state back up when the
+   * view returns.
    */
-  const toolActivity = useToolActivity();
+  const isChatBusy = useIsChatRunActive(chatId);
+
+  const isLoading = isChatBusy || isPreparingChat;
+
+  /*
+   * Per-turn tool activity store, scoped to THIS chat: accumulates the
+   * tool boxes of this chat's running request and attaches them to the
+   * assistant message that answers it, so they stay visible above each
+   * response. Parallel conversations never share activities.
+   */
+  const toolActivity = useToolActivity(chatId);
 
   /*
    * Names of every available skill, extension, and agent, so sent user
@@ -144,11 +173,14 @@ export function ChatBox({
   const bottomAnchorRef =
     useRef<HTMLDivElement | null>(null);
 
-  const abortControllerRef =
-    useRef<AbortController | null>(null);
-
-  const activeRequestChatIdRef =
-    useRef<string | null>(null);
+  /*
+   * NOTE: the running request no longer lives in this component. Abort
+   * controllers and loading state are owned by the per-chat run store
+   * (chatRuns.ts). Navigating to another page unmounts ChatBox, but that
+   * must never abort the agent — the run simply continues and the view
+   * re-attaches when the user comes back. The stop button aborts only
+   * the run of the chat it is displayed for.
+   */
 
   const messagesRef = useRef<BaseMessage[]>(
     convertToLangChainMessages(messages),
@@ -302,40 +334,13 @@ export function ChatBox({
 
   useEffect(() => {
     /*
-     * Clear transient state whenever the active conversation changes.
+     * Clear transient view state whenever the displayed conversation
+     * changes. The agent run of the previous chat is intentionally left
+     * alone: it keeps running in the background.
      */
     setDraftMessage('');
     projectMemoryRef.current = [];
-
-    const hasActiveRequest =
-      activeRequestChatIdRef.current !== null;
-
-    const belongsToThisChat =
-      activeRequestChatIdRef.current === chatId;
-
-    /*
-     * Abort the request only when switching away from the conversation
-     * that owns the active request.
-     */
-    if (
-      hasActiveRequest &&
-      !belongsToThisChat
-    ) {
-      abortControllerRef.current?.abort();
-      abortControllerRef.current = null;
-      activeRequestChatIdRef.current = null;
-
-      setIsLoading(false);
-    }
   }, [chatId]);
-
-  useEffect(() => {
-    return () => {
-      abortControllerRef.current?.abort();
-      abortControllerRef.current = null;
-      activeRequestChatIdRef.current = null;
-    };
-  }, []);
 
   const handleSendMessage = async (
     text: string,
@@ -343,6 +348,11 @@ export function ChatBox({
   ): Promise<void> => {
     const normalizedText = text.trim();
 
+    /*
+     * Block a second send only while THIS conversation is busy: its own
+     * agent run is active, or its conversation is still being created.
+     * Other chats keep running in the background and are untouched.
+     */
     if (!normalizedText || isLoading) {
       return;
     }
@@ -350,7 +360,7 @@ export function ChatBox({
     /*
      * Lock the input while the chat is being created or resumed.
      */
-    setIsLoading(true);
+    setIsPreparingChat(true);
 
     /*
      * Prefer the path sent directly by ChatInput. This handles the case
@@ -406,7 +416,7 @@ export function ChatBox({
         error,
       );
 
-      setIsLoading(false);
+      setIsPreparingChat(false);
 
       /*
        * Let ChatInput restore the draft and selected resources. Swallowing this
@@ -429,16 +439,14 @@ export function ChatBox({
 
     setDraftMessage('');
 
-    abortControllerRef.current?.abort();
+    setIsPreparingChat(false);
 
-    const controller =
-      new AbortController();
-
-    abortControllerRef.current =
-      controller;
-
-    activeRequestChatIdRef.current =
-      requestChatId;
+    /*
+     * Register this chat's run in the per-chat store. The controller is
+     * owned by the store, not by this component, so navigating away or
+     * switching chats never aborts it. Only this chat's stop button does.
+     */
+    const controller = beginChatRun(requestChatId);
 
     /*
      * Route any recovered extension result back to this conversation if
@@ -453,13 +461,11 @@ export function ChatBox({
      */
     beginGuardedRun();
 
-    setIsLoading(true);
-
     /*
-     * The tool boxes of this request start empty; previous requests'
-     * boxes stay attached to their own assistant messages.
+     * The tool boxes of this request start empty; other chats' boxes are
+     * untouched.
      */
-    toolActivity.beginRequest();
+    toolActivity.beginRequest(requestChatId);
 
     const currentHistory =
       chatId === requestChatId
@@ -523,6 +529,12 @@ export function ChatBox({
            * Each conversation uses its own LangGraph thread.
            */
           thread_id: requestChatId,
+          /*
+           * The id of the conversation that owns this run. Every tool
+           * activity event the agents dispatch is scoped to it, so
+           * parallel chats each see only their own tool boxes.
+           */
+          [CHAT_ID_CONFIG_KEY]: requestChatId,
           /*
            * Skills selected with the /skill command are resolved inside
            * the agent into their SKILL.md system-prompt content.
@@ -674,28 +686,26 @@ export function ChatBox({
         errorMessage.id,
       );
     } finally {
+      /*
+       * End this chat's run (other chats keep theirs), then release the
+       * dev-reload guard and the recovery routing only when no chat is
+       * running anymore.
+       */
+      endChatRun(requestChatId, controller);
+
       endGuardedRun();
 
-      if (
-        abortControllerRef.current ===
-        controller
-      ) {
-        abortControllerRef.current = null;
-        activeRequestChatIdRef.current = null;
-
+      if (!hasAnyChatRun()) {
         setActiveRequestChat(null);
-
-        setIsLoading(false);
       }
     }
   };
 
   const handleStopGeneration = (): void => {
-    abortControllerRef.current?.abort();
-    abortControllerRef.current = null;
-    activeRequestChatIdRef.current = null;
-
-    setIsLoading(false);
+    /*
+     * Stop only THIS chat's run. Every other conversation keeps working.
+     */
+    abortChatRun(chatId);
   };
 
   const handleEditMessage = (

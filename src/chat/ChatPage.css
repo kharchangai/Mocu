@@ -260,6 +260,34 @@ textarea {
   white-space: nowrap;
 }
 
+/*
+ * Live indicator on chats whose agent run is active in the background.
+ */
+.chat-sidebar-chat-running {
+  display: inline-block;
+  flex: 0 0 auto;
+  width: 7px;
+  height: 7px;
+  margin-right: 6px;
+  border-radius: 50%;
+  background: #4f8a5b;
+  vertical-align: middle;
+  animation: chat-sidebar-running-pulse 1.2s ease-in-out infinite;
+}
+
+@keyframes chat-sidebar-running-pulse {
+  0%,
+  100% {
+    opacity: 0.35;
+    transform: scale(0.8);
+  }
+
+  50% {
+    opacity: 1;
+    transform: scale(1.1);
+  }
+}
+
 .chat-sidebar-chat-item:hover .chat-sidebar-chat-open,
 .chat-sidebar-chat-item-active .chat-sidebar-chat-open {
   color: #23221f;
