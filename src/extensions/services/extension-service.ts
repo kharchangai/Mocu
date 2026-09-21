@@ -18,6 +18,7 @@ export async function executeExtensionCommand<T = unknown>(
   command: string,
   input?: unknown,
   context?: Record<string, unknown>,
+  jobId?: string | null,
 ): Promise<T> {
   const config = await resolveExtensionConfig(extension.manifest);
 
@@ -28,5 +29,6 @@ export async function executeExtensionCommand<T = unknown>(
     input ?? null,
     context,
     config,
+    jobId,
   )) as T;
 }

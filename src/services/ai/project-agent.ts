@@ -82,6 +82,14 @@ import {
 } from "./tools/create_agent_tool";
 
 import {
+  docTools,
+  createDocTool,
+  updateDocTool,
+  deleteDocTool,
+  listDocsTool,
+} from "./tools/docs_tools";
+
+import {
   saveProjectMemory,
 } from "../../chat/project/memory/saveProjectMemory";
 
@@ -91,6 +99,10 @@ import {
   type PreviousConversationTurn,
   type ProjectMemoryRetrievalResult,
 } from "../../chat/project/memory/memory-retrieval/memoryRetrievalPipeline";
+
+import {
+  buildDocsContextPrompt,
+} from "../../chat/docs";
 
 const MAX_TOOL_STEPS = 5;
 
@@ -369,6 +381,7 @@ const buildProjectAgentSystemPrompt = (
   extensionToolsPrompt: string,
   relatedMemoryPrompt: string,
   agentToolsPrompt: string,
+  docsContextPrompt: string,
 ): string => {
   const promptParts: string[] = [
     "You are Mocu, a helpful AI assistant.",
@@ -408,6 +421,15 @@ const buildProjectAgentSystemPrompt = (
     promptParts.push(
       "",
       agentToolsPrompt.trim(),
+    );
+  }
+
+  if (
+    docsContextPrompt.trim()
+  ) {
+    promptParts.push(
+      "",
+      docsContextPrompt.trim(),
     );
   }
 
@@ -536,6 +558,122 @@ const createProjectToolExecutor = (
         config,
       );
     },
+  });
+
+  /*
+   * Knowledge doc tools: create / update / delete / list.
+   */
+  toolExecutor.registerTool({
+    name:
+      createDocTool.name,
+
+    description:
+      createDocTool.description,
+
+    execute: async (
+      args,
+    ) => {
+      const toolArgs =
+        args as ToolArgs;
+
+      return createDocTool.invoke(
+        {
+          text:
+            getStringArg(
+              toolArgs,
+              "text",
+            ),
+        },
+        config,
+      );
+    },
+  });
+
+  toolExecutor.registerTool({
+    name:
+      updateDocTool.name,
+
+    description:
+      updateDocTool.description,
+
+    execute: async (
+      args,
+    ) => {
+      const toolArgs =
+        args as ToolArgs;
+
+      return updateDocTool.invoke(
+        {
+          fileName:
+            getStringArg(
+              toolArgs,
+              "fileName",
+            ),
+
+          text:
+            getStringArg(
+              toolArgs,
+              "text",
+            ) || undefined,
+
+          description:
+            getStringArg(
+              toolArgs,
+              "description",
+            ) || undefined,
+
+          keywords:
+            Array.isArray(toolArgs.keywords)
+              ? (toolArgs.keywords as unknown[]).filter(
+                  (keyword): keyword is string =>
+                    typeof keyword === "string",
+                )
+              : undefined,
+        },
+        config,
+      );
+    },
+  });
+
+  toolExecutor.registerTool({
+    name:
+      deleteDocTool.name,
+
+    description:
+      deleteDocTool.description,
+
+    execute: async (
+      args,
+    ) => {
+      const toolArgs =
+        args as ToolArgs;
+
+      return deleteDocTool.invoke(
+        {
+          fileName:
+            getStringArg(
+              toolArgs,
+              "fileName",
+            ),
+        },
+        config,
+      );
+    },
+  });
+
+  toolExecutor.registerTool({
+    name:
+      listDocsTool.name,
+
+    description:
+      listDocsTool.description,
+
+    execute: async (
+      _args,
+    ) => listDocsTool.invoke(
+      {},
+      config,
+    ),
   });
 
   return toolExecutor;
@@ -919,6 +1057,25 @@ export const callProjectAgent =
         memoryResult,
       );
 
+    /*
+     * Search the user's saved knowledge docs for this message and build the
+     * context block for the system prompt. Failures never block the agent.
+     */
+    let docsContextPrompt = "";
+
+    try {
+      docsContextPrompt = await buildDocsContextPrompt(
+        userText,
+      );
+    } catch (
+      error: unknown
+    ) {
+      console.warn(
+        "[Project Agent] Docs context search failed:",
+        error,
+      );
+    }
+
     if (
       memoryResult?.memoryContext
     ) {
@@ -1087,6 +1244,7 @@ export const callProjectAgent =
         perplexitySearchTool,
         skillLoaderTool,
         createAgentTool,
+        ...docTools,
         ...extensionTools.tools,
         ...mcpTools.tools,
         ...agentTools.tools,
@@ -1120,6 +1278,7 @@ export const callProjectAgent =
         extensionTools.prompt,
         relatedMemoryPrompt,
         agentTools.prompt,
+        docsContextPrompt,
       ),
       mcpTools.prompt,
     );

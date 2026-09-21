@@ -9,6 +9,93 @@
 
   <body>
     <div id="root"></div>
+    <script>
+      /*
+       * Dev-only guard against Vite full page reloads while a Mocu agent
+       * request is running (e.g. a long pi extension run). A full reload
+       * kills the running agent loop in the webview and the conversation
+       * appears to lose the assistant's answer.
+       *
+       * This inline classic script runs BEFORE the Vite HMR client (which
+       * is injected as a deferred module script), so it can wrap
+       * window.WebSocket and drop "full-reload" HMR frames while a run is
+       * active. `src/services/devReloadGuard.ts` increments/decrements
+       * activeRuns; when the last run finishes and a reload was deferred,
+       * it reloads the page then.
+       *
+       * In a production build this has no effect: no dev server, and the
+       * guard only ever reacts to HMR "full-reload" frames.
+       */
+      (function () {
+        if (typeof window.WebSocket !== "function") {
+          return;
+        }
+
+        var NativeWebSocket = window.WebSocket;
+        var state = { activeRuns: 0, pendingFullReload: false };
+
+        window.__mocuDevReloadGuard = state;
+
+        var shouldBlockMessage = function (data) {
+          if (state.activeRuns === 0) {
+            return false;
+          }
+
+          try {
+            var message = JSON.parse(data);
+
+            if (message && message.type === "full-reload") {
+              state.pendingFullReload = true;
+
+              console.warn(
+                "[Mocu] Deferred dev-server full reload while an agent request is running. " +
+                  "The page will reload when the request finishes. (triggeredBy: " +
+                  String(message.triggeredBy || "unknown") + ")"
+              );
+
+              return true;
+            }
+          } catch (error) {
+            /* Non-JSON frames (pings, binary) pass through. */
+          }
+
+          return false;
+        };
+
+        var GuardedWebSocket = function (url, protocols) {
+          var socket =
+            protocols === undefined
+              ? new NativeWebSocket(url)
+              : new NativeWebSocket(url, protocols);
+
+          var nativeAddEventListener = socket.addEventListener.bind(socket);
+
+          socket.addEventListener = function (type, listener, options) {
+            if (type === "message") {
+              return nativeAddEventListener(type, function (event) {
+                if (shouldBlockMessage(event && event.data)) {
+                  return;
+                }
+
+                return listener(event);
+              }, options);
+            }
+
+            return nativeAddEventListener(type, listener, options);
+          };
+
+          return socket;
+        };
+
+        GuardedWebSocket.prototype = NativeWebSocket.prototype;
+        GuardedWebSocket.CONNECTING = NativeWebSocket.CONNECTING;
+        GuardedWebSocket.OPEN = NativeWebSocket.OPEN;
+        GuardedWebSocket.CLOSING = NativeWebSocket.CLOSING;
+        GuardedWebSocket.CLOSED = NativeWebSocket.CLOSED;
+
+        window.WebSocket = GuardedWebSocket;
+      })();
+    </script>
     <script type="module" src="/src/main.tsx"></script>
   </body>
 </html>

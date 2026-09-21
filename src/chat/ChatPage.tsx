@@ -24,6 +24,10 @@ import {
   SkillsPage,
 } from './components/skills/SkillsPage';
 
+import {
+  DocsPage,
+} from './components/docs/DocsPage';
+
 import { SchedulePage } from '../schedule/components/SchedulePage';
 import {
   SCHEDULE_AGENT_COMPLETE_EVENT,
@@ -54,6 +58,11 @@ import {
   useChatHistory,
   type EnsureChatResult,
 } from './hooks/useChatHistory';
+
+import {
+  consumeRecoveredMessages,
+  startExtensionJobRecovery,
+} from '../extensions/services/extension-job-recovery';
 
 import type {
   ChatMessage,
@@ -87,8 +96,47 @@ function ChatPage() {
     setIsProjectsOpen,
   ] = useState(false);
 
-  const [scheduleNotice, setScheduleNotice] =
-    useState<ScheduleNotice | null>(null);
+  const [
+    scheduleNotice, setScheduleNotice,
+  ] = useState<ScheduleNotice | null>(null);
+
+  /*
+   * Bumped whenever the extension-job recovery service stores a recovered
+   * result, so the consume effect below re-runs even though `chats` did
+   * not change.
+   */
+  const [
+    recoveredJobsTick,
+    setRecoveredJobsTick,
+  ] = useState(0);
+
+  useEffect(() => {
+    /*
+     * Recover extension commands that were still running when the webview
+     * reloaded or the app restarted (e.g. a long pi agent run). Each
+     * finished job becomes a recovered assistant message for the
+     * conversation that started it.
+     */
+    const dispose = startExtensionJobRecovery();
+
+    const handleRecovered = (): void => {
+      setRecoveredJobsTick((current) => current + 1);
+    };
+
+    window.addEventListener(
+      'mocu_extension_jobs_recovered',
+      handleRecovered,
+    );
+
+    return () => {
+      dispose();
+
+      window.removeEventListener(
+        'mocu_extension_jobs_recovered',
+        handleRecovered,
+      );
+    };
+  }, []);
 
   useEffect(() => {
     let disposed = false;
@@ -163,6 +211,28 @@ function ChatPage() {
     updateChatProjectPath,
     deleteChat,
   } = useChatHistory();
+
+  /*
+   * When an interrupted extension run has recovered, append its result to
+   * the conversation that started it — but only when that conversation
+   * still ends with an unanswered user message (i.e. the run really was
+   * cut off; if the turn completed normally the result is discarded).
+   */
+  useEffect(() => {
+    const consumable = consumeRecoveredMessages(chats);
+
+    for (const message of consumable) {
+      appendMessage(
+        message.chatId,
+        'assistant',
+        message.content,
+      );
+    }
+  }, [
+    chats,
+    recoveredJobsTick,
+    appendMessage,
+  ]);
 
   /*
    * Conversations without a project folder are displayed under Chats.
@@ -419,6 +489,14 @@ function ChatPage() {
             return;
           }
 
+          case 'docs': {
+            setActiveItem('docs');
+            setIsChatsOpen(false);
+            setIsProjectsOpen(false);
+
+            return;
+          }
+
           case 'extensions': {
             setActiveItem('extensions');
             setIsChatsOpen(false);
@@ -583,6 +661,9 @@ function ChatPage() {
 
       case 'schedule':
         return <SchedulePage />;
+
+      case 'docs':
+        return <DocsPage />;
 
       case 'extensions':
         return (

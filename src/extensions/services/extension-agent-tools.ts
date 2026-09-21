@@ -26,6 +26,16 @@ import {
   dispatchAgentToolActivity,
 } from "../../chat/services/toolActivity";
 
+import {
+  getActiveRequestChatId,
+} from "../../chat/services/activeChatSession";
+
+import {
+  createExtensionJobId,
+  registerPendingExtensionJob,
+  removePendingExtensionJob,
+} from "./extension-job-store";
+
 import type {
   ToolExecutor,
 } from "../../services/ai/agent/tool-executor";
@@ -315,15 +325,43 @@ export const loadExtensionAgentTools =
             });
           }
 
-          const result =
-            await executeExtensionCommand<unknown>(
-              extension,
-              command.id,
-              input,
-              context,
-            );
+          /*
+           * Track this command as a recoverable job. If the webview
+           * reloads (dev-server full reload, app restart) while the
+           * extension still runs, the recovery service finds this record
+           * on the next start, waits for the Rust-side result, and appends
+           * it to the conversation that started it.
+           */
+          const jobId = createExtensionJobId();
 
-          return normalizeExtensionOutput(result);
+          registerPendingExtensionJob({
+            jobId,
+            chatId: getActiveRequestChatId(),
+            extensionId: extension.manifest.id,
+            command: command.id,
+            startedAt: new Date().toISOString(),
+          });
+
+          try {
+            const result =
+              await executeExtensionCommand<unknown>(
+                extension,
+                command.id,
+                input,
+                context,
+                jobId,
+              );
+
+            return normalizeExtensionOutput(result);
+          } finally {
+            /*
+             * The command settled normally (result, error, or timeout) —
+             * the agent will surface the outcome itself, so no recovery
+             * is needed. The record only stays behind when the webview
+             * died before this point.
+             */
+            removePendingExtensionJob(jobId);
+          }
         };
 
         executors.set(toolName, runCommand);

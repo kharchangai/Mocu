@@ -78,24 +78,40 @@
   min-height: 28px;
 }
 
+/*
+ * Fixed clipping window over the textarea. It must never move or shrink:
+ * it only clips whatever the inner scroll layer shows, so pasted text can
+ * never render outside the composer.
+ */
 .chat-input-highlight {
   position: absolute;
   z-index: 0;
   inset: 0;
   overflow: hidden;
-  padding: 2px 4px 8px;
   box-sizing: border-box;
   color: #111827;
   font: inherit;
   font-size: 14px;
   line-height: 1.55;
   pointer-events: none;
+  direction: inherit;
+}
+
+/*
+ * The element that actually moves. It carries the same padding as the
+ * textarea and gets translateY(-scrollTop) applied from the component,
+ * so the visible text stays glued to the caret while the clip window
+ * above it stays put.
+ */
+.chat-input-highlight-scroll {
+  padding: 2px 4px 8px;
+  box-sizing: border-box;
   white-space: pre-wrap;
   overflow-wrap: break-word;
   word-break: normal;
   unicode-bidi: plaintext;
   text-align: start;
-  direction: inherit;
+  will-change: transform;
 }
 
 .chat-input-highlight-content {
@@ -103,6 +119,7 @@
   min-height: 28px;
   direction: inherit;
   unicode-bidi: plaintext;
+  text-align: start;
 }
 
 /* The highlight layer must occupy exactly the same width as the hidden
@@ -137,6 +154,21 @@
   /* Match the direction of the first strong character (Arabic/Hebrew or Latin). */
   unicode-bidi: plaintext;
   text-align: start;
+  /*
+   * Hide the scrollbar entirely. A visible scrollbar would steal content
+   * width from the textarea but not from the highlight layer behind it,
+   * so the caret and wrapped lines would drift away from the visible
+   * text (most visible in RTL, where the bar appears on the left).
+   * Scrolling still works via wheel, trackpad, and arrow keys.
+   */
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+
+.chat-composer textarea::-webkit-scrollbar {
+  display: none;
+  width: 0;
+  height: 0;
 }
 
 .chat-composer textarea::placeholder {

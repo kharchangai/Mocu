@@ -11,6 +11,7 @@ use tauri::AppHandle;
 use uuid::Uuid;
 
 use super::{
+    jobs::JobStore,
     manifest::ExtensionManifest,
     process::{spawn_extension, RunningExtension},
 };
@@ -122,6 +123,9 @@ pub struct ExtensionManager {
     registry: Arc<Mutex<HashMap<String, RegisteredExtension>>>,
     processes: Arc<Mutex<HashMap<String, RunningExtension>>>,
     rpc: Arc<PendingRpc>,
+    /// Durable records for agent-initiated commands so their results can be
+    /// recovered by the frontend after a webview reload or crash.
+    jobs: Arc<JobStore>,
 }
 
 impl Default for ExtensionManager {
@@ -130,6 +134,7 @@ impl Default for ExtensionManager {
             registry: Arc::new(Mutex::new(HashMap::new())),
             processes: Arc::new(Mutex::new(HashMap::new())),
             rpc: Arc::new(PendingRpc::new()),
+            jobs: Arc::new(JobStore::default()),
         }
     }
 }
@@ -201,10 +206,21 @@ impl ExtensionManager {
         input: Option<Value>,
         context: Option<Value>,
         config: Option<Value>,
+        job_id: Option<String>,
     ) -> Result<Value, String> {
         let id = manifest.id.trim().to_string();
 
         self.register(path.clone(), manifest.clone())?;
+
+        /*
+         * Agent-initiated calls pass a job id. Record `running` now so that
+         * if the webview reloads mid-run, the frontend can find this job
+         * again and wait for its result (the extension keeps running here
+         * on the Rust side either way).
+         */
+        if let Some(job_id) = job_id.as_deref() {
+            self.jobs.begin(&app_handle, job_id, &id, &command);
+        }
 
         let (request_id, receiver) = self.rpc.create();
 
@@ -255,7 +271,7 @@ impl ExtensionManager {
         // Wait (without holding any manager lock) for the extension to answer.
         // The per-command manifest entry may override the default timeout
         // (timeoutSeconds) or opt out entirely (timeoutSeconds: 0).
-        match command_timeout(&manifest, &command) {
+        let outcome = match command_timeout(&manifest, &command) {
             Some(timeout) => match receiver.recv_timeout(timeout) {
                 Ok(result) => Ok(result),
                 Err(_) => Err(format!(
@@ -269,7 +285,40 @@ impl ExtensionManager {
                     "Extension '{id}' disconnected while handling command '{command}'"
                 )),
             },
+        };
+
+        /*
+         * Persist the outcome so a reloaded webview can recover it. The
+         * result value is stored raw; the frontend decides how to render it.
+         */
+        if let Some(job_id) = job_id.as_deref() {
+            match &outcome {
+                Ok(result) => {
+                    self.jobs.finish(job_id, "completed", Some(result.clone()), None);
+                }
+                Err(message) => {
+                    let status = if message.contains("timed out") {
+                        "timeout"
+                    } else {
+                        "failed"
+                    };
+
+                    self.jobs.finish(job_id, status, None, Some(message.clone()));
+                }
+            }
         }
+
+        outcome
+    }
+
+    /// Read a job record without removing it.
+    pub fn job_status(&self, job_id: &str) -> Option<super::jobs::JobRecord> {
+        self.jobs.get(job_id)
+    }
+
+    /// Read a job record and remove it from the store.
+    pub fn job_take(&self, job_id: &str) -> Option<super::jobs::JobRecord> {
+        self.jobs.take(job_id)
     }
 
     /// Write a JSON-RPC response back into an extension's stdin.

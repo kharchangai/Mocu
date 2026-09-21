@@ -93,6 +93,14 @@ import {
   createAgentTool,
 } from "./tools/create_agent_tool";
 
+import {
+  docTools,
+  createDocTool,
+  updateDocTool,
+  deleteDocTool,
+  listDocsTool,
+} from "./tools/docs_tools";
+
 /*
  * Change only this import path if your file-manager directory has a
  * different name.
@@ -109,6 +117,10 @@ import {
 import {
   generateMainAgentPolicyPrompt,
 } from "./tools/personalMemory/generateMainAgentPrompt";
+
+import {
+  buildDocsContextPrompt,
+} from "../../chat/docs";
 
 const MAX_TOOL_STEPS = 5;
 
@@ -277,6 +289,27 @@ const addDelegatedAgentToChatSystemPrompt = (
     "DELEGATED AGENT RESULT",
     "Use this saved-agent result as supporting work for the user's request. Verify it before making claims.",
     delegatedAgentResult.trim(),
+  ].join("\n");
+};
+
+/*
+ * Adds the saved-docs context block to the system prompt.
+ *
+ * The block is empty when no saved doc matches the user's message, so this
+ * is a no-op in that case.
+ */
+const addDocsContextToChatSystemPrompt = (
+  baseSystemPrompt: string,
+  docsContextPrompt: string,
+): string => {
+  if (!docsContextPrompt.trim()) {
+    return baseSystemPrompt;
+  }
+
+  return [
+    baseSystemPrompt.trim(),
+    "",
+    docsContextPrompt.trim(),
   ].join("\n");
 };
 
@@ -880,6 +913,125 @@ const createToolExecutor = (
     },
   });
 
+  /*
+   * Knowledge doc tools: create / update / delete / list.
+   */
+  toolExecutor.registerTool({
+    name:
+      createDocTool.name,
+
+    description:
+      createDocTool.description,
+
+    execute: async (
+      args,
+    ) => {
+      const toolArgs =
+        args as ToolArgs;
+
+      return createDocTool.invoke(
+        {
+          text:
+            requireStringArg(
+              toolArgs,
+              "text",
+              createDocTool.name,
+            ),
+        },
+        config,
+      );
+    },
+  });
+
+  toolExecutor.registerTool({
+    name:
+      updateDocTool.name,
+
+    description:
+      updateDocTool.description,
+
+    execute: async (
+      args,
+    ) => {
+      const toolArgs =
+        args as ToolArgs;
+
+      return updateDocTool.invoke(
+        {
+          fileName:
+            requireStringArg(
+              toolArgs,
+              "fileName",
+              updateDocTool.name,
+            ),
+
+          text:
+            getStringArg(
+              toolArgs,
+              "text",
+            ) || undefined,
+
+          description:
+            getStringArg(
+              toolArgs,
+              "description",
+            ) || undefined,
+
+          keywords:
+            Array.isArray(toolArgs.keywords)
+              ? (toolArgs.keywords as unknown[]).filter(
+                  (keyword): keyword is string =>
+                    typeof keyword === "string",
+                )
+              : undefined,
+        },
+        config,
+      );
+    },
+  });
+
+  toolExecutor.registerTool({
+    name:
+      deleteDocTool.name,
+
+    description:
+      deleteDocTool.description,
+
+    execute: async (
+      args,
+    ) => {
+      const toolArgs =
+        args as ToolArgs;
+
+      return deleteDocTool.invoke(
+        {
+          fileName:
+            requireStringArg(
+              toolArgs,
+              "fileName",
+              deleteDocTool.name,
+            ),
+        },
+        config,
+      );
+    },
+  });
+
+  toolExecutor.registerTool({
+    name:
+      listDocsTool.name,
+
+    description:
+      listDocsTool.description,
+
+    execute: async (
+      _args,
+    ) => listDocsTool.invoke(
+      {},
+      config,
+    ),
+  });
+
   return toolExecutor;
 };
 
@@ -1273,6 +1425,7 @@ export const callChatAgent =
         skillLoaderTool,
         createAgentTool,
         fileManagerTool,
+        ...docTools,
         ...extensionTools.tools,
         ...mcpTools.tools,
       ]);
@@ -1331,8 +1484,28 @@ export const callChatAgent =
       delegatedAgentResult,
     );
 
-    const systemPrompt = addFileManagerRulesToSystemPrompt(
+    /*
+     * Search the user's saved knowledge docs for this message and build the
+     * context block for the system prompt. Failures never block the agent.
+     */
+    let docsContextPrompt = "";
+
+    try {
+      docsContextPrompt = await buildDocsContextPrompt(userText);
+    } catch (error: unknown) {
+      console.warn(
+        "[Chat Agent] Docs context search failed:",
+        error,
+      );
+    }
+
+    const docsEnabledSystemPrompt = addDocsContextToChatSystemPrompt(
       delegatedAgentSystemPrompt,
+      docsContextPrompt,
+    );
+
+    const systemPrompt = addFileManagerRulesToSystemPrompt(
+      docsEnabledSystemPrompt,
     );
 
     let messagesToRun:

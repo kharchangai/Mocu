@@ -6,6 +6,7 @@ import {
   Square,
 } from 'lucide-react';
 import {
+  useLayoutEffect,
   useCallback,
   useEffect,
   useMemo,
@@ -92,6 +93,14 @@ export function ChatInput({
 }: ChatInputProps) {
   const textareaRef = useRef<HTMLTextAreaElement | null>(null);
   const highlightRef = useRef<HTMLDivElement | null>(null);
+
+  /*
+   * The element inside the highlight layer that receives the scroll
+   * offset. The transform must sit on this inner element: putting it on
+   * the clipping layer itself would move the clip box together with the
+   * text, letting long pasted messages render outside the composer.
+   */
+  const highlightContentRef = useRef<HTMLDivElement | null>(null);
 
   /*
    * Ranges of mentions that were already chosen from the menu. While the
@@ -410,7 +419,12 @@ export function ChatInput({
     });
   }, [loadMcpServers]);
 
-  useEffect(() => {
+  /*
+   * useLayoutEffect (not useEffect) so the height and highlight offset are
+   * applied before the browser paints. Otherwise one frame can render with
+   * the old height, momentarily scrolling or misaligning the highlight layer.
+   */
+  useLayoutEffect(() => {
     const textarea = textareaRef.current;
 
     if (!textarea) {
@@ -423,8 +437,8 @@ export function ChatInput({
       180,
     )}px`;
 
-    if (highlightRef.current) {
-      highlightRef.current.style.transform = `translateY(-${textarea.scrollTop}px)`;
+    if (highlightContentRef.current) {
+      highlightContentRef.current.style.transform = `translateY(-${textarea.scrollTop}px)`;
     }
   }, [safeValue]);
 
@@ -895,8 +909,8 @@ export function ChatInput({
   const handleTextareaScroll = (
     event: React.UIEvent<HTMLTextAreaElement>,
   ) => {
-    if (highlightRef.current) {
-      highlightRef.current.style.transform = `translateY(-${event.currentTarget.scrollTop}px)`;
+    if (highlightContentRef.current) {
+      highlightContentRef.current.style.transform = `translateY(-${event.currentTarget.scrollTop}px)`;
     }
   };
 
@@ -967,11 +981,16 @@ export function ChatInput({
               dir={inputDirection}
               style={{ direction: inputDirection }}
             >
-              <SlashMentionText
-                content={safeValue}
-                className="chat-input-highlight-content"
-                resourceNames={mentionResourceNames}
-              />
+              <div
+                ref={highlightContentRef}
+                className="chat-input-highlight-scroll"
+              >
+                <SlashMentionText
+                  content={safeValue}
+                  className="chat-input-highlight-content"
+                  resourceNames={mentionResourceNames}
+                />
+              </div>
             </div>
 
             <textarea

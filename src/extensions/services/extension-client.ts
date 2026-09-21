@@ -17,6 +17,7 @@ export async function executeExtension(
   input?: unknown,
   context?: Record<string, unknown>,
   config?: Record<string, unknown>,
+  jobId?: string | null,
 ): Promise<unknown> {
   return invoke("extension_execute", {
     input: {
@@ -26,6 +27,7 @@ export async function executeExtension(
       input: input ?? null,
       context: context ?? null,
       config: config ?? null,
+      jobId: jobId ?? null,
     },
   });
 }

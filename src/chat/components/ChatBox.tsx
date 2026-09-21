@@ -23,6 +23,15 @@ import { callChatAgent } from '../../services/ai/chat-agent';
 import { callProjectAgent } from '../../services/ai/project-agent';
 import { isAbortError } from '../../services/aiService';
 
+import {
+  beginGuardedRun,
+  endGuardedRun,
+} from '../../services/devReloadGuard';
+
+import {
+  setActiveRequestChat,
+} from '../services/activeChatSession';
+
 import { useToolActivity } from '../hooks/useToolActivity';
 import { useMemorySaveStatus } from '../hooks/useMemorySaveStatus';
 import { useMentionResources } from './useMentionResources';
@@ -431,6 +440,19 @@ export function ChatBox({
     activeRequestChatIdRef.current =
       requestChatId;
 
+    /*
+     * Route any recovered extension result back to this conversation if
+     * the webview reloads while a long extension command is running.
+     */
+    setActiveRequestChat(requestChatId);
+
+    /*
+     * While a request runs, dev-server full reloads (triggered by files
+     * the agent edits) must not kill it — the guard blocks them until
+     * the request finishes.
+     */
+    beginGuardedRun();
+
     setIsLoading(true);
 
     /*
@@ -652,12 +674,16 @@ export function ChatBox({
         errorMessage.id,
       );
     } finally {
+      endGuardedRun();
+
       if (
         abortControllerRef.current ===
         controller
       ) {
         abortControllerRef.current = null;
         activeRequestChatIdRef.current = null;
+
+        setActiveRequestChat(null);
 
         setIsLoading(false);
       }

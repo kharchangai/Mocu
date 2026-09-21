@@ -95,6 +95,8 @@ pub fn run() {
             extension_host::extension_execute,
             extension_host::extension_respond,
             extension_host::extension_stop,
+            extension_host::extension_job_status,
+            extension_host::extension_job_take,
             mcp_stdio::mcp_stdio_start,
             mcp_stdio::mcp_stdio_send,
             mcp_stdio::mcp_stdio_stderr,
