@@ -1,4 +1,5 @@
 import {
+  memo,
   useEffect,
   useRef,
   useState,
@@ -82,7 +83,7 @@ function RetryIcon() {
   );
 }
 
-export function AssistantMessage({
+function AssistantMessageImpl({
   content,
   footer,
 }: AssistantMessageProps) {
@@ -185,3 +186,9 @@ export function AssistantMessage({
     </article>
   );
 }
+
+/*
+ * Memoized so typing in the composer does not re-render (and re-run
+ * markdown parsing for) older messages whose content did not change.
+ */
+export const AssistantMessage = memo(AssistantMessageImpl);

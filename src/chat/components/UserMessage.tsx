@@ -1,6 +1,6 @@
 // src/chat/components/UserMessage.tsx
 
-import { useEffect, useRef, useState } from 'react';
+import { memo, useEffect, useRef, useState } from 'react';
 import {
   SlashMentionText,
   type MentionResourceNames,
@@ -12,7 +12,7 @@ type UserMessageProps = {
   onEdit?: () => void;
 };
 
-export function UserMessage({
+function UserMessageImpl({
   content,
   resourceNames,
   onEdit,
@@ -125,3 +125,9 @@ export function UserMessage({
     </article>
   );
 }
+
+/*
+ * Memoized so typing in the composer does not re-render older user
+ * messages whose content did not change.
+ */
+export const UserMessage = memo(UserMessageImpl);

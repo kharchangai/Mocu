@@ -1,7 +1,9 @@
 import {
   Fragment,
+  memo,
   useCallback,
   useEffect,
+  useMemo,
   useRef,
   useState,
 } from 'react';
@@ -45,8 +47,12 @@ import {
 } from '../services/toolActivity';
 
 import { useToolActivity } from '../hooks/useToolActivity';
-import { useMemorySaveStatus } from '../hooks/useMemorySaveStatus';
+import {
+  clearMemorySaveStatus,
+  useMemorySaveStatus,
+} from '../hooks/useMemorySaveStatus';
 import { useMentionResources } from './useMentionResources';
+import type { MentionResourceNames } from './SlashMentionText';
 import { migrateNewChatResourceSelection } from '../services/chatResourceToggles';
 
 import {
@@ -63,6 +69,36 @@ import type { SelectedMcpServer } from './mcpTypes';
 
 import './ChatBox.css';
 
+/*
+ * Per-message wrapper around UserMessage. The memoized UserMessage
+ * needs stable props; creating the edit callback inline (per render)
+ * would break memoization, so the callback is built here with
+ * useCallback and the message row only re-renders when its own content
+ * changes.
+ */
+const EditableUserMessage = memo(function EditableUserMessage({
+  message,
+  resourceNames,
+  onEdit,
+}: {
+  message: ChatMessage;
+  resourceNames: MentionResourceNames;
+  onEdit: (message: ChatMessage) => void;
+}) {
+  const handleEdit = useCallback(
+    () => onEdit(message),
+    [onEdit, message],
+  );
+
+  return (
+    <UserMessage
+      content={message.content}
+      resourceNames={resourceNames}
+      onEdit={handleEdit}
+    />
+  );
+});
+
 type EnsureChatResult = {
   chatId: string;
   wasCreated: boolean;
@@ -78,6 +114,12 @@ type SendOptions = {
   selectedExtensions?: SelectedExtension[];
   selectedMcpServers?: SelectedMcpServer[];
   selectedAgent?: SelectedAgent | null;
+  /*
+   * Model override chosen in the composer model picker. It reaches only
+   * the main agents through the agent config; null/undefined keeps the
+   * configured default model.
+   */
+  selectedModel?: string | null;
 };
 
 type ChatBoxProps = {
@@ -156,12 +198,12 @@ export function ChatBox({
   const mentionResourceNames = useMentionResources();
 
   /*
-   * Background project-memory save status. Tracked here (always
-   * mounted) so the mind icon below the response catches the
-   * "saving" event even before the response message exists.
+   * Background project-memory save status of THIS chat. The status is
+   * scoped to the chat id, so a save running in another conversation
+   * never shows its mind icon here.
    */
   const memorySaveStatus =
-    useMemorySaveStatus();
+    useMemorySaveStatus(chatId);
 
   /*
    * Messages loaded from the selected project's persisted memory.
@@ -413,6 +455,13 @@ export function ChatBox({
       wasCreated = result.wasCreated;
 
       /*
+       * New turn in this chat: drop the previous turn's memory-save
+       * status, so its mind icon does not linger below the response
+       * that is about to be generated.
+       */
+      clearMemorySaveStatus(requestChatId);
+
+      /*
        * A brand-new chat keeps its pinned resources under the reserved
        * "new chat" key until the first message creates it. Hand the
        * selection over to the real chat id so the toggled resources
@@ -573,6 +622,13 @@ export function ChatBox({
             ) ?? [],
           selectedAgent:
             options?.selectedAgent?.name ?? null,
+          /*
+           * Model override chosen in the composer model picker. Only the
+           * main agents (chat agent and project agent) read this key;
+           * every other agent keeps its own configured model.
+           */
+          selectedModel:
+            options?.selectedModel?.trim() || null,
         },
       };
 
@@ -719,15 +775,26 @@ export function ChatBox({
     abortChatRun(chatId);
   };
 
-  const handleEditMessage = (
-    message: ChatMessage,
-  ): void => {
-    setDraftMessage(message.content);
-  };
+  const handleEditMessage = useCallback(
+    (message: ChatMessage): void => {
+      setDraftMessage(message.content);
+    },
+    [],
+  );
 
   const hasMessages =
     messages.length > 0 ||
     projectMemoryMessages.length > 0;
+
+  /*
+   * Stable element identity for the memory-save footer of the last
+   * assistant message. Without useMemo a new element would be created
+   * on every keystroke, re-rendering the last response each time.
+   */
+  const memoryFooter = useMemo(
+    () => <MemorySaveIndicator status={memorySaveStatus} />,
+    [memorySaveStatus],
+  );
 
   /*
    * Show project memory for a new project chat. Once the conversation
@@ -773,15 +840,11 @@ export function ChatBox({
             {displayMessages.map(
               (message, messageIndex) =>
                 message.role === 'user' ? (
-                  <UserMessage
+                  <EditableUserMessage
                     key={message.id}
-                    content={message.content}
+                    message={message}
                     resourceNames={mentionResourceNames}
-                    onEdit={() =>
-                      handleEditMessage(
-                        message,
-                      )
-                    }
+                    onEdit={handleEditMessage}
                   />
                 ) : (
                   <Fragment
@@ -805,16 +868,7 @@ export function ChatBox({
                       footer={
                         messageIndex ===
                         lastAssistantIndex ? (
-                          /*
-                           * Small mind icon directly below the response
-                           * text: blinks while the background memory
-                           * save runs and stands still once complete.
-                           */
-                          <MemorySaveIndicator
-                            status={
-                              memorySaveStatus
-                            }
-                          />
+                          memoryFooter
                         ) : undefined
                       }
                     />

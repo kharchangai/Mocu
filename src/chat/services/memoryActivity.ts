@@ -16,6 +16,13 @@ export type MemorySaveStatus =
 export type MemorySaveActivity = {
   status: MemorySaveStatus;
 
+  /*
+   * The chat conversation the save belongs to. The UI keeps one
+   * indicator per chat, so events without a chat id cannot be shown
+   * under the correct response.
+   */
+  chatId?: string;
+
   projectPath?: string;
 };
 

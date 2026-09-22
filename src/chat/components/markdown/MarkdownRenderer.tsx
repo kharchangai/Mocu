@@ -1,5 +1,6 @@
 import {
   isValidElement,
+  memo,
   type HTMLAttributes,
   type ReactNode,
   useEffect,
@@ -274,7 +275,7 @@ function CodeBlock({
   );
 }
 
-export function MarkdownRenderer({
+function MarkdownRendererImpl({
   content,
   className = "",
   direction = "auto",
@@ -354,5 +355,14 @@ export function MarkdownRenderer({
     </div>
   );
 }
+
+/*
+ * Memoized: parsing markdown with syntax highlighting is expensive, and
+ * while the user is typing in the composer every parent render would
+ * otherwise re-parse every message in the conversation. With memo the
+ * parse is skipped whenever `content` (and the other props) did not
+ * change.
+ */
+export const MarkdownRenderer = memo(MarkdownRendererImpl);
 
 export default MarkdownRenderer;

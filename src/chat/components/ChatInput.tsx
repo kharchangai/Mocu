@@ -5,6 +5,11 @@ import {
   SendHorizontal,
   Square,
   Blocks,
+  Check,
+  ChevronDown,
+  RefreshCw,
+  Search,
+  X,
 } from 'lucide-react';
 import {
   useLayoutEffect,
@@ -54,6 +59,8 @@ import type {
   AvailableAgent,
   SelectedAgent,
 } from './agentTypes';
+import { listGatewayModels } from '../../services/ai/model-catalog';
+import type { GatewayModel } from '../../services/ai/model-catalog';
 import './ChatInput.css';
 
 export type SendOptions = {
@@ -62,6 +69,12 @@ export type SendOptions = {
   selectedExtensions: SelectedExtension[];
   selectedMcpServers: SelectedMcpServer[];
   selectedAgent: SelectedAgent | null;
+  /*
+   * Model override chosen with the model picker. It applies only to the
+   * two main agents (chat agent and project agent); null means the
+   * configured default model is used.
+   */
+  selectedModel: string | null;
 };
 
 const RTL_CHARACTER_PATTERN = /[\u0590-\u08ff\ufb1d-\ufdff\ufe70-\ufefc]/;
@@ -156,6 +169,7 @@ export function ChatInput({
 }: ChatInputProps) {
   const textareaRef = useRef<HTMLTextAreaElement | null>(null);
   const highlightRef = useRef<HTMLDivElement | null>(null);
+  const modelSelectorRef = useRef<HTMLDivElement | null>(null);
 
   /*
    * The element inside the highlight layer that receives the scroll
@@ -206,13 +220,34 @@ export function ChatInput({
   >([]);
 
   /*
+   * Model picker state. The list is fetched lazily from the configured
+   * AI gateway the first time the menu is opened and then cached.
+   */
+  const [availableModels, setAvailableModels] = useState<
+    GatewayModel[]
+  >([]);
+
+  const [isLoadingModels, setIsLoadingModels] = useState(false);
+  const [modelsError, setModelsError] = useState<string | null>(null);
+  const [isModelMenuOpen, setIsModelMenuOpen] = useState(false);
+  const [modelSearchQuery, setModelSearchQuery] = useState('');
+
+  /*
    * Resources the user toggled ON for this conversation. They are
    * stored outside React (persisted per chat) and are sent with every
-   * message automatically, without a /mention in the text.
+   * message automatically, without a /mention in the text. The chat's
+   * selected model is part of the same per-chat selection.
    */
   const pinnedResources = useChatResourceSelection(
     chatId ?? NEW_CHAT_RESOURCE_KEY,
   );
+
+  /*
+   * The model override of THIS conversation. Switching to another chat
+   * remounts the composer, which reads that chat's own model; the
+   * selection is never shared between conversations.
+   */
+  const selectedModel = pinnedResources.model ?? null;
 
   const [isResourceMenuOpen, setIsResourceMenuOpen] = useState(false);
 
@@ -290,6 +325,20 @@ export function ChatInput({
       pinnedResources,
     ],
   );
+
+  const filteredModels = useMemo(() => {
+    const query = modelSearchQuery.trim().toLowerCase();
+
+    if (!query) {
+      return availableModels;
+    }
+
+    return availableModels.filter((model) =>
+      [model.id, model.name]
+        .filter(Boolean)
+        .some((value) => value!.toLowerCase().includes(query)),
+    );
+  }, [availableModels, modelSearchQuery]);
 
   const canSend = safeValue.trim().length > 0 && !isLoading;
   const hasProjectPath = normalizedProjectPath !== null;
@@ -609,6 +658,28 @@ export function ChatInput({
       );
     } finally {
       setIsLoadingMcp(false);
+    }
+  }, []);
+
+  const loadModels = useCallback(async () => {
+    setIsLoadingModels(true);
+    setModelsError(null);
+
+    try {
+      const models = await listGatewayModels();
+
+      setAvailableModels(models);
+    } catch (error) {
+      console.error('Failed to load gateway models:', error);
+
+      setAvailableModels([]);
+      setModelsError(
+        error instanceof Error
+          ? error.message
+          : 'Failed to load models from the gateway.',
+      );
+    } finally {
+      setIsLoadingModels(false);
     }
   }, []);
 
@@ -969,6 +1040,66 @@ export function ChatInput({
     );
   };
 
+  /*
+   * Opens the model picker and fetches the gateway model list once.
+   * Failures are shown inside the menu and never block sending.
+   */
+  const handleToggleModelMenu = () => {
+    setIsModelMenuOpen((open) => {
+      if (!open && availableModels.length === 0 && !modelsError) {
+        void loadModels();
+      }
+
+      return !open;
+    });
+  };
+
+  const handleModelSelect = (modelId: string | null) => {
+    /*
+     * The model belongs to THIS chat only: it is stored in the same
+     * per-chat selection as the pinned resources. New chats start with
+     * the configured default model until the user picks one for them.
+     */
+    persistPinnedResources({
+      ...pinnedResources,
+      model: modelId,
+    });
+    setModelSearchQuery('');
+    setIsModelMenuOpen(false);
+  };
+
+  useEffect(() => {
+    if (!isModelMenuOpen) {
+      return undefined;
+    }
+
+    const handleOutsidePointerDown = (event: PointerEvent) => {
+      const target = event.target;
+
+      if (
+        target instanceof Node &&
+        !modelSelectorRef.current?.contains(target)
+      ) {
+        setIsModelMenuOpen(false);
+      }
+    };
+
+    document.addEventListener('pointerdown', handleOutsidePointerDown);
+
+    return () => {
+      document.removeEventListener('pointerdown', handleOutsidePointerDown);
+    };
+  }, [isModelMenuOpen]);
+
+  const handleModelSearchKeyDown = (
+    event: React.KeyboardEvent<HTMLInputElement>,
+  ) => {
+    if (event.key === 'Escape') {
+      event.preventDefault();
+      setIsModelMenuOpen(false);
+    }
+  };
+
   const handleSend = async () => {
     const message = safeValue.trim();
 
@@ -999,6 +1130,7 @@ export function ChatInput({
     setSendError(null);
     closeCommandMenu();
     setIsResourceMenuOpen(false);
+    setIsModelMenuOpen(false);
     setSelectedSkills([]);
     setSelectedExtensions([]);
     setSelectedAgent(null);
@@ -1012,6 +1144,7 @@ export function ChatInput({
         selectedExtensions: extensionsToSend,
         selectedMcpServers: mcpServersToSend,
         selectedAgent: agentToSend,
+        selectedModel,
       });
 
       settledMentionsRef.current = [];
@@ -1052,6 +1185,12 @@ export function ChatInput({
   const handleKeyDown = (
     event: React.KeyboardEvent<HTMLTextAreaElement>,
   ) => {
+    if (event.key === 'Escape' && isModelMenuOpen) {
+      event.preventDefault();
+      setIsModelMenuOpen(false);
+      return;
+    }
+
     if (isCommandMenuOpen) {
       const menuItemCount =
         commandMenuMode === 'skills'
@@ -1141,6 +1280,7 @@ export function ChatInput({
       if (event.key === 'Escape') {
         event.preventDefault();
         setIsResourceMenuOpen(false);
+        setIsModelMenuOpen(false);
         closeCommandMenu();
         return;
       }
@@ -1458,13 +1598,184 @@ export function ChatInput({
                 <Paperclip size={18} />
               </button>
 
-              <button
-                type="button"
-                className="composer-menu-button"
+              <div
+                ref={modelSelectorRef}
+                className="model-selector-anchor"
               >
-                {modelLabel}
-                <span>⌄</span>
-              </button>
+                <button
+                  type="button"
+                  className={`composer-menu-button model-selector-button${
+                    selectedModel ? ' composer-menu-button--active' : ''
+                  }`}
+                  onClick={handleToggleModelMenu}
+                  aria-label="Choose the model for the main agents"
+                  aria-expanded={isModelMenuOpen}
+                  title="Choose the model for the main agents"
+                >
+                  <span className="model-selector-button-label">
+                    {selectedModel ?? modelLabel}
+                  </span>
+                  <ChevronDown
+                    size={13}
+                    strokeWidth={2.2}
+                    className={
+                      isModelMenuOpen
+                        ? 'model-selector-chevron model-selector-chevron--open'
+                        : 'model-selector-chevron'
+                    }
+                  />
+                </button>
+
+                {isModelMenuOpen && (
+                  <div
+                    className="model-selector-menu"
+                    role="listbox"
+                    aria-label="Available models"
+                  >
+                    <div className="model-selector-header">
+                      <div className="model-selector-heading-row">
+                        <div className="model-selector-heading">
+                          <span className="model-selector-heading-icon">
+                            <Search size={13} strokeWidth={2.4} />
+                          </span>
+                          <span>Choose a model</span>
+                        </div>
+                        <span className="model-selector-count">
+                          {availableModels.length > 0
+                            ? `${availableModels.length} available`
+                            : 'Gateway models'}
+                        </span>
+                      </div>
+
+                      <div className="model-selector-search">
+                        <Search size={15} strokeWidth={2} />
+                        <input
+                          type="search"
+                          value={modelSearchQuery}
+                          onChange={(event) =>
+                            setModelSearchQuery(event.target.value)
+                          }
+                          onKeyDown={handleModelSearchKeyDown}
+                          placeholder="Search by model name or ID"
+                          aria-label="Search available models"
+                          autoFocus
+                        />
+                        {modelSearchQuery && (
+                          <button
+                            type="button"
+                            className="model-selector-clear"
+                            onClick={() => setModelSearchQuery('')}
+                            aria-label="Clear model search"
+                          >
+                            <X size={13} />
+                          </button>
+                        )}
+                      </div>
+                    </div>
+
+                    <div className="model-selector-list">
+                      <button
+                        type="button"
+                        role="option"
+                        aria-selected={selectedModel === null}
+                        className={`model-selector-item${
+                          selectedModel === null
+                            ? ' model-selector-item--selected'
+                            : ''
+                        }`}
+                        onClick={() => handleModelSelect(null)}
+                      >
+                        <span className="model-selector-item-icon model-selector-item-icon--default">
+                          <Blocks size={14} strokeWidth={2.1} />
+                        </span>
+                        <span className="model-selector-item-copy">
+                          <span className="model-selector-item-name">
+                            {modelLabel}
+                          </span>
+                          <span className="model-selector-item-description">
+                            Use the configured default model
+                          </span>
+                        </span>
+                        {selectedModel === null && (
+                          <Check
+                            size={16}
+                            className="model-selector-check"
+                            strokeWidth={2.5}
+                          />
+                        )}
+                      </button>
+
+                      <div className="model-selector-divider" />
+
+                      {isLoadingModels && (
+                        <div className="model-selector-status">
+                          <RefreshCw size={14} className="model-selector-spinner" />
+                          <span>Loading gateway models…</span>
+                        </div>
+                      )}
+
+                      {modelsError && (
+                        <div className="model-selector-error">
+                          <span>{modelsError}</span>
+                          <button
+                            type="button"
+                            onClick={() => void loadModels()}
+                          >
+                            Try again
+                          </button>
+                        </div>
+                      )}
+
+                      {!isLoadingModels &&
+                        !modelsError &&
+                        filteredModels.length === 0 && (
+                          <div className="model-selector-empty">
+                            <Search size={18} />
+                            <strong>No models found</strong>
+                            <span>Try a different name or model ID.</span>
+                          </div>
+                        )}
+
+                      {!isLoadingModels &&
+                        !modelsError &&
+                        filteredModels.map((model) => (
+                          <button
+                            key={model.id}
+                            type="button"
+                            role="option"
+                            aria-selected={selectedModel === model.id}
+                            className={`model-selector-item${
+                              selectedModel === model.id
+                                ? ' model-selector-item--selected'
+                                : ''
+                            }`}
+                            onClick={() => handleModelSelect(model.id)}
+                            title={model.id}
+                          >
+                            <span className="model-selector-item-icon">
+                              <span className="model-selector-model-dot" />
+                            </span>
+                            <span className="model-selector-item-copy">
+                              <span className="model-selector-item-name">
+                                {model.name ?? model.id}
+                              </span>
+                              <span className="model-selector-item-description">
+                                {model.id}
+                              </span>
+                            </span>
+                            {selectedModel === model.id && (
+                              <Check
+                                size={16}
+                                className="model-selector-check"
+                                strokeWidth={2.5}
+                              />
+                            )}
+                          </button>
+                        ))}
+                    </div>
+                  </div>
+                )}
+              </div>
 
               <button
                 type="button"

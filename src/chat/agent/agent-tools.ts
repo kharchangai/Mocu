@@ -38,6 +38,13 @@ export async function loadAgentTools(
     return emptyAgentToolSet();
   }
 
+  /*
+   * The model picker belongs exclusively to the two main agents. A
+   * specialist/user agent invoked as a tool must keep using its own saved
+   * model, so do not forward the main-agent override into that run.
+   */
+  const childAgentConfig = withoutMainAgentModel(config);
+
   const tools: StructuredToolInterface[] = [];
   const entries: AgentToolEntry[] = [];
   const executors = new Map<
@@ -70,7 +77,7 @@ export async function loadAgentTools(
         agent,
         userMessage: request,
         projectPath,
-        config,
+        config: childAgentConfig,
       });
     };
 
@@ -120,6 +127,26 @@ function emptyAgentToolSet(): AgentToolSet {
     registerAll: () => undefined,
     prompt: '',
     missingAgents: [],
+  };
+}
+
+function withoutMainAgentModel(
+  config: RunnableConfig,
+): RunnableConfig {
+  const configurable = config.configurable;
+
+  if (!configurable || typeof configurable !== 'object') {
+    return config;
+  }
+
+  const {
+    selectedModel: _selectedModel,
+    ...childConfigurable
+  } = configurable as Record<string, unknown>;
+
+  return {
+    ...config,
+    configurable: childConfigurable,
   };
 }
 

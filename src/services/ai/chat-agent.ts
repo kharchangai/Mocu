@@ -69,7 +69,8 @@ import {
 } from "./state";
 
 import {
-  getAsyncLLM,
+  getMainAgentLlm,
+  getSelectedChatModel,
 } from "./llm";
 
 import {
@@ -1354,9 +1355,19 @@ export const callChatAgent =
       signal,
     );
 
+    /*
+     * The model picker in the chat composer can override the model for
+     * this request. Without an override the configured expensive-tier
+     * model is used, exactly like before.
+     */
+    const selectedModel =
+      getSelectedChatModel(
+        runnableConfig,
+      );
+
     const llm =
-      await getAsyncLLM(
-        "expensive",
+      await getMainAgentLlm(
+        selectedModel,
       );
 
     throwIfAborted(
@@ -1682,7 +1693,11 @@ export const callChatAgent =
         });
 
       const plainLlm =
-        await getAsyncLLM();
+        await getMainAgentLlm(
+          selectedModel,
+          {},
+          "medium",
+        );
 
       throwIfAborted(
         signal,
@@ -1732,7 +1747,11 @@ export const callChatAgent =
         ];
 
       const plainLlm =
-        await getAsyncLLM();
+        await getMainAgentLlm(
+          selectedModel,
+          {},
+          "medium",
+        );
 
       throwIfAborted(
         signal,

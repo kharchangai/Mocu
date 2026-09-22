@@ -13,7 +13,7 @@
 // (below the user's message, above the agent's response) and stay
 // visible after the answer arrives.
 
-import { useState } from 'react';
+import { memo, useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 
 import type { AgentToolActivity } from '../services/toolActivity';
@@ -137,7 +137,7 @@ type ToolActivityFeedProps = {
   activities: AgentToolActivity[];
 };
 
-export function ToolActivityFeed({
+function ToolActivityFeedImpl({
   activities,
 }: ToolActivityFeedProps) {
   const [openIds, setOpenIds] = useState<
@@ -379,3 +379,11 @@ export function ToolActivityFeed({
     </div>
   );
 }
+
+/*
+ * Memoized so typing in the composer does not re-render the tool boxes
+ * of finished turns. The activities array is a stable reference from
+ * the tool-activity store, so this only re-renders when a turn is
+ * actually committed.
+ */
+export const ToolActivityFeed = memo(ToolActivityFeedImpl);

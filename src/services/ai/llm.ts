@@ -1,5 +1,6 @@
 import { ChatOpenAI } from "@langchain/openai";
 import { readSettings } from "../../store";
+import { getMainGatewayBaseUrl } from "./model-catalog";
 
 export type LlmTier = "cheap" | "medium" | "expensive";
 
@@ -122,3 +123,63 @@ export const getAsyncLLMByModel = async (
     },
   });
 };
+
+/*
+ * Builds the LLM for the two main agents (chat agent and project agent)
+ * honoring a per-request model override chosen in the chat composer.
+ *
+ * When an override is set it is used for every LLM call inside those two
+ * agents. When no override is set the same tier that was used before the
+ * model picker existed is used (fallbackTier), so nothing changes for
+ * memory, tools, child agents, or any other service.
+ */
+export const getMainAgentLlm = async (
+  selectedModel: string,
+  options: LlmGenerationOptions = {},
+  fallbackTier: LlmTier = "expensive",
+): Promise<ChatOpenAI> => {
+  const trimmedModel = selectedModel.trim();
+
+  if (trimmedModel) {
+    const config = await readSettings();
+
+    const baseUrl = getMainGatewayBaseUrl(config);
+
+    if (!baseUrl.trim()) {
+      throw new Error(
+        "The LLM base URL is not configured. Open Settings and set its base URL.",
+      );
+    }
+
+    return new ChatOpenAI({
+      apiKey: config.apiKey || "",
+      model: trimmedModel,
+      ...(options.temperature === undefined
+        ? {}
+        : { temperature: options.temperature }),
+      ...(options.maxTokens === undefined
+        ? {}
+        : { maxTokens: options.maxTokens }),
+      configuration: {
+        baseURL: normalizeBaseUrl(baseUrl),
+      },
+    });
+  }
+
+  return getAsyncLLM(fallbackTier, options);
+};
+
+/*
+ * Reads the per-request model override from the agent RunnableConfig.
+ * It is set by the chat composer and only consumed by the main agents;
+ * every other agent keeps using its own configured model.
+ */
+export const getSelectedChatModel = (
+  config?: { configurable?: Record<string, unknown> },
+): string => {
+  const value = config?.configurable?.selectedModel;
+
+  return typeof value === "string" ? value.trim() : "";
+};
+
+export { getMainGatewayBaseUrl };

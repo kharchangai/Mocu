@@ -97,6 +97,22 @@ function roundScore(score: number): number {
   return Number(score.toFixed(6));
 }
 
+/**
+ * OpenAI-compatible embedding endpoints accept at most 8192 tokens
+ * per input text. Longer inputs are rejected with HTTP 400, which
+ * previously failed the whole project memory save for long turns.
+ *
+ * Inputs are truncated conservatively (~4 characters per token),
+ * keeping the text safely below the provider limit.
+ */
+const MAX_EMBEDDING_INPUT_CHARS = 24000;
+
+const truncateEmbeddingText = (text: string): string => {
+  return text.length > MAX_EMBEDDING_INPUT_CHARS
+    ? text.slice(0, MAX_EMBEDDING_INPUT_CHARS)
+    : text;
+};
+
 function assertValidEmbedding(
   embedding: number[],
   label: string,
@@ -174,7 +190,12 @@ export class TextSimilarity {
     }
 
     const embeddings = await this.getEmbeddings();
-    const result = await embeddings.embedDocuments(texts);
+
+    const safeTexts = texts.map(
+      truncateEmbeddingText,
+    );
+
+    const result = await embeddings.embedDocuments(safeTexts);
 
     if (result.length !== texts.length) {
       throw new Error(

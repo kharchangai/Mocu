@@ -63,7 +63,8 @@ import {
 } from "./state";
 
 import {
-  getAsyncLLM,
+  getMainAgentLlm,
+  getSelectedChatModel,
 } from "./llm";
 
 import {
@@ -243,13 +244,17 @@ const saveProjectMemoryInBackground = (
   userMessage: string,
   agentResponse: string,
   projectPath: string,
+  chatId: string | undefined,
 ): void => {
   /*
    * Tell the chat UI the memory save started, so the small mind icon
-   * starts blinking below the agent response.
+   * starts blinking below the agent response. The event is scoped to
+   * the chat that owns this run, so parallel conversations each only
+   * see their own memory save status.
    */
   dispatchMemorySaveActivity({
     status: "saving",
+    chatId,
     projectPath,
   });
 
@@ -267,6 +272,7 @@ const saveProjectMemoryInBackground = (
          */
         dispatchMemorySaveActivity({
           status: "done",
+          chatId,
           projectPath,
         });
 
@@ -300,6 +306,7 @@ const saveProjectMemoryInBackground = (
          */
         dispatchMemorySaveActivity({
           status: "error",
+          chatId,
           projectPath,
         });
 
@@ -1151,9 +1158,19 @@ export const callProjectAgent =
       );
     }
 
+    /*
+     * The model picker in the chat composer can override the model for
+     * this request. Without an override the configured expensive-tier
+     * model is used, exactly like before.
+     */
+    const selectedModel =
+      getSelectedChatModel(
+        runnableConfig,
+      );
+
     const llm =
-      await getAsyncLLM(
-        "expensive",
+      await getMainAgentLlm(
+        selectedModel,
       );
 
     throwIfAborted(
@@ -1458,7 +1475,11 @@ export const callProjectAgent =
         );
 
       const plainLlm =
-        await getAsyncLLM();
+        await getMainAgentLlm(
+          selectedModel,
+          {},
+          "medium",
+        );
 
       throwIfAborted(
         signal,
@@ -1512,7 +1533,11 @@ export const callProjectAgent =
         ];
 
       const plainLlm =
-        await getAsyncLLM();
+        await getMainAgentLlm(
+          selectedModel,
+          {},
+          "medium",
+        );
 
       throwIfAborted(
         signal,
@@ -1556,6 +1581,9 @@ export const callProjectAgent =
       userText,
       finalAssistantContent,
       normalizedProjectPath,
+      getChatIdFromConfig(
+        runnableConfig,
+      ),
     );
 
     return {

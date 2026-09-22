@@ -13,6 +13,7 @@
 // switching between conversations. A new (not yet created) chat uses
 // the reserved NEW_CHAT_RESOURCE_KEY; once the first message creates
 // the chat, ChatBox migrates the selection to the real chat id.
+// The selected main-agent model is part of the same per-chat selection.
 
 import { useSyncExternalStore } from 'react';
 
@@ -34,6 +35,12 @@ export type ChatResourceSelection = {
   extensions: SelectedExtension[];
   mcpServers: SelectedMcpServer[];
   agent: SelectedAgent | null;
+  /*
+   * Main-agent model override chosen in the composer model picker. It
+   * belongs to THIS conversation only: null means the chat uses the
+   * configured default model, and other chats never see this value.
+   */
+  model: string | null;
 };
 
 const EMPTY_SELECTION: ChatResourceSelection = {
@@ -41,6 +48,7 @@ const EMPTY_SELECTION: ChatResourceSelection = {
   extensions: [],
   mcpServers: [],
   agent: null,
+  model: null,
 };
 
 const selections = new Map<string, ChatResourceSelection>();
@@ -64,7 +72,14 @@ function isSelection(value: unknown): value is ChatResourceSelection {
     Array.isArray(candidate.skills) &&
     Array.isArray(candidate.extensions) &&
     Array.isArray(candidate.mcpServers) &&
-    (candidate.agent === null || typeof candidate.agent === 'object')
+    (candidate.agent === null || typeof candidate.agent === 'object') &&
+    /*
+     * model is optional so selections persisted before the model picker
+     * existed still validate; a missing model means the default model.
+     */
+    (candidate.model === undefined ||
+      candidate.model === null ||
+      typeof candidate.model === 'string')
   );
 }
 
@@ -145,7 +160,8 @@ export function setChatResourceSelection(
     selection.skills.length === 0 &&
     selection.extensions.length === 0 &&
     selection.mcpServers.length === 0 &&
-    selection.agent === null;
+    selection.agent === null &&
+    !selection.model;
 
   if (isEmpty) {
     selections.delete(chatId);
@@ -155,6 +171,7 @@ export function setChatResourceSelection(
       extensions: [...selection.extensions],
       mcpServers: [...selection.mcpServers],
       agent: selection.agent,
+      model: selection.model?.trim() || null,
     });
   }
 
