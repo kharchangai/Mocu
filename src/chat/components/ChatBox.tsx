@@ -20,6 +20,10 @@ import { AssistantMessage } from './AssistantMessage';
 import { ChatStatusBubble } from './ChatStatusBubble';
 import { ToolActivityFeed } from './ToolActivityFeed';
 import { MemorySaveIndicator } from './MemorySaveIndicator';
+import {
+  respondToExtensionInteraction,
+  useExtensionInteraction,
+} from '../../extensions/services/extension-interaction-store';
 
 import { callChatAgent } from '../../services/ai/chat-agent';
 import { callProjectAgent } from '../../services/ai/project-agent';
@@ -180,6 +184,25 @@ export function ChatBox({
   const isChatBusy = useIsChatRunActive(chatId);
 
   const isLoading = isChatBusy || isPreparingChat;
+  const extensionInteraction = useExtensionInteraction(chatId);
+
+  const handleExtensionAction = async (actionId: string): Promise<void> => {
+    if (!chatId) {
+      return;
+    }
+    await respondToExtensionInteraction(chatId, { actionId });
+  };
+
+  const handleExtensionText = async (text: string): Promise<void> => {
+    if (!chatId) {
+      throw new Error('The active chat is not available.');
+    }
+    await respondToExtensionInteraction(chatId, {
+      actionId: '__input__',
+      input: text,
+    });
+    onAppendMessage(chatId, 'user', text);
+  };
 
   /*
    * Per-turn tool activity store, scoped to THIS chat: accumulates the
@@ -944,6 +967,19 @@ export function ChatBox({
         onSend={handleSendMessage}
         onStop={handleStopGeneration}
         isLoading={isLoading}
+        interactionActive={Boolean(extensionInteraction)}
+        interactionInputEnabled={
+          Boolean(extensionInteraction?.inputEnabled) &&
+          !extensionInteraction?.isResponding
+        }
+        interactionInputPlaceholder={extensionInteraction?.inputPlaceholder}
+        onInteractionSend={handleExtensionText}
+        interaction={extensionInteraction}
+        onInteractionChoose={(actionId) => {
+          void handleExtensionAction(actionId).catch((error) =>
+            console.error('[Extension Interaction] Reply failed:', error),
+          );
+        }}
         agentName={agentName}
         projectPath={projectPath}
       />

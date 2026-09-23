@@ -3,7 +3,9 @@
 Embeds a [pi coding-agent](https://github.com/earendil-works/pi-coding-agent)
 session inside a Mocu extension using the pi SDK
 (`@earendil-works/pi-coding-agent`). Mocu's chat can send prompts to pi and
-receive its final response.
+receive its final response. While Pi is running, users can steer it from the
+Mocu composer, stop a turn and resume the same session with new instructions,
+or cancel the task.
 
 ## Commands
 
@@ -26,7 +28,7 @@ shows a live log containing:
   partial results pi emits)
 - final **tool results**, including errors and structured details like diffs
 - **auto retries** (with the error that triggered them), context **compaction**,
-  and queued steering/follow-up messages
+  queued steering/follow-up messages, and user messages sent from Mocu
 
 Example of what the streamed log looks like:
 
@@ -96,6 +98,19 @@ only (not persisted to pi session files).
 Commands are serialized inside the extension so concurrent `extension.execute`
 calls can't corrupt session state.
 
+While `ask` is running, its interaction card stays visible in Mocu chat:
+
+- Type a message and send it to steer Pi during the current run. Pi queues it
+  for the next turn after its current tool batch.
+- Click **Stop Pi & wait** to abort the current Pi turn without disposing the
+  session. Then type new instructions or click **Continue Pi**; Pi resumes in
+  the same session with its existing task history.
+- Click **Cancel task** to abort the current run and finish the extension
+  command. The persistent Pi session remains available for a later `ask`.
+
+The prompt is cancellable when Pi finishes, so its controls disappear rather
+than leaving a stale interaction in Mocu chat.
+
 ## Auth
 
 pi resolves credentials itself, in this order: `~/.pi/agent/auth.json`,
@@ -113,7 +128,8 @@ Each entry in `commands` supports two optional, creator-chosen flags:
   "title": "Ask pi",
   "description": "...",
   "streaming": true,
-  "timeoutSeconds": 900
+  "interactive": true,
+  "timeoutSeconds": 0
 }
 ```
 
@@ -123,9 +139,11 @@ Each entry in `commands` supports two optional, creator-chosen flags:
   `extension.notify("mocu.extension.activity", { toolCallId, toolName, text })`
   (`toolCallId`/`toolName` arrive in the command's `context`). Non-streaming
   commands simply never emit, and the UI stays a normal running card.
+- `interactive` (`bool`, default `false`) — enables extension-defined chat
+  controls and routes composer replies to the running extension.
 - `timeoutSeconds` (`number`) — per-command execution timeout. Omit for the
-  default (900 s); `0` means no timeout (Mocu waits until the extension
-  answers or disconnects).
+  default (900 s); `0` means no timeout. `ask` opts out because the user may
+  pause and resume the task later.
 
 ## Dependencies
 
@@ -145,9 +163,9 @@ extension is installed from the UI.
 
 ## Host-side note
 
-`src-tauri/src/extension_host/manager.rs` raises `EXECUTE_TIMEOUT` to 900s:
-a pi agent run (multiple LLM turns + tool calls) routinely exceeds the old
-90s cap.
+`src-tauri/src/extension_host/manager.rs` uses a 900s default timeout. The
+`ask` command opts out with `timeoutSeconds: 0` because user interaction may
+last longer than the default.
 
 ## Safety
 

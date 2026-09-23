@@ -1,5 +1,7 @@
 import { createInterface } from "node:readline";
 
+import { HOST_METHODS } from "@mocu/extension-contracts";
+
 import type {
   JsonRpcFailure,
   JsonRpcId,
@@ -76,8 +78,13 @@ export class JsonRpcProtocolClient {
   public async request<TResult = unknown>(
     method: string,
     params?: unknown,
-    timeoutMs = 90_000,
+    timeoutMs: number | null = 90_000,
+    signal?: AbortSignal,
   ): Promise<TResult> {
+    if (signal?.aborted) {
+      throw new Error(`Request "${method}" was cancelled.`);
+    }
+
     const id = this.nextRequestId++;
 
     const request: JsonRpcRequest = {
@@ -88,24 +95,54 @@ export class JsonRpcProtocolClient {
     };
 
     const result = new Promise<TResult>((resolve, reject) => {
-      const timeout = setTimeout(() => {
-        this.pendingRequests.delete(id);
-
-        reject(
-          new Error(
-            `Request "${method}" timed out after ${timeoutMs}ms.`,
-          ),
-        );
-      }, timeoutMs);
-
-      this.pendingRequests.set(id, {
-        resolve: (value) => resolve(value as TResult),
+      const pending: PendingRequest = {
+        resolve: (value: unknown) => resolve(value as TResult),
         reject,
-        timeout,
-      });
+        timeout: null as ReturnType<typeof setTimeout> | null,
+        ...(signal ? { signal } : {}),
+      };
+
+      if (timeoutMs !== null) {
+        pending.timeout = setTimeout(() => {
+          this.pendingRequests.delete(id);
+          this.clearPendingRequest(pending);
+          reject(
+            new Error(
+              `Request "${method}" timed out after ${timeoutMs}ms.`,
+            ),
+          );
+        }, timeoutMs);
+      }
+
+      if (signal) {
+        pending.abortListener = () => {
+          if (!this.pendingRequests.has(id)) {
+            return;
+          }
+          this.pendingRequests.delete(id);
+          this.clearPendingRequest(pending);
+          if (method === HOST_METHODS.extensionInteract) {
+            this.notify(HOST_METHODS.extensionInteractionCancel, {
+              requestId: id,
+            });
+          }
+          reject(new Error(`Request "${method}" was cancelled.`));
+        };
+      }
+
+      this.pendingRequests.set(id, pending);
+
+      if (signal && pending.abortListener) {
+        signal.addEventListener("abort", pending.abortListener, { once: true });
+        if (signal.aborted) {
+          pending.abortListener();
+        }
+      }
     });
 
-    this.writeMessage(request);
+    if (this.pendingRequests.has(id)) {
+      this.writeMessage(request);
+    }
 
     return result;
   }
@@ -173,6 +210,23 @@ export class JsonRpcProtocolClient {
     }
   }
 
+  public notify(method: string, params?: unknown): void {
+    this.writeMessage({
+      jsonrpc: "2.0",
+      method,
+      ...(params === undefined ? {} : { params }),
+    });
+  }
+
+  private clearPendingRequest(pending: PendingRequest): void {
+    if (pending.timeout) {
+      clearTimeout(pending.timeout);
+    }
+    if (pending.signal && pending.abortListener) {
+      pending.signal.removeEventListener("abort", pending.abortListener);
+    }
+  }
+
   private handleSuccess(response: JsonRpcSuccess): void {
     const pending = this.pendingRequests.get(response.id);
 
@@ -180,7 +234,7 @@ export class JsonRpcProtocolClient {
       return;
     }
 
-    clearTimeout(pending.timeout);
+    this.clearPendingRequest(pending);
     this.pendingRequests.delete(response.id);
     pending.resolve(response.result);
   }
@@ -196,7 +250,7 @@ export class JsonRpcProtocolClient {
       return;
     }
 
-    clearTimeout(pending.timeout);
+    this.clearPendingRequest(pending);
     this.pendingRequests.delete(response.id);
 
     pending.reject(
@@ -229,7 +283,7 @@ export class JsonRpcProtocolClient {
 
   private rejectAllPendingRequests(error: Error): void {
     for (const pending of this.pendingRequests.values()) {
-      clearTimeout(pending.timeout);
+      this.clearPendingRequest(pending);
       pending.reject(error);
     }
 

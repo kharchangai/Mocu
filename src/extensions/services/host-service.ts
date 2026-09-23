@@ -9,6 +9,14 @@ import { TextSimilarity } from "../../services/ai/tools/textSimilarity";
 import { dispatchAgentToolActivity } from "../../chat/services/toolActivity";
 
 import { respondExtension } from "./extension-client";
+import { scanInstalledExtensions } from "./extension-scanner";
+import { getActiveRequestChatId } from "../../chat/services/activeChatSession";
+import {
+  cancelExtensionInteraction,
+  getExtensionInteraction,
+  setExtensionInteraction,
+} from "./extension-interaction-store";
+import type { ExtensionInteractionButton } from "../types/extension-interaction";
 
 const MAX_LLM_PROMPT_LENGTH = 100_000;
 const MAX_LLM_SYSTEM_PROMPT_LENGTH = 20_000;
@@ -54,10 +62,10 @@ function handleActivityNotification(
 /**
  * Handle host-bound JSON-RPC requests that extensions send toward Mocu.
  *
- * Rust forwards these as `extension://message` events. The only host method
- * currently supported is `mocu.llm.generate`, which lets an extension call
- * Mocu's configured model from inside a command. The result (or error) is
- * written back into the extension via Rust.
+ * Rust forwards these as `extension://message` events. Supported host methods
+ * include AI services and `mocu.extension.interact`, which pauses an
+ * interactive command until the user responds in chat. Replies are written
+ * back into the extension via Rust.
  */
 async function handleHostMessage(
   extensionId: string,
@@ -95,6 +103,22 @@ async function handleHostMessage(
   if (method === "mocu.extension.activity") {
     // One-way progress stream; never answered.
     handleActivityNotification(extensionId, params);
+    return;
+  }
+
+  if (method === "mocu.extension.interact") {
+    await handleExtensionInteraction(extensionId, requestId, params);
+    return;
+  }
+
+  if (method === "mocu.extension.interaction.cancel") {
+    const interactionRequestId = params.requestId;
+    if (
+      typeof interactionRequestId === "string" ||
+      typeof interactionRequestId === "number"
+    ) {
+      cancelExtensionInteraction(extensionId, interactionRequestId);
+    }
     return;
   }
 
@@ -178,6 +202,143 @@ async function handleHostMessage(
         data: null,
       });
     }
+  }
+}
+
+/**
+ * Publish a chat interaction requested by an extension and keep its JSON-RPC
+ * request pending until the user submits text or clicks one of its buttons.
+ */
+async function handleExtensionInteraction(
+  extensionId: string,
+  requestId: string | number | null,
+  params: Record<string, unknown>,
+): Promise<void> {
+  if (requestId === null) {
+    return;
+  }
+
+  const fail = async (message: string): Promise<void> => {
+    await respondExtension(extensionId, requestId, null, {
+      code: -32602,
+      message,
+      data: null,
+    });
+  };
+
+  try {
+    const command = typeof params.command === "string" ? params.command : "";
+    const context =
+      params.context &&
+      typeof params.context === "object" &&
+      !Array.isArray(params.context)
+        ? (params.context as Record<string, unknown>)
+        : {};
+    const chatId =
+      typeof context.chatId === "string" && context.chatId.trim()
+        ? context.chatId.trim()
+        : getActiveRequestChatId();
+
+    if (!command || !chatId) {
+      await fail(
+        "Interactive extension commands need a command and active chat context.",
+      );
+      return;
+    }
+
+    const installed = await scanInstalledExtensions();
+    const extension = installed.find((entry) => entry.manifest.id === extensionId);
+    const declaration = extension?.manifest.commands?.find(
+      (entry) => entry.id === command,
+    );
+
+    if (!declaration?.interactive) {
+      await fail(
+        `Extension command '${command}' must declare \"interactive\": true in its manifest.`,
+      );
+      return;
+    }
+
+    const rawButtons = Array.isArray(params.buttons) ? params.buttons : [];
+    if (rawButtons.length > 8) {
+      await fail("An extension interaction can show at most 8 buttons.");
+      return;
+    }
+
+    const seenButtonIds = new Set<string>();
+    const buttons: ExtensionInteractionButton[] = rawButtons.flatMap((value) => {
+      if (!value || typeof value !== "object" || Array.isArray(value)) {
+        return [];
+      }
+      const button = value as Record<string, unknown>;
+      if (
+        typeof button.id !== "string" ||
+        !button.id.trim() ||
+        typeof button.label !== "string" ||
+        !button.label.trim()
+      ) {
+        return [];
+      }
+
+      const id = button.id.trim().slice(0, 64);
+      if (seenButtonIds.has(id)) {
+        return [];
+      }
+      seenButtonIds.add(id);
+
+      const variant =
+        button.variant === "primary" || button.variant === "danger"
+          ? button.variant
+          : "secondary";
+      return [{
+        id,
+        label: button.label.trim().slice(0, 80),
+        variant,
+      }];
+    });
+    const inputEnabled = params.input === true;
+
+    if (!inputEnabled && buttons.length === 0) {
+      await fail(
+        "An interaction must enable text input or declare at least one button.",
+      );
+      return;
+    }
+
+    const activeInteraction = getExtensionInteraction(chatId);
+    if (activeInteraction && !activeInteraction.isResponding) {
+      await fail(
+        "This chat already has an extension waiting for a reply.",
+      );
+      return;
+    }
+
+    const wasPublished = setExtensionInteraction({
+      extensionId,
+      extensionName: extension?.manifest.name ?? extensionId,
+      requestId,
+      chatId,
+      command,
+      title:
+        typeof params.title === "string"
+          ? params.title.slice(0, 120)
+          : "Extension needs your input",
+      message: typeof params.message === "string" ? params.message.slice(0, 4_000) : "",
+      inputEnabled,
+      inputPlaceholder:
+        typeof params.inputPlaceholder === "string"
+          ? params.inputPlaceholder.slice(0, 240)
+          : "Reply to the extension…",
+      buttons,
+      isResponding: false,
+    });
+
+    if (!wasPublished) {
+      return;
+    }
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    await fail(message);
   }
 }
 
@@ -318,8 +479,8 @@ async function handleEmbeddingEmbed(
 
 /**
  * Start the app-side host bridge. This must run once for the lifetime of the
- * app so extensions can call Mocu host methods (currently the LLM). Returns
- * a cleanup function.
+ * app so extensions can call Mocu host methods, including interactive chat
+ * requests. Returns a cleanup function.
  */
 export function startExtensionHost(): () => void {
   let disposed = false;

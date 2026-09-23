@@ -5,6 +5,7 @@ import type { ExtensionExecuteParams } from "@mocu/extension-contracts";
 import { LlmApi } from "./llm.js";
 import { DecisionApi } from "./decision.js";
 import { EmbeddingApi } from "./embedding.js";
+import { ExtensionUiApi } from "./ui.js";
 import { JsonRpcProtocolClient } from "./protocol-client.js";
 
 import type {
@@ -16,8 +17,8 @@ import type {
 /**
  * The minimal Mocu extension SDK. An extension just registers command
  * handlers and calls `start()`; Mocu invokes the requested command on demand
- * via `extension.execute`. Extensions may also call the host LLM through
- * `extension.llm.generate()`.
+ * via `extension.execute`. Extensions may also call host AI APIs and request
+ * user interaction in Mocu chat through the execution context.
  */
 export class MocuExtension {
   private readonly protocol = new JsonRpcProtocolClient();
@@ -70,14 +71,34 @@ export class MocuExtension {
     this.protocol.start();
   }
 
+  /** Send a one-way JSON-RPC notification to the Mocu host. */
+  public notify(method: string, params?: unknown): void {
+    this.protocol.notify(method, params);
+  }
+
   private async executeCommand(
     params: ExtensionExecuteParams,
   ): Promise<{ success: boolean; output?: unknown; error?: string }> {
     try {
       let output: unknown;
+      const rawContext =
+        params.context && typeof params.context === "object"
+          ? (params.context as Record<string, unknown>)
+          : {};
+      const context = {
+        ...rawContext,
+        mocu: {
+          ui: new ExtensionUiApi(
+            this.protocol,
+            params.command,
+            rawContext,
+          ),
+        },
+      };
+      const executionParams = { ...params, context };
 
       if (this.definition.execute) {
-        output = await this.definition.execute(params);
+        output = await this.definition.execute(executionParams);
       } else {
         const handler = this.commands.get(params.command);
 
@@ -87,11 +108,6 @@ export class MocuExtension {
             error: `Unknown command: ${params.command}`,
           };
         }
-
-        const context: Record<string, unknown> =
-          params.context && typeof params.context === "object"
-            ? (params.context as Record<string, unknown>)
-            : {};
 
         const config: ExtensionConfig =
           params.config && typeof params.config === "object"

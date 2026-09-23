@@ -3,7 +3,8 @@ from __future__ import annotations
 import json
 import sys
 import threading
-from concurrent.futures import Future
+import time
+from concurrent.futures import Future, TimeoutError as FutureTimeoutError
 from typing import Any, Callable
 
 
@@ -38,7 +39,8 @@ class JsonRpcProtocol:
         self,
         method: str,
         params: Any = None,
-        timeout: float = 90.0,
+        timeout: float | None = 90.0,
+        cancel_event: threading.Event | None = None,
     ) -> Any:
         """Send a request to the host and wait for its response."""
         with self._pending_lock:
@@ -60,7 +62,37 @@ class JsonRpcProtocol:
         self._write_message(message)
 
         try:
-            return future.result(timeout=timeout)
+            if cancel_event is None:
+                return future.result(timeout=timeout)
+
+            deadline = None if timeout is None else time.monotonic() + timeout
+            while True:
+                if future.done():
+                    return future.result()
+
+                if cancel_event.is_set():
+                    with self._pending_lock:
+                        self._pending.pop(request_id, None)
+                    if method == "mocu.extension.interact":
+                        self._write_message({
+                            "jsonrpc": "2.0",
+                            "method": "mocu.extension.interaction.cancel",
+                            "params": {"requestId": request_id},
+                        })
+                    raise RuntimeError(f'Request "{method}" was cancelled.')
+
+                wait_seconds = 0.1
+                if deadline is not None:
+                    remaining = deadline - time.monotonic()
+                    if remaining <= 0:
+                        return future.result(timeout=0)
+                    wait_seconds = min(wait_seconds, remaining)
+
+                try:
+                    return future.result(timeout=wait_seconds)
+                except FutureTimeoutError:
+                    if deadline is not None and time.monotonic() >= deadline:
+                        raise
         except Exception:
             with self._pending_lock:
                 self._pending.pop(request_id, None)

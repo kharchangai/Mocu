@@ -14,6 +14,16 @@ export interface ExtensionEngines {
   python?: string;
 }
 
+export interface ExtensionCommand {
+  id: string;
+  title: string;
+  description?: string;
+  streaming?: boolean;
+  timeoutSeconds?: number;
+  /** Allows this command to request a user-facing chat interaction. */
+  interactive?: boolean;
+}
+
 export interface ExtensionManifest {
   manifestVersion: typeof SUPPORTED_MANIFEST_VERSION;
 
@@ -74,6 +84,9 @@ export interface ExtensionManifest {
    * Optional extension-specific configuration schema or defaults.
    */
   configuration?: Record<string, unknown>;
+
+  /** Commands exposed to the agent and their optional capabilities. */
+  commands?: ExtensionCommand[];
 }
 
 export interface ManifestValidationSuccess {
@@ -217,6 +230,26 @@ export const validateExtensionManifest = (
     !isRecord(value.configuration)
   ) {
     errors.push("configuration must be an object.");
+  }
+
+  if (value.commands !== undefined) {
+    if (!Array.isArray(value.commands)) {
+      errors.push("commands must be an array.");
+    } else {
+      for (const [index, command] of value.commands.entries()) {
+        if (!isRecord(command)) {
+          errors.push(`commands[${index}] must be an object.`);
+          continue;
+        }
+
+        if (
+          command.interactive !== undefined &&
+          typeof command.interactive !== "boolean"
+        ) {
+          errors.push(`commands[${index}].interactive must be a boolean.`);
+        }
+      }
+    }
   }
 
   if (errors.length > 0) {

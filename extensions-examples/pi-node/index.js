@@ -506,12 +506,116 @@ const extension = createExtension({
 
       stream.start();
 
+      let runPromise = null;
+      let isPaused = false;
+      let wasCancelled = false;
+
       try {
-        // Resolves when the whole run finishes (all tool calls, retries...).
-        await session.prompt(prompt);
+        runPromise = session.prompt(prompt);
+        while (true) {
+          const interactionAbort = new AbortController();
+          const interaction = context.mocu.ui.interact(
+            {
+              title: isPaused ? "Pi is paused" : "Pi is working",
+              message: isPaused
+                ? "Pi stopped at your request. Send new instructions or resume the existing task."
+                : "Send a message to steer Pi, or stop its current turn and resume later.",
+              input: true,
+              inputPlaceholder: isPaused
+                ? "Instructions for Pi to continue…"
+                : "Send instructions to Pi…",
+              buttons: isPaused
+                ? [
+                    { id: "resume", label: "Continue Pi", variant: "primary" },
+                    { id: "cancel", label: "Cancel task", variant: "danger" },
+                  ]
+                : [
+                    { id: "stop", label: "Stop Pi & wait", variant: "secondary" },
+                    { id: "cancel", label: "Cancel task", variant: "danger" },
+                  ],
+            },
+            interactionAbort.signal,
+          ).then(
+            (response) => ({ type: "interaction", response }),
+            (error) => ({ type: "interaction-error", error }),
+          );
+
+          const outcome = runPromise
+            ? await Promise.race([
+                runPromise.then(
+                  () => ({ type: "finished" }),
+                  (error) => ({ type: "failed", error }),
+                ),
+                interaction,
+              ])
+            : await interaction;
+
+          if (outcome.type === "finished" || outcome.type === "failed") {
+            // Close the Mocu interaction card as soon as Pi finishes.
+            interactionAbort.abort();
+            await interaction;
+            if (outcome.type === "failed") {
+              throw outcome.error;
+            }
+            break;
+          }
+
+          if (outcome.type === "interaction-error") {
+            throw outcome.error;
+          }
+
+          const { actionId, input: userMessage } = outcome.response;
+
+          if (actionId === "cancel") {
+            wasCancelled = true;
+            await session.abort();
+            await runPromise?.catch(() => undefined);
+            runPromise = null;
+            break;
+          }
+
+          if (actionId === "stop") {
+            stream.append("\n[user stopped Pi; waiting for instructions]\n");
+            await session.abort();
+            await runPromise?.catch(() => undefined);
+            runPromise = null;
+            isPaused = true;
+            continue;
+          }
+
+          if (actionId === "resume") {
+            stream.append("\n[user resumed the Pi task]\n");
+            runPromise = session.prompt(
+              "Continue working on the existing task from where you stopped.",
+            );
+            isPaused = false;
+            continue;
+          }
+
+          if (actionId === "__input__" && userMessage?.trim()) {
+            const instruction = userMessage.trim();
+            stream.append(`\n[user instruction] ${instruction}\n`);
+
+            if (isPaused || !session.isStreaming) {
+              // After Stop, prompt() starts another turn in the same Pi session
+              // so it keeps the previous conversation and task context.
+              await runPromise?.catch(() => undefined);
+              runPromise = session.prompt(instruction);
+              isPaused = false;
+            } else {
+              // While Pi is running, steer() queues the message for the next
+              // turn after the current tool batch, just like Pi's own TUI.
+              await session.steer(instruction);
+            }
+          }
+        }
       } finally {
         unsubscribe();
         stream.stop();
+      }
+
+      if (wasCancelled) {
+        return `Pi task cancelled by the user.${lastAssistantText ? ` Last response: ${lastAssistantText}` : ""}`;
       }
 
       return lastAssistantText || "(pi finished without producing any text)";

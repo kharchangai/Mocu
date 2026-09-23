@@ -86,4 +86,32 @@ export const HOST_METHODS = {
   llmGenerate: LLM_GENERATE_METHOD,
   decisionAsk: DECISION_ASK_METHOD,
   embeddingEmbed: EMBEDDING_EMBED_METHOD,
+  extensionInteract: "mocu.extension.interact",
+  extensionInteractionCancel: "mocu.extension.interaction.cancel",
 } as const;
+
+/** Buttons an extension may display while waiting for user input. */
+export interface ExtensionInteractionButton {
+  id: string;
+  label: string;
+  variant?: "primary" | "secondary" | "danger";
+}
+
+/**
+ * A one-shot interactive prompt. The extension waits for the user to submit
+ * text or choose one of the declared buttons, then may display another prompt.
+ */
+export interface ExtensionInteractionParams {
+  command: string;
+  context?: unknown;
+  title?: string;
+  message?: string;
+  input?: boolean;
+  inputPlaceholder?: string;
+  buttons?: ExtensionInteractionButton[];
+}
+
+export interface ExtensionInteractionResult {
+  actionId: string;
+  input?: string;
+}

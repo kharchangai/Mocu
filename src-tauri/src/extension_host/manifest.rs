@@ -35,6 +35,10 @@ pub struct ExtensionCommand {
     #[serde(default)]
     pub streaming: bool,
 
+    /// Allows the command to request user interaction in Mocu chat.
+    #[serde(default)]
+    pub interactive: bool,
+
     /// Per-command execution timeout in seconds. Omitted -> default (900s).
     /// `0` -> no timeout (wait until the extension answers).
     #[serde(default)]

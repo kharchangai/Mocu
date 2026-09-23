@@ -7,6 +7,7 @@ from .embedding import EmbeddingApi
 from .llm import LlmApi
 from .protocol import JsonRpcProtocol
 from .types import CommandHandler
+from .ui import ExtensionUiApi
 
 
 class MocuExtension:
@@ -14,8 +15,9 @@ class MocuExtension:
     Minimal Mocu extension. An extension registers command handlers and calls
     `run()`; Mocu invokes the requested command on demand via
     `extension.execute`. Extensions may also call host APIs from inside a
-    command: `extension.llm.generate()`, `extension.decision.ask()` and
-    `extension.embedding.embed()`. Handlers receive `(input, context, config)`
+    command: `extension.llm.generate()`, `extension.decision.ask()`,
+    `extension.embedding.embed()` and `context["mocu"]["ui"].interact()`.
+    Handlers receive `(input, context, config)`
     where `config` holds the values the user filled in on the extension's
     card in the Extensions page (manifest `config` fields).
     """
@@ -98,6 +100,20 @@ class MocuExtension:
             config = {}
 
         try:
+            context = {
+                **context,
+                "mocu": {
+                    "ui": ExtensionUiApi(
+                        self._protocol,
+                        command,
+                        {
+                            key: value
+                            for key, value in context.items()
+                            if key != "mocu"
+                        },
+                    ),
+                },
+            }
             output = handler(input_value, context, config)
 
             return {

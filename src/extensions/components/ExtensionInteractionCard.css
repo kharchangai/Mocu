@@ -1,0 +1,111 @@
+.extension-interaction-notice {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  width: min(100%, 820px);
+  margin: 0 auto 7px;
+  padding: 0 4px 7px;
+  border-bottom: 1px solid #e7e7e7;
+  color: #222222;
+  box-sizing: border-box;
+}
+
+.extension-interaction-notice-copy {
+  min-width: 0;
+  flex: 1 1 auto;
+}
+
+.extension-interaction-notice-heading {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px;
+  color: #333333;
+  font-size: 11px;
+  line-height: 1.4;
+}
+
+.extension-interaction-notice-heading strong {
+  color: #111111;
+  font-weight: 650;
+}
+
+.extension-interaction-notice-state {
+  color: #666666;
+}
+
+.extension-interaction-notice-message {
+  display: -webkit-box;
+  margin: 2px 0 0;
+  overflow: hidden;
+  color: #666666;
+  font-size: 10px;
+  line-height: 1.35;
+  overflow-wrap: anywhere;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+}
+
+.extension-interaction-notice-actions {
+  display: flex;
+  flex: 0 0 auto;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 6px;
+}
+
+.extension-interaction-action {
+  min-height: 28px;
+  padding: 4px 9px;
+  border: 1px solid #c8c8c8;
+  border-radius: 6px;
+  color: #222222;
+  background: #ffffff;
+  cursor: pointer;
+  font: inherit;
+  font-size: 10px;
+  font-weight: 600;
+  transition: background 120ms ease, color 120ms ease, border-color 120ms ease;
+}
+
+.extension-interaction-action:hover:not(:disabled) {
+  border-color: #222222;
+  color: #ffffff;
+  background: #222222;
+}
+
+.extension-interaction-action--primary {
+  border-color: #222222;
+  color: #ffffff;
+  background: #222222;
+}
+
+.extension-interaction-action--primary:hover:not(:disabled) {
+  border-color: #000000;
+  color: #ffffff;
+  background: #000000;
+}
+
+.extension-interaction-action--danger {
+  border-color: #c8c8c8;
+  color: #222222;
+  background: #ffffff;
+}
+
+.extension-interaction-action:disabled {
+  cursor: wait;
+  opacity: 0.55;
+}
+
+@media (max-width: 560px) {
+  .extension-interaction-notice {
+    align-items: flex-start;
+    flex-direction: column;
+    gap: 5px;
+  }
+
+  .extension-interaction-notice-actions {
+    justify-content: flex-start;
+  }
+}

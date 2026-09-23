@@ -1,7 +1,7 @@
 {
   "id": "pi-node",
   "name": "Pi Agent",
-  "description": "Embeds a pi coding-agent session inside the extension. 'ask' sends a prompt to pi and returns its final response; 'reset' starts a fresh session.",
+  "description": "Embeds a persistent pi coding-agent session with live Mocu chat controls for steering, pausing and resuming tasks.",
   "version": "0.1.0",
   "runtime": "node",
   "entry": "index.js",
@@ -16,9 +16,10 @@
     {
       "id": "ask",
       "title": "Ask pi",
-      "description": "Send a prompt to a pi agent session and return its final response.",
+      "description": "Run pi with live progress; steer it, stop and resume the same task, or cancel from Mocu chat.",
       "streaming": true,
-      "timeoutSeconds": 900
+      "interactive": true,
+      "timeoutSeconds": 0
     },
     {
       "id": "reset",

@@ -32,6 +32,11 @@ Ask (or infer) from the user's request:
 5. **Long-running?** If yes, add `streaming: true` and a suitable
    `timeoutSeconds` — [streaming-activity.md](streaming-activity.md),
    [manifest-reference.md](manifest-reference.md).
+6. **Needs a reply or action while running?** Declare `interactive: true` and
+   use `context.mocu.ui.interact()` (Node) or
+   `context["mocu"]["ui"].interact()` (Python) to show custom buttons and/or
+   route composer text directly to the extension — [chat-interaction.md](chat-interaction.md).
+   Use `timeoutSeconds: 0` when the user may need a long time to respond.
 
 ## Step 1 — Scaffold the project
 
@@ -68,6 +73,8 @@ Full field reference: [manifest-reference.md](manifest-reference.md).
 - Need vectors? `extension.embedding.embedText("...")`.
 - Need user input (API key, URL)? Declare it in `config` and read the third
   handler argument — [user-config.md](user-config.md).
+- Need in-run input or action buttons? Mark the command `interactive: true`
+  and call the interaction API — [chat-interaction.md](chat-interaction.md).
 - Never write to stdout except through the SDK.
 
 ## Step 3 — Validate
@@ -85,6 +92,8 @@ Checklist before delivering:
       the deliverable.
 - [ ] Commands that take long declare `timeoutSeconds`; commands with
       progress declare `"streaming": true`.
+- [ ] Commands that need in-run user input declare `"interactive": true` and
+      handle text/button results. Prefer `timeoutSeconds: 0` for user waits.
 
 ## Step 4 — Package and deliver
 

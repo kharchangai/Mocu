@@ -21,6 +21,8 @@ import {
 import { listAvailableSkills } from '../services/skillService';
 import { listAvailableAgents } from '../agent/agent-loader';
 import { scanInstalledExtensions } from '../../extensions/services/extension-scanner';
+import { ExtensionInteractionCard } from '../../extensions/components/ExtensionInteractionCard';
+import type { ExtensionInteraction } from '../../extensions/services/extension-interaction-store';
 import { COMMANDS, CommandMenu } from './CommandMenu';
 import {
   filterSkills,
@@ -93,6 +95,13 @@ export type ChatInputProps = {
     options: SendOptions,
   ) => void | Promise<void>;
   onStop?: () => void;
+  /** True while an extension is awaiting a reply in this chat. */
+  interactionActive?: boolean;
+  interactionInputEnabled?: boolean;
+  interactionInputPlaceholder?: string;
+  onInteractionSend?: (text: string) => void | Promise<void>;
+  interaction?: ExtensionInteraction | null;
+  onInteractionChoose?: (actionId: string) => void;
 };
 
 type CommandMenuMode = 'commands' | 'skills' | 'extensions' | 'agents' | 'mcp';
@@ -161,6 +170,12 @@ export function ChatInput({
   onValueChange,
   onSend,
   onStop,
+  interactionActive = false,
+  interactionInputEnabled = false,
+  interactionInputPlaceholder,
+  onInteractionSend,
+  interaction = null,
+  onInteractionChoose,
 }: ChatInputProps) {
   const textareaRef = useRef<HTMLTextAreaElement | null>(null);
   const highlightRef = useRef<HTMLDivElement | null>(null);
@@ -335,7 +350,9 @@ export function ChatInput({
     );
   }, [availableModels, modelSearchQuery]);
 
-  const canSend = safeValue.trim().length > 0 && !isLoading;
+  const canSend =
+    safeValue.trim().length > 0 &&
+    (interactionInputEnabled || (!isLoading && !interactionActive));
   /*
    * Names/ids of the pinned resources, used by the toggle menu to mark
    * which switches are on and by the chip row to render them.
@@ -1082,7 +1099,31 @@ export function ChatInput({
   const handleSend = async () => {
     const message = safeValue.trim();
 
-    if (!message || isLoading) {
+    if (!message) {
+      return;
+    }
+
+    if (interactionActive) {
+      if (!interactionInputEnabled || !onInteractionSend) {
+        return;
+      }
+      setSendError(null);
+      onValueChange('');
+      try {
+        await onInteractionSend(message);
+        return;
+      } catch (error) {
+        onValueChange(message);
+        setSendError(
+          error instanceof Error
+            ? error.message
+            : 'The reply could not be sent to the extension.',
+        );
+        return;
+      }
+    }
+
+    if (isLoading) {
       return;
     }
 
@@ -1305,6 +1346,13 @@ export function ChatInput({
   return (
     <div className="chat-input-shell">
       <div className="chat-input-inner">
+        {interaction && onInteractionChoose && (
+          <ExtensionInteractionCard
+            interaction={interaction}
+            onChoose={onInteractionChoose}
+          />
+        )}
+
         <div className="chat-composer">
           {isResourceMenuOpen && (
             <ResourceToggleMenu
@@ -1511,11 +1559,25 @@ export function ChatInput({
               }
             }}
             onScroll={handleTextareaScroll}
-            placeholder={`Message ${agentName}`}
+            placeholder={
+              interactionActive
+                ? interactionInputEnabled
+                  ? interactionInputPlaceholder ?? `Message ${interaction?.extensionName ?? 'the extension'}…`
+                  : 'Choose an action above to continue'
+                : `Message ${agentName}`
+            }
             rows={1}
             dir={inputDirection}
-            disabled={isLoading}
-            aria-label={`Message ${agentName}`}
+            disabled={
+              interactionActive
+                ? !interactionInputEnabled
+                : isLoading
+            }
+            aria-label={
+              interactionActive
+                ? `Reply to ${interaction?.extensionName ?? 'extension'}`
+                : `Message ${agentName}`
+            }
             aria-expanded={isCommandMenuOpen}
             aria-controls={
               isCommandMenuOpen
@@ -1749,7 +1811,7 @@ export function ChatInput({
                 <Mic size={17} />
               </button>
 
-              {isLoading ? (
+              {isLoading && !(interactionInputEnabled && safeValue.trim()) ? (
                 <button
                   type="button"
                   className="send-button send-button--stop"
@@ -1764,7 +1826,11 @@ export function ChatInput({
                   className="send-button"
                   onClick={() => void handleSend().catch(() => undefined)}
                   disabled={!canSend}
-                  aria-label="Send message"
+                  aria-label={
+                    interactionActive
+                      ? `Send reply to ${interaction?.extensionName ?? 'extension'}`
+                      : 'Send message'
+                  }
                 >
                   <SendHorizontal size={18} />
                 </button>

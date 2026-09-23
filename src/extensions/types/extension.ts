@@ -10,6 +10,8 @@ export interface ExtensionCommand {
    * renders those updates inside the command's tool card.
    */
   streaming?: boolean;
+  /** Allows this command to request buttons/text input in Mocu chat. */
+  interactive?: boolean;
   /**
    * Per-command execution timeout in seconds. Omitted -> default (900s).
    * `0` -> no timeout (wait until the extension answers).

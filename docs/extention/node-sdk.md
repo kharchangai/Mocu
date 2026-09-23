@@ -1,7 +1,7 @@
 # Building a Node.js Extension (`@mocu/extension-sdk`)
 
 **Search keywords:** node extension, node.js, npm, @mocu/extension-sdk,
-createExtension, registerCommand, commands, start, handler, input, context,
+createExtension, registerCommand, commands, start, handler, input, context, chat interaction, buttons,
 ESM, type module, package.json, index.js, entry file, tutorial, example,
 console.log stdout, stderr, async command, execute override
 
@@ -76,8 +76,8 @@ extension.start(); // start the stdin JSON-RPC loop — required!
 | Member | Description |
 |--------|-------------|
 | `createExtension(definition)` | Factory; same as `new MocuExtension(definition)`. |
-| `definition.commands` | `Record<string, (input, context, config) => result>`. One entry per command id. |
-| `definition.execute` | Advanced: take over the whole `extension.execute` handling yourself (receives `{ command, input }`). Mutually exclusive in practice with `commands`. |
+| `definition.commands` | `Record<string, (input, context, config) => result>`. One entry per command id. Interactive commands use `context.mocu.ui.interact(options)`. |
+| `definition.execute` | Advanced: take over the whole `extension.execute` handling yourself. Receives the execute params, with `context.mocu.ui` available for interactive commands. Mutually exclusive in practice with `commands`. |
 | `extension.registerCommand(name, handler)` | Register a command after construction. Throws on empty or duplicate names. |
 | `extension.start()` | Begin reading JSON-RPC from stdin. **Must be called** or Mocu calls will hang until timeout. |
 | `extension.llm.generate(params)` | Call the Mocu host LLM. See [llm-calls.md](llm-calls.md). |
@@ -89,7 +89,9 @@ extension.start(); // start the stdin JSON-RPC loop — required!
   Treat it as unknown JSON; validate before use.
 - `context` — an object with host-provided metadata. For streaming commands
   it contains `toolCallId` and `toolName` (see
-  [streaming-activity.md](streaming-activity.md)).
+  [streaming-activity.md](streaming-activity.md)). The SDK also adds
+  `context.mocu.ui.interact(options)` for commands declared with
+  `interactive: true`; see [chat-interaction.md](chat-interaction.md).
 - Return value may be a string, object, array — any JSON value. It is wrapped
   automatically into `{ success: true, output: ... }`.
 - Throw an `Error` to return `{ success: false, error: message }`.
@@ -120,6 +122,7 @@ queueing) and `extensions-examples/time-node` (minimal). Catalog in
 ## Related documents
 
 - Manifest fields: [manifest-reference.md](manifest-reference.md)
+- User interaction: [chat-interaction.md](chat-interaction.md)
 - Host LLM calls: [llm-calls.md](llm-calls.md)
 - Streaming: [streaming-activity.md](streaming-activity.md)
 - Python version: [python-sdk.md](python-sdk.md)

@@ -4,7 +4,7 @@
 stdout, newline-delimited, ndjson, extension.execute, request, response,
 notification, id, params, result, error, success, output, host methods,
 mocu.llm.generate, mocu.decision.ask, mocu.embedding.embed,
-mocu.extension.activity, timeout, error handling, spawn, entry point,
+mocu.extension.activity, mocu.extension.interact, timeout, error handling, spawn, entry point,
 message framing, config param
 
 The host and the extension communicate with **JSON-RPC 2.0** messages, one
@@ -107,6 +107,39 @@ One-way progress streaming; no response is ever sent:
 
 Details: [streaming-activity.md](streaming-activity.md).
 
+## Extension → Host: `mocu.extension.interact` (request)
+
+Interactive commands declare `interactive: true` in their manifest, then send
+this request while their `extension.execute` call is running:
+
+```json
+{
+  "jsonrpc": "2.0",
+  "id": 13,
+  "method": "mocu.extension.interact",
+  "params": {
+    "command": "guided-task",
+    "context": { "chatId": "chat-id", "toolCallId": "tool-id" },
+    "title": "Choose an action",
+    "message": "How should I continue?",
+    "input": true,
+    "inputPlaceholder": "Reply to the extension…",
+    "buttons": [
+      { "id": "continue", "label": "Continue", "variant": "primary" },
+      { "id": "cancel", "label": "Cancel", "variant": "danger" }
+    ]
+  }
+}
+```
+
+Mocu displays the interaction in that chat and leaves the request pending. A
+user's text submission replies with `{ "actionId": "__input__", "input": "..." }`;
+a button replies with `{ "actionId": "continue" }`. The extension handles the
+result and may issue another interaction request. A Node SDK interaction may
+be cancelled with a `mocu.extension.interaction.cancel` notification carrying
+the local interaction request id; Mocu then dismisses the card. See
+[chat-interaction.md](chat-interaction.md).
+
 ## Error responses (JSON-RPC level)
 
 If a request cannot be processed at all, respond with a JSON-RPC error:
@@ -121,6 +154,8 @@ If a request cannot be processed at all, respond with a JSON-RPC error:
 - `HOST_METHODS.llmGenerate` = `"mocu.llm.generate"` (`llm.ts`)
 - `HOST_METHODS.decisionAsk` = `"mocu.decision.ask"` (`decision.ts`)
 - `HOST_METHODS.embeddingEmbed` = `"mocu.embedding.embed"` (`embedding.ts`)
+- `HOST_METHODS.extensionInteract` = `"mocu.extension.interact"`
+- `HOST_METHODS.extensionInteractionCancel` = `"mocu.extension.interaction.cancel"`
 - Activity method (used by SDKs/examples): `"mocu.extension.activity"`
 
 ## Timeout behavior

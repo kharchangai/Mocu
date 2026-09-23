@@ -4,7 +4,7 @@
 create_extension, @command decorator, register_command, run, main.py,
 async def, await, event loop, asyncio, tutorial, example, print stdout,
 stderr, requires-python, snake_case, camelCase, config, decision,
-embedding
+embedding, chat interaction, buttons
 
 ## Project layout
 
@@ -66,6 +66,8 @@ if __name__ == "__main__":
 - Handler signature: `handler(input, context, config)`.
   - `input` — the caller-supplied JSON value (often a dict).
   - `context` — a dict of host-provided metadata (empty dict if absent).
+    The SDK adds `context["mocu"]["ui"].interact(...)` for commands declared
+    with `interactive: true`; see [chat-interaction.md](chat-interaction.md).
   - `config` — a dict of the user-filled values for the manifest's `config`
     fields (API keys, URLs, ...), merged with declared defaults. Empty dict
     when the manifest declares no config fields. Details:
@@ -110,6 +112,7 @@ error message.
 ## Related documents
 
 - Manifest fields (incl. `config`): [manifest-reference.md](manifest-reference.md)
+- User interaction: [chat-interaction.md](chat-interaction.md)
 - User settings (API keys, URLs): [user-config.md](user-config.md)
 - Wire protocol: [protocol-reference.md](protocol-reference.md)
 - Jev decision model: [decision-model.md](decision-model.md)

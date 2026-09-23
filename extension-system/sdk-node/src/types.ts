@@ -2,6 +2,8 @@ import type {
   ExtensionExecuteParams,
 } from "@mocu/extension-contracts";
 
+import type { ExtensionUiApi } from "./ui.js";
+
 export type MaybePromise<T> = T | Promise<T>;
 
 /**
@@ -16,9 +18,22 @@ export type ExtensionConfig = Record<string, unknown>;
  * context object, and the user-filled config values, and returns whatever
  * the extension wants to send back.
  */
+export interface ExtensionCommandContext extends Record<string, unknown> {
+  mocu: {
+    ui: ExtensionUiApi;
+  };
+}
+
+export type ExtensionExecuteHandlerParams = Omit<
+  ExtensionExecuteParams,
+  "context"
+> & {
+  context: ExtensionCommandContext;
+};
+
 export type ExtensionCommandHandler = (
   input: unknown,
-  context: Record<string, unknown>,
+  context: ExtensionCommandContext,
   config: ExtensionConfig,
 ) => MaybePromise<unknown>;
 
@@ -29,7 +44,7 @@ export type ExtensionCommandHandler = (
 export interface MocuExtensionDefinition {
   commands?: Record<string, ExtensionCommandHandler>;
   execute?: (
-    params: ExtensionExecuteParams,
+    params: ExtensionExecuteHandlerParams,
   ) => MaybePromise<unknown>;
 }
 
@@ -39,5 +54,7 @@ export interface MocuExtensionDefinition {
 export interface PendingRequest {
   resolve: (value: unknown) => void;
   reject: (error: Error) => void;
-  timeout: ReturnType<typeof setTimeout>;
+  timeout: ReturnType<typeof setTimeout> | null;
+  signal?: AbortSignal;
+  abortListener?: () => void;
 }

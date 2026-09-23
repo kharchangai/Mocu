@@ -1,7 +1,7 @@
 # Manifest Reference (`manifest.json`)
 
 **Search keywords:** manifest.json, manifest fields, id, name, version,
-runtime, entry, commands, streaming, timeoutSeconds, permissions, engines,
+runtime, entry, commands, streaming, interactive, timeoutSeconds, permissions, engines,
 configuration, manifestVersion, validation, reverse-domain, semver,
 invalid manifest, validation error, command id, title, description,
 config, user settings, api key, form
@@ -28,6 +28,7 @@ manifests are rejected at install/scan time.
       "title": "Ask pi",
       "description": "Send a prompt and return its final response.",
       "streaming": true,
+      "interactive": false,
       "timeoutSeconds": 900
     }
   ],
@@ -74,7 +75,10 @@ Each entry:
 | `title` | string | Short human-readable title (shown in UI). |
 | `description` | string | What the command does. Injected into the agent system prompt, so write it so an LLM can decide when to call the command. |
 | `streaming` | bool | When `true`, the command may stream live progress to the chat via `mocu.extension.activity` notifications. See [streaming-activity.md](streaming-activity.md). |
+| `interactive` | bool | When `true`, the command may display extension-defined buttons and request text input in Mocu chat. See [chat-interaction.md](chat-interaction.md). |
 | `timeoutSeconds` | number | Per-command timeout in seconds. Omitted → default **900s**. `0` → **no timeout** (wait until the extension answers). Values above 86400 (24h) are clamped. |
+
+Interactive commands should usually set `timeoutSeconds` to `0` so users have enough time to respond.
 
 Note the casing: inside `commands` entries the field is `timeoutSeconds`
 (camelCase) because the Rust host deserializes with `rename_all = "camelCase"`.
