@@ -1423,6 +1423,7 @@ export const callChatAgent =
       createStartStepByStepWorkflowTool({
         chatId: stepWorkflowChatId,
         userMessage: userText,
+        selectedModel,
       });
 
     /*

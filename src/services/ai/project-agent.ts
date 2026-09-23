@@ -1229,6 +1229,7 @@ export const callProjectAgent =
           runnableConfig,
         ) || "default",
         userMessage: userText,
+        selectedModel,
       });
 
     /*

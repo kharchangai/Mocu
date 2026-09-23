@@ -13,7 +13,11 @@ import type {
   WorkflowState,
 } from "./types";
 
-import { getAsyncLLM, getMainAgentLlm } from "../llm";
+import {
+  getAsyncLLM,
+  getMainAgentLlm,
+  getSelectedChatModel,
+} from "../llm";
 
 import { terminalExecutionTool } from "../tools/terminal_execution_tool";
 import { perplexitySearchTool } from "../tools/perplexity_search_tool";
@@ -21,7 +25,6 @@ import { skillLoaderTool } from "../tools/skill_loader_tool";
 import { createAgentTool } from "../tools/create_agent_tool";
 import { desktopVisionTool } from "../tools/desktop-vision-tool";
 import { scheduleTool } from "../../../schedule/schedule-tool";
-import { fileManagerTool } from "../tools/filesystem/file-manager-tool";
 import {
   createDocTool,
   updateDocTool,
@@ -98,7 +101,6 @@ async function buildMainAgentToolRuntime(
     perplexitySearchTool,
     skillLoaderTool,
     createAgentTool,
-    fileManagerTool,
     createDocTool,
     updateDocTool,
     deleteDocTool,
@@ -211,13 +213,18 @@ export async function startStepByStepWorkflow(input: {
   chatId: string;
   userMessage: string;
   taskDescription: string;
+  selectedModel?: string;
 }): Promise<StepPlan> {
   const plan = await createStepPlan({
     userMessage: input.userMessage,
     agentResponse: input.taskDescription,
   });
 
-  const workflowId = await executor.start(plan, input.chatId);
+  const workflowId = await executor.start(
+    plan,
+    input.chatId,
+    input.selectedModel,
+  );
 
   await store.setChatWorkflow(input.chatId, workflowId);
 
@@ -267,9 +274,7 @@ export async function handleStepWorkflowMessage(
     options.projectPath?.trim() || undefined,
   );
   const selectedModel =
-    typeof config.configurable?.selectedModel === "string"
-      ? config.configurable.selectedModel.trim()
-      : "";
+    getSelectedChatModel(config) || state.selectedModel?.trim() || "";
 
   return executor.send(
     workflowId,
@@ -306,6 +311,7 @@ const startWorkflowArgsSchema = z.object({
 export function createStartStepByStepWorkflowTool(options: {
   chatId: string;
   userMessage: string;
+  selectedModel?: string;
 }): StructuredToolInterface {
   return tool(
     async ({ task_description }) => {
@@ -329,6 +335,7 @@ export function createStartStepByStepWorkflowTool(options: {
           chatId,
           userMessage,
           taskDescription: task_description,
+          selectedModel: options.selectedModel,
         });
 
         const firstStep = plan.steps[0];

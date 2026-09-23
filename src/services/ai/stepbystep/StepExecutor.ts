@@ -93,6 +93,7 @@ export class StepExecutor {
   async start(
     plan: StepPlan,
     chatId: string,
+    selectedModel?: string,
   ): Promise<string> {
     const parsed = StepPlanSchema.parse(plan);
 
@@ -118,6 +119,9 @@ export class StepExecutor {
     const state: WorkflowState = {
       id,
       chatId,
+      ...(selectedModel?.trim()
+        ? { selectedModel: selectedModel.trim() }
+        : {}),
       plan: normalizedPlan,
       currentStepIndex: 0,
       status: "active",
