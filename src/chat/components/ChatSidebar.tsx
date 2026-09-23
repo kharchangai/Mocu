@@ -1,12 +1,15 @@
 import { useEffect, useState, type ReactNode } from 'react';
+import { Check, Folder, Pencil, Trash2, X } from 'lucide-react';
 
 import { confirm } from '@tauri-apps/plugin-dialog';
 
 import type { RecentChat } from '../types/chat';
+import type { ProjectWorkspace } from '../services/projectWorkspaces';
 import { listAvailableAgents, type AvailableAgent } from '../agent/agent-loader';
 import { useRunningChatIds } from '../services/chatRuns';
 
 export type ChatSidebarItemId =
+  | 'home'
   | 'new-chat'
   | 'chats'
   | 'projects'
@@ -25,12 +28,14 @@ type ChatSidebarProps = {
   isProjectsOpen: boolean;
   hasProjectFolder: boolean;
   chats: RecentChat[];
-  projects: RecentChat[];
+  projects: ProjectWorkspace[];
   onSelect: (item: ChatSidebarItemId) => void;
   onSelectChat: (chatId: string) => void;
+  onSelectProject: (path: string) => void;
   onToggleChats: () => void;
   onToggleProjects: () => void;
   onDeleteChat?: (chatId: string) => void;
+  onRenameChat: (chatId: string, title: string) => void;
 };
 
 type NavButtonProps = {
@@ -83,10 +88,7 @@ function NavButton({
   );
 }
 
-/*
- * Renders one saved conversation list. Shared by the Chats and
- * Projects sections so both accordions behave identically.
- */
+/* Renders the saved conversations under the Chats accordion. */
 type ChatListProps = {
   chats: RecentChat[];
   activeChatId: string | null;
@@ -96,6 +98,7 @@ type ChatListProps = {
     chatId: string,
     chatTitle: string,
   ) => void | Promise<void>;
+  onRenameChat: (chatId: string, title: string) => void;
 };
 
 function ChatList({
@@ -104,13 +107,33 @@ function ChatList({
   emptyLabel,
   onSelectChat,
   onDeleteChat,
+  onRenameChat,
 }: ChatListProps) {
+  const [editingChatId, setEditingChatId] = useState<string | null>(null);
+  const [editingTitle, setEditingTitle] = useState('');
   /*
    * Chats whose agent is currently running in the background. Each chat
    * shows a small live dot, so conversations working in parallel are
    * visible at a glance even while another chat is open.
    */
   const runningChatIds = useRunningChatIds();
+
+  const startRenaming = (chatId: string, title: string) => {
+    setEditingChatId(chatId);
+    setEditingTitle(title);
+  };
+
+  const cancelRenaming = () => {
+    setEditingChatId(null);
+    setEditingTitle('');
+  };
+
+  const saveRename = (chatId: string) => {
+    const title = editingTitle.replace(/\s+/g, ' ').trim();
+    if (!title) return;
+    onRenameChat(chatId, title);
+    cancelRenaming();
+  };
   if (chats.length === 0) {
     return (
       <p className="chat-sidebar-chats-empty">
@@ -130,57 +153,126 @@ function ChatList({
               : ''
           }`}
         >
-          <button
-            type="button"
-            className="chat-sidebar-chat-open"
-            onClick={() => onSelectChat(chat.id)}
-            title={chat.title}
-            aria-current={
-              activeChatId === chat.id
-                ? 'page'
-                : undefined
-            }
-          >
-            {runningChatIds.includes(chat.id) ? (
-              <span
-                className="chat-sidebar-chat-running"
-                aria-hidden="true"
-                title="Mocu is still working on this chat"
-              />
-            ) : null}
-            {chat.title}
-          </button>
-
-          <button
-            type="button"
-            className="chat-sidebar-chat-more"
-            onClick={() =>
-              void onDeleteChat(chat.id, chat.title)
-            }
-            aria-label={`Delete ${chat.title}`}
-            title="Delete chat"
-          >
-            <svg
-              viewBox="0 0 24 24"
-              width="14"
-              height="14"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth="1.8"
-              strokeLinecap="round"
-              strokeLinejoin="round"
-              aria-hidden="true"
+          {editingChatId === chat.id ? (
+            <form
+              className="chat-sidebar-chat-edit-form"
+              onSubmit={(event) => {
+                event.preventDefault();
+                saveRename(chat.id);
+              }}
             >
-              <path d="M3 6h18" />
-              <path d="M8 6V4h8v2" />
-              <path d="M19 6l-1 14H6L5 6" />
-              <path d="M10 11v5" />
-              <path d="M14 11v5" />
-            </svg>
-          </button>
+              <input
+                autoFocus
+                className="chat-sidebar-chat-edit-input"
+                value={editingTitle}
+                onChange={(event) => setEditingTitle(event.target.value)}
+                onKeyDown={(event) => {
+                  if (event.key === 'Escape') {
+                    event.preventDefault();
+                    cancelRenaming();
+                  }
+                }}
+                aria-label={`Rename ${chat.title}`}
+                maxLength={120}
+              />
+              <span className="chat-sidebar-chat-edit-actions">
+                <button
+                  type="submit"
+                  className="chat-sidebar-chat-action chat-sidebar-chat-action-save"
+                  disabled={!editingTitle.trim()}
+                  aria-label="Save chat name"
+                  title="Save"
+                >
+                  <Check size={14} aria-hidden="true" />
+                </button>
+                <button
+                  type="button"
+                  className="chat-sidebar-chat-action"
+                  onClick={cancelRenaming}
+                  aria-label="Cancel renaming"
+                  title="Cancel"
+                >
+                  <X size={14} aria-hidden="true" />
+                </button>
+              </span>
+            </form>
+          ) : (
+            <>
+              <button
+                type="button"
+                className="chat-sidebar-chat-open"
+                onClick={() => onSelectChat(chat.id)}
+                title={chat.title}
+                aria-current={
+                  activeChatId === chat.id
+                    ? 'page'
+                    : undefined
+                }
+              >
+                {runningChatIds.includes(chat.id) ? (
+                  <span
+                    className="chat-sidebar-chat-running"
+                    aria-hidden="true"
+                    title="Mocu is still working on this chat"
+                  />
+                ) : null}
+                {chat.title}
+              </button>
+
+              <span className="chat-sidebar-chat-actions">
+                <button
+                  type="button"
+                  className="chat-sidebar-chat-action"
+                  onClick={() => startRenaming(chat.id, chat.title)}
+                  aria-label={`Rename ${chat.title}`}
+                  title="Rename chat"
+                >
+                  <Pencil size={13} aria-hidden="true" />
+                </button>
+                <button
+                  type="button"
+                  className="chat-sidebar-chat-action chat-sidebar-chat-delete"
+                  onClick={() => void onDeleteChat(chat.id, chat.title)}
+                  aria-label={`Delete ${chat.title}`}
+                  title="Delete chat"
+                >
+                  <Trash2 size={14} aria-hidden="true" />
+                </button>
+              </span>
+            </>
+          )}
         </div>
       ))}
     </>
+  );
+}
+
+function ProjectList({
+  projects,
+  onSelectProject,
+}: {
+  projects: ProjectWorkspace[];
+  onSelectProject: (path: string) => void;
+}) {
+  if (projects.length === 0) {
+    return <p className="chat-sidebar-chats-empty">No projects yet</p>;
+  }
+
+  return (
+    <div className="chat-sidebar-project-list">
+      {projects.map((project) => (
+        <button
+          type="button"
+          className="chat-sidebar-project-open"
+          key={project.path}
+          title={project.path}
+          onClick={() => onSelectProject(project.path)}
+        >
+          <span className="chat-sidebar-project-icon" aria-hidden="true"><Folder size={14} /></span>
+          <span>{project.name}</span>
+        </button>
+      ))}
+    </div>
   );
 }
 
@@ -194,9 +286,11 @@ export function ChatSidebar({
   projects,
   onSelect,
   onSelectChat,
+  onSelectProject,
   onToggleChats,
   onToggleProjects,
   onDeleteChat,
+  onRenameChat,
 }: ChatSidebarProps) {
   const [availableAgents, setAvailableAgents] = useState<AvailableAgent[]>([]);
 
@@ -263,7 +357,7 @@ export function ChatSidebar({
         <button
           type="button"
           className="chat-sidebar-brand"
-          onClick={() => onSelect('new-chat')}
+          onClick={() => onSelect('home')}
           aria-label="Mocu home"
         >
           <span className="chat-sidebar-logo">M</span>
@@ -300,6 +394,18 @@ export function ChatSidebar({
         className="chat-sidebar-main-nav"
         aria-label="Main navigation"
       >
+        <NavButton
+          label="Home"
+          active={activeItem === 'home'}
+          onClick={() => onSelect('home')}
+          icon={
+            <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+              <path d="m3 10 9-7 9 7" />
+              <path d="M5 9v11h14V9M9 20v-7h6v7" />
+            </svg>
+          }
+        />
+
         <NavButton
           label="New chat"
           active={
@@ -376,6 +482,7 @@ export function ChatSidebar({
                 emptyLabel="No conversations yet"
                 onSelectChat={onSelectChat}
                 onDeleteChat={handleDeleteChat}
+                onRenameChat={onRenameChat}
               />
             </div>
           ) : null}
@@ -426,12 +533,9 @@ export function ChatSidebar({
 
           {isProjectsOpen ? (
             <div className="chat-sidebar-chats-list">
-              <ChatList
-                chats={projects}
-                activeChatId={activeChatId}
-                emptyLabel="No projects yet"
-                onSelectChat={onSelectChat}
-                onDeleteChat={handleDeleteChat}
+              <ProjectList
+                projects={projects}
+                onSelectProject={onSelectProject}
               />
             </div>
           ) : null}

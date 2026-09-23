@@ -391,6 +391,7 @@ const addMcpToolsToProjectSystemPrompt = (
  */
 const buildProjectAgentSystemPrompt = (
   projectPath: string,
+  projectDescription: string,
   skillsPrompt: string,
   extensionToolsPrompt: string,
   relatedMemoryPrompt: string,
@@ -404,6 +405,14 @@ const buildProjectAgentSystemPrompt = (
     "PROJECT PATH",
     projectPath,
   ];
+
+  if (projectDescription.trim()) {
+    promptParts.push(
+      "",
+      "PROJECT OVERVIEW",
+      projectDescription.trim(),
+    );
+  }
 
   if (
     skillsPrompt.trim()
@@ -1379,6 +1388,9 @@ export const callProjectAgent =
     const systemPrompt = addMcpToolsToProjectSystemPrompt(
       buildProjectAgentSystemPrompt(
         normalizedProjectPath,
+        typeof runnableConfig.configurable?.projectDescription === "string"
+          ? runnableConfig.configurable.projectDescription
+          : "",
         skillResolution.skillsPrompt,
         extensionTools.prompt,
         relatedMemoryPrompt,

@@ -3,6 +3,8 @@
   margin: 0 auto;
   padding: 34px 28px 54px;
   overflow-y: auto;
+  scrollbar-width: none;
+  -ms-overflow-style: none;
   color: #302e29;
 }
 
@@ -137,3 +139,5 @@
 
 @media (max-width: 900px) { .schedule-layout { grid-template-columns: 1fr; } .schedule-day-panel { min-height: 220px; } }
 @media (max-width: 640px) { .schedule-page { padding: 25px 17px 40px; } .schedule-page-header { flex-direction: column; } .schedule-calendar-card { padding: 12px; } .schedule-calendar-day { min-height: 57px; padding: 5px; } .schedule-day-number { font-size: 10px; } .schedule-logs-section { padding: 16px; } .schedule-log-summary { grid-template-columns: 8px minmax(0, 1fr) auto auto; } .schedule-log-duration { display: none; } .schedule-log-details { padding-left: 27px; } }
+
+.schedule-page::-webkit-scrollbar { display: none; width: 0; height: 0; }

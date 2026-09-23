@@ -1,0 +1,563 @@
+/* Resource pages follow the same quiet, warm visual language as the home page. */
+
+.skills-page,
+.docs-page,
+.extensions-page,
+.mcp-page,
+.agents-page {
+  position: relative;
+  display: block;
+  flex: 1 1 auto;
+  width: 100%;
+  min-width: 0;
+  min-height: 0;
+  overflow-x: hidden;
+  overflow-y: auto;
+  padding: 40px clamp(24px, 5vw, 56px) 52px;
+  color: #302c27;
+  background:
+    radial-gradient(ellipse at 76% 8%, rgba(235, 224, 250, .42), transparent 32%),
+    radial-gradient(ellipse at 12% 65%, rgba(250, 228, 214, .32), transparent 34%),
+    #fbfaf8;
+  scrollbar-color: #ded8d0 transparent;
+  scrollbar-width: thin;
+}
+
+.skills-page::-webkit-scrollbar,
+.docs-page::-webkit-scrollbar,
+.extensions-page::-webkit-scrollbar,
+.mcp-page::-webkit-scrollbar,
+.agents-page::-webkit-scrollbar {
+  width: 7px;
+}
+
+.skills-page::-webkit-scrollbar-thumb,
+.docs-page::-webkit-scrollbar-thumb,
+.extensions-page::-webkit-scrollbar-thumb,
+.mcp-page::-webkit-scrollbar-thumb,
+.agents-page::-webkit-scrollbar-thumb {
+  border: 2px solid #fbfaf8;
+  border-radius: 99px;
+  background: #ded8d0;
+}
+
+.skills-page-header,
+.docs-page-header,
+.extensions-header,
+.mcp-header,
+.agents-page-header,
+.skills-toolbar,
+.skills-project-path,
+.skills-directory,
+.skills-grid,
+.skills-message,
+.skills-invalid,
+.skills-empty-state,
+.skills-loading,
+.docs-toolbar,
+.docs-message,
+.docs-empty-state,
+.docs-loading,
+.docs-grid,
+.extensions-tabs,
+.extensions-status,
+.extensions-error,
+.extensions-grid,
+.mcp-error,
+.mcp-status,
+.mcp-grid {
+  width: 100%;
+  max-width: 910px;
+  margin-right: auto;
+  margin-left: auto;
+}
+
+.skills-page-header,
+.docs-page-header,
+.extensions-header,
+.mcp-header,
+.agents-page-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 22px;
+  margin-bottom: 25px;
+  padding: 0 0 23px;
+  border-bottom: 1px solid #eee9e2;
+}
+
+.skills-page-eyebrow,
+.docs-page-eyebrow,
+.agents-page-eyebrow {
+  margin: 0 0 9px;
+  color: #a17768;
+  font-size: 10px;
+  font-weight: 750;
+  letter-spacing: .14em;
+  text-transform: uppercase;
+}
+
+.skills-page-header h1,
+.docs-page-header h1,
+.extensions-heading h1,
+.mcp-heading h1,
+.agents-page h1 {
+  margin: 0;
+  color: #282520;
+  font-size: clamp(32px, 3.4vw, 40px);
+  font-weight: 590;
+  letter-spacing: -.05em;
+  line-height: 1.08;
+}
+
+.skills-page-subtitle,
+.docs-page-subtitle,
+.extensions-heading p,
+.mcp-heading p,
+.agents-page-header p:last-child {
+  max-width: 600px;
+  margin: 9px 0 0;
+  color: #817d75;
+  font-size: 13px;
+  line-height: 1.7;
+}
+
+.skill-primary-button,
+.skill-secondary-button,
+.docs-primary-button,
+.docs-secondary-button,
+.docs-danger-button,
+.extensions-button,
+.mcp-button {
+  min-height: 36px;
+  border-radius: 9px;
+  font-size: 12px;
+  font-weight: 600;
+  transition: background 150ms ease, border-color 150ms ease, color 150ms ease, transform 150ms ease;
+}
+
+.skill-primary-button,
+.docs-primary-button,
+.extensions-button.is-primary,
+.mcp-button--primary {
+  border: 1px solid #b77459;
+  color: #fff;
+  background: #b77459;
+  box-shadow: none;
+}
+
+.skill-primary-button:hover:not(:disabled),
+.docs-primary-button:hover:not(:disabled),
+.extensions-button.is-primary:hover:not(:disabled),
+.mcp-button--primary:hover:not(:disabled) {
+  border-color: #a7654c;
+  background: #a7654c;
+  transform: translateY(-1px);
+}
+
+.skill-secondary-button,
+.docs-secondary-button,
+.docs-danger-button,
+.extensions-button,
+.mcp-button,
+.skills-refresh-button,
+.agents-refresh-button {
+  border: 1px solid #e9e5df;
+  color: #777168;
+  background: rgba(255, 255, 255, .76);
+  box-shadow: none;
+}
+
+.skill-secondary-button:hover:not(:disabled),
+.docs-secondary-button:hover:not(:disabled),
+.extensions-button:hover:not(:disabled),
+.mcp-button:hover:not(:disabled),
+.skills-refresh-button:hover:not(:disabled),
+.agents-refresh-button:hover:not(:disabled) {
+  border-color: #d8cec1;
+  color: #4a4139;
+  background: #fff;
+}
+
+.docs-danger-button,
+.mcp-button--danger {
+  color: #a65f59;
+}
+
+.docs-danger-button:hover:not(:disabled),
+.mcp-button--danger:hover:not(:disabled) {
+  border-color: #e4c9c3;
+  color: #8e4944;
+  background: #fff8f6;
+}
+
+.skills-project-path {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-top: -5px;
+  padding: 10px 13px;
+  border: 1px solid #ece8e2;
+  border-radius: 10px;
+  color: #979188;
+  background: rgba(255, 255, 255, .52);
+  font-size: 11px;
+}
+
+.skills-project-path strong {
+  color: #5a554d;
+}
+
+.skills-toolbar,
+.docs-toolbar {
+  gap: 10px;
+  margin-top: 18px;
+  margin-bottom: 17px;
+}
+
+.skills-search,
+.docs-search {
+  min-height: 40px;
+  border: 1px solid #e9e5df;
+  border-radius: 10px;
+  background: rgba(255, 255, 255, .82);
+  box-shadow: none;
+}
+
+.skills-search:focus-within,
+.docs-search:focus-within {
+  border-color: #d6b9aa;
+  box-shadow: 0 0 0 3px rgba(183, 116, 89, .10);
+}
+
+.skills-search input,
+.docs-search input {
+  color: #302c27;
+}
+
+.skills-search input::placeholder,
+.docs-search input::placeholder {
+  color: #aaa49a;
+}
+
+.skills-refresh-button,
+.agents-refresh-button {
+  width: 40px;
+  height: 40px;
+  border-radius: 10px;
+  cursor: pointer;
+}
+
+.skills-grid,
+.docs-grid,
+.extensions-grid,
+.mcp-grid,
+.agents-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(min(100%, 270px), 1fr));
+  gap: 12px;
+  margin-top: 18px;
+}
+
+.skill-card,
+.docs-card,
+.extensions-card,
+.mcp-card,
+.agent-card {
+  border: 1px solid #ece8e2;
+  border-radius: 13px;
+  background: rgba(255, 255, 255, .76);
+  box-shadow: 0 3px 14px rgba(66, 50, 37, .025);
+  transition: transform 150ms ease, border-color 150ms ease, box-shadow 150ms ease;
+}
+
+.skill-card:hover,
+.docs-card:hover,
+.extensions-card:hover,
+.mcp-card:hover,
+.agent-card:hover {
+  border-color: #ddd2c5;
+  box-shadow: 0 8px 20px rgba(66, 50, 37, .06);
+  transform: translateY(-2px);
+}
+
+.skill-card {
+  min-height: 208px;
+  padding: 17px;
+}
+
+.skill-card-icon,
+.skills-empty-icon {
+  color: #b56d4f;
+  background: #f7e9e0;
+}
+
+.skill-card-name,
+.docs-card-title,
+.extensions-card-header h3,
+.mcp-card-header h3,
+.agent-card h2 {
+  color: #37322d;
+  letter-spacing: -.025em;
+}
+
+.skill-card-description,
+.docs-card-description,
+.extensions-card-description,
+.mcp-card-description,
+.agent-card p {
+  color: #807a72;
+  line-height: 1.6;
+}
+
+.skill-card-tag,
+.docs-keyword-chip,
+.extensions-tag {
+  border: 1px solid #eee9e3;
+  color: #777168;
+  background: #f7f5f1;
+}
+
+.skill-card-status-enabled {
+  color: #54866b;
+}
+
+.docs-card {
+  gap: 11px;
+  padding: 17px;
+}
+
+.docs-card-file {
+  border-radius: 6px;
+  color: #928a80;
+  background: #f5f2ee;
+}
+
+.docs-card-actions {
+  gap: 7px;
+  padding-top: 11px;
+  border-top: 1px solid #f0ece6;
+}
+
+.docs-count,
+.extensions-tab-count {
+  border-radius: 99px;
+  color: #8c6859;
+  background: #f5e9e2;
+  font-size: 10px;
+}
+
+.docs-empty-state,
+.skills-empty-state,
+.skills-loading,
+.agents-empty-state {
+  border-color: #e7e1d9;
+  border-radius: 13px;
+  color: #8d877e;
+  background: rgba(255, 255, 255, .45);
+}
+
+.docs-empty-title,
+.skills-empty-state h2,
+.agents-empty-state h2 {
+  color: #4b443d;
+}
+
+.extensions-page,
+.mcp-page {
+  display: block;
+}
+
+.extensions-header-actions,
+.mcp-header-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 7px;
+}
+
+.extensions-tabs {
+  display: flex;
+  gap: 5px;
+  margin-top: 0;
+  border-bottom: 1px solid #eee9e2;
+}
+
+.extensions-tab {
+  padding: 8px 11px 10px;
+  border-radius: 7px 7px 0 0;
+  color: #898278;
+  font-size: 12px;
+}
+
+.extensions-tab.is-active {
+  border-bottom-color: #b77459;
+  color: #9f654e;
+  font-weight: 650;
+}
+
+.extensions-grid {
+  padding-bottom: 10px;
+}
+
+.extensions-card {
+  gap: 11px;
+  padding: 17px;
+}
+
+.extensions-card-badge,
+.mcp-badge {
+  color: #8c6859;
+  background: #f5e9e2;
+}
+
+.extensions-card-meta,
+.extensions-card-meta > span + span {
+  color: #928b82;
+}
+
+.extensions-button,
+.mcp-button {
+  min-height: 34px;
+  padding: 0 11px;
+}
+
+.extensions-button:disabled,
+.mcp-button:disabled {
+  cursor: not-allowed;
+  opacity: .55;
+}
+
+.extensions-empty,
+.extensions-status,
+.mcp-status,
+.agents-message {
+  color: #898278;
+  font-size: 13px;
+}
+
+.mcp-header {
+  margin-bottom: 23px;
+}
+
+.mcp-card {
+  gap: 11px;
+  padding: 17px;
+}
+
+.mcp-status-dot--connected {
+  background: #63a47d;
+}
+
+.mcp-status-dot--connecting {
+  background: #d79a56;
+}
+
+.mcp-status-dot--disconnected {
+  background: #b4aea5;
+}
+
+.mcp-tools {
+  border-top-color: #eee9e2;
+}
+
+.mcp-tool-row {
+  border: 1px solid #f0ece6;
+  background: #faf9f7;
+}
+
+.mcp-tool-name {
+  color: #554d45;
+}
+
+.agents-page {
+  width: 100%;
+  margin: 0;
+}
+
+.agents-page-header {
+  margin-bottom: 25px;
+}
+
+.agents-page-header p:last-child {
+  color: #817d75;
+}
+
+.agents-page code {
+  border-radius: 5px;
+  color: #9d684f;
+  background: #f7e9e0;
+}
+
+.agent-card {
+  min-height: 135px;
+  padding: 16px;
+}
+
+.agent-card-icon {
+  width: 36px;
+  height: 36px;
+  border-radius: 10px;
+  color: #85719a;
+  background: #f0ebf5;
+}
+
+.agent-card-meta {
+  color: #9a938a;
+}
+
+.agents-message-error,
+.extensions-error,
+.mcp-error,
+.docs-message-error {
+  border: 1px solid #efd9d1;
+  border-radius: 10px;
+  color: #9b594d;
+  background: #fff8f5;
+}
+
+:where(.chat-page) button:focus-visible,
+:where(.chat-page) input:focus-visible,
+:where(.chat-page) textarea:focus-visible {
+  outline: 2px solid rgba(183, 116, 89, .45);
+  outline-offset: 2px;
+}
+
+@media (max-width: 760px) {
+  .skills-page,
+  .docs-page,
+  .extensions-page,
+  .mcp-page,
+  .agents-page {
+    padding: 27px 20px 38px;
+  }
+
+  .skills-page-header,
+  .docs-page-header,
+  .extensions-header,
+  .mcp-header,
+  .agents-page-header {
+    flex-direction: column;
+    gap: 15px;
+    padding-bottom: 19px;
+  }
+
+  .extensions-header-actions,
+  .mcp-header-actions {
+    width: 100%;
+  }
+
+  .extensions-header-actions > button,
+  .mcp-header-actions > button {
+    flex: 1 1 auto;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .skill-card,
+  .docs-card,
+  .extensions-card,
+  .mcp-card,
+  .agent-card {
+    transition: none !important;
+  }
+}

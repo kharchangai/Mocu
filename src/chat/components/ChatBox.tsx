@@ -127,6 +127,7 @@ type ChatBoxProps = {
   messages: ChatMessage[];
   agentName?: string;
   projectPath?: string;
+  projectDescription?: string;
 
   onEnsureChat: (
     firstMessage: string,
@@ -140,8 +141,6 @@ type ChatBoxProps = {
     content: string,
   ) => ChatMessage;
 
-  onProjectPathChange?: (path: string) => void;
-  onChooseProjectFolder?: () => void | Promise<void>;
 };
 
 function convertToLangChainMessages(
@@ -159,10 +158,9 @@ export function ChatBox({
   messages,
   agentName = 'Mocu',
   projectPath = '',
+  projectDescription = '',
   onEnsureChat,
   onAppendMessage,
-  onProjectPathChange,
-  onChooseProjectFolder,
 }: ChatBoxProps) {
   /*
    * True only while a send is creating/resuming its conversation (before
@@ -622,6 +620,7 @@ export function ChatBox({
             ) ?? [],
           selectedAgent:
             options?.selectedAgent?.name ?? null,
+          projectDescription,
           /*
            * Model override chosen in the composer model picker. Only the
            * main agents (chat agent and project agent) read this key;
@@ -947,12 +946,6 @@ export function ChatBox({
         isLoading={isLoading}
         agentName={agentName}
         projectPath={projectPath}
-        onProjectPathChange={
-          onProjectPathChange
-        }
-        onChooseProjectFolder={
-          onChooseProjectFolder
-        }
       />
     </section>
   );

@@ -8,10 +8,6 @@ import { listen } from '@tauri-apps/api/event';
 import { BellRing, Bot, X } from 'lucide-react';
 
 import {
-  open,
-} from '@tauri-apps/plugin-dialog';
-
-import {
   ChatSidebar,
   type ChatSidebarItemId,
 } from './components/ChatSidebar';
@@ -55,6 +51,17 @@ import {
 } from '../mcp/components/McpPage';
 
 import { AgentsPage } from './components/agents/AgentsPage';
+import { ProjectLanding } from './components/ProjectLanding';
+import {
+  createProjectFolder,
+  getNewProjectPath,
+  getProjectFolderName,
+  loadProjectWorkspaces,
+  normalizeProjectPath,
+  saveProjectWorkspaces,
+  upsertProjectWorkspace,
+  type ProjectWorkspace,
+} from './services/projectWorkspaces';
 
 import {
   useChatHistory,
@@ -72,6 +79,7 @@ import type {
 } from './types/chat';
 
 import './ChatPage.css';
+import './resource-pages.css';
 
 type ScheduleNotice = {
   kind: 'reminder' | 'agent';
@@ -85,7 +93,11 @@ function ChatPage() {
     activeItem,
     setActiveItem,
   ] = useState<ChatSidebarItemId>(
-    'new-chat',
+    'home',
+  );
+
+  const [projectWorkspaces, setProjectWorkspaces] = useState<ProjectWorkspace[]>(
+    () => loadProjectWorkspaces(),
   );
 
   const [
@@ -217,9 +229,38 @@ function ChatPage() {
     ensureChat,
     loadProjectConversation,
     appendMessage,
-    updateChatProjectPath,
+    renameChat,
     deleteChat,
   } = useChatHistory();
+
+  useEffect(() => {
+    saveProjectWorkspaces(projectWorkspaces);
+  }, [projectWorkspaces]);
+
+  /*
+   * Register project folders from older project chats, so existing
+   * workspaces remain available from the new home screen.
+   */
+  useEffect(() => {
+    const legacyProjects = chats.filter((chat) => chat.projectPath?.trim());
+    if (legacyProjects.length === 0) return;
+
+    setProjectWorkspaces((current) => {
+      let next = current;
+      for (const chat of legacyProjects) {
+        const path = chat.projectPath?.trim() ?? '';
+        if (!path || next.some((project) => normalizeProjectPath(project.path) === normalizeProjectPath(path))) {
+          continue;
+        }
+        next = upsertProjectWorkspace(next, {
+          path,
+          name: getProjectFolderName(path),
+          description: '',
+        });
+      }
+      return next;
+    });
+  }, [chats]);
 
   /*
    * When an interrupted extension run has recovered, append its result to
@@ -263,27 +304,6 @@ function ChatPage() {
     );
 
   /*
-   * Conversations with a project folder are displayed under Projects.
-   */
-  const projectChats =
-    useMemo<RecentChat[]>(
-      () =>
-        chats
-          .filter(
-            (chat) =>
-              Boolean(
-                chat.projectPath &&
-                  chat.projectPath.trim() !== '',
-              ),
-          )
-          .map((chat) => ({
-            id: chat.id,
-            title: chat.title,
-          })),
-      [chats],
-    );
-
-  /*
    * An existing chat uses its own project path.
    * A new chat uses the currently selected default project path.
    */
@@ -296,31 +316,6 @@ function ChatPage() {
 
   const hasProjectFolder =
     normalizedProjectPath !== '';
-
-  const handleProjectPathChange =
-    useCallback(
-      (
-        newProjectPath: string,
-      ): void => {
-        const normalizedPath =
-          newProjectPath.trim();
-
-        setDefaultProjectPath(
-          normalizedPath,
-        );
-
-        if (activeChatId) {
-          updateChatProjectPath(
-            activeChatId,
-            normalizedPath,
-          );
-        }
-      },
-      [
-        activeChatId,
-        updateChatProjectPath,
-      ],
-    );
 
   const handleProjectFolderSelected =
     useCallback(
@@ -382,59 +377,42 @@ function ChatPage() {
       ],
     );
 
-  const handleChooseProjectFolder =
-    useCallback(
-      async (): Promise<void> => {
-        try {
-          const selectedFolder =
-            await open({
-              directory: true,
-              multiple: false,
-              title:
-                'Choose a project folder',
-            });
+  const handleOpenProject = useCallback(
+    async (path: string): Promise<void> => {
+      const knownProject = projectWorkspaces.find(
+        (project) => normalizeProjectPath(project.path) === normalizeProjectPath(path),
+      );
+      setProjectWorkspaces((current) => upsertProjectWorkspace(current, {
+        path,
+        name: knownProject?.name ?? getProjectFolderName(path),
+        description: knownProject?.description ?? '',
+      }));
+      await handleProjectFolderSelected(path);
+    },
+    [handleProjectFolderSelected, projectWorkspaces],
+  );
 
-          if (selectedFolder === null) {
-            return;
-          }
+  const handleCreateProject = useCallback(
+    async (name: string, description: string, parentPath: string): Promise<void> => {
+      const path = getNewProjectPath(parentPath, name);
+      await createProjectFolder(path);
+      setProjectWorkspaces((current) => upsertProjectWorkspace(current, {
+        path,
+        name,
+        description,
+      }));
+      await handleProjectFolderSelected(path);
+    },
+    [handleProjectFolderSelected],
+  );
 
-          const folderPath =
-            Array.isArray(
-              selectedFolder,
-            )
-              ? selectedFolder[0]
-              : selectedFolder;
-
-          if (
-            typeof folderPath !==
-              'string' ||
-            folderPath.trim() === ''
-          ) {
-            return;
-          }
-
-          const normalizedFolderPath =
-            folderPath.trim();
-
-          await handleProjectFolderSelected(
-            normalizedFolderPath,
-          );
-
-          console.log(
-            '[Chat Page] Selected project folder:',
-            normalizedFolderPath,
-          );
-        } catch (error) {
-          console.error(
-            '[Chat Page] Failed to choose the project folder:',
-            error,
-          );
-        }
-      },
-      [
-        handleProjectFolderSelected,
-      ],
-    );
+  const handleExitProject = useCallback(() => {
+    startNewChat();
+    setDefaultProjectPath('');
+    setIsChatsOpen(false);
+    setIsProjectsOpen(false);
+    setActiveItem('home');
+  }, [startNewChat]);
 
   /*
    * Handles every sidebar navigation item.
@@ -448,6 +426,11 @@ function ChatPage() {
         item: ChatSidebarItemId,
       ): void => {
         switch (item) {
+          case 'home': {
+            handleExitProject();
+            return;
+          }
+
           case 'new-chat': {
             startNewChat();
 
@@ -544,8 +527,16 @@ function ChatPage() {
           }
         }
       },
-      [startNewChat],
+      [handleExitProject, startNewChat],
     );
+
+  const handleStartNormalChat = useCallback(() => {
+    startNewChat();
+    setDefaultProjectPath('');
+    setIsChatsOpen(false);
+    setIsProjectsOpen(false);
+    setActiveItem('new-chat');
+  }, [startNewChat]);
 
   const handleToggleChats =
     useCallback((): void => {
@@ -626,6 +617,16 @@ function ChatPage() {
             {activeChat?.title ??
               'New chat'}
           </span>
+          {hasProjectFolder ? (
+            <div className="chat-project-context">
+              <span className="chat-project-context-name" title={currentProjectPath}>
+                {projectWorkspaces.find((project) => normalizeProjectPath(project.path) === normalizeProjectPath(currentProjectPath))?.name ?? getProjectFolderName(currentProjectPath)}
+              </span>
+              <button type="button" className="chat-exit-project-button" onClick={handleExitProject}>
+                Exit project
+              </button>
+            </div>
+          ) : null}
         </header>
 
         <ChatBox
@@ -637,17 +638,14 @@ function ChatPage() {
           projectPath={
             currentProjectPath
           }
+          projectDescription={
+            projectWorkspaces.find((project) => normalizeProjectPath(project.path) === normalizeProjectPath(currentProjectPath))?.description ?? ''
+          }
           onEnsureChat={
             handleEnsureChat
           }
           onAppendMessage={
             appendMessage
-          }
-          onProjectPathChange={
-            handleProjectPathChange
-          }
-          onChooseProjectFolder={
-            handleChooseProjectFolder
           }
         />
       </div>
@@ -671,6 +669,16 @@ function ChatPage() {
 
   const renderMainContent = () => {
     switch (activeItem) {
+      case 'home':
+        return (
+          <ProjectLanding
+            projects={projectWorkspaces}
+            onStartChat={handleStartNormalChat}
+            onOpenProject={handleOpenProject}
+            onCreateProject={handleCreateProject}
+          />
+        );
+
       case 'skills':
         /*
          * Skills are always loaded from the global folder:
@@ -734,7 +742,8 @@ function ChatPage() {
           hasProjectFolder
         }
         chats={regularChats}
-        projects={projectChats}
+        projects={projectWorkspaces}
+        onSelectProject={(path) => void handleOpenProject(path)}
         onSelect={
           handleSidebarSelect
         }
@@ -749,6 +758,9 @@ function ChatPage() {
         }
         onDeleteChat={
           handleDeleteChat
+        }
+        onRenameChat={
+          renameChat
         }
       />
 

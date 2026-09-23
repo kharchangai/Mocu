@@ -1,5 +1,4 @@
 import {
-  FolderOpen,
   Mic,
   Paperclip,
   SendHorizontal,
@@ -89,8 +88,6 @@ export type ChatInputProps = {
   modelLabel?: string;
   effortLabel?: string;
   onValueChange: (value: string) => void;
-  onProjectPathChange?: (path: string) => void;
-  onChooseProjectFolder?: () => void | Promise<void>;
   onSend: (
     text: string,
     options: SendOptions,
@@ -162,8 +159,6 @@ export function ChatInput({
   modelLabel = 'Mocu · Standard',
   effortLabel = 'Balanced',
   onValueChange,
-  onProjectPathChange = () => undefined,
-  onChooseProjectFolder,
   onSend,
   onStop,
 }: ChatInputProps) {
@@ -341,8 +336,6 @@ export function ChatInput({
   }, [availableModels, modelSearchQuery]);
 
   const canSend = safeValue.trim().length > 0 && !isLoading;
-  const hasProjectPath = normalizedProjectPath !== null;
-
   /*
    * Names/ids of the pinned resources, used by the toggle menu to mark
    * which switches are on and by the chip row to render them.
@@ -875,20 +868,6 @@ export function ChatInput({
     );
   };
 
-  const handleProjectPathChange = (
-    event: React.ChangeEvent<HTMLInputElement>,
-  ) => {
-    onProjectPathChange(event.target.value);
-  };
-
-  const handleChooseFolder = async () => {
-    if (!onChooseProjectFolder) {
-      return;
-    }
-
-    await onChooseProjectFolder();
-  };
-
   /*
    * Select the "/skill" or "/extension" command from the bare "/"
    * command menu. This keeps the caret after "/<command> " so the menu
@@ -1326,21 +1305,6 @@ export function ChatInput({
   return (
     <div className="chat-input-shell">
       <div className="chat-input-inner">
-        {hasProjectPath && (
-          <div className="project-path-bar">
-            <FolderOpen size={13} />
-
-            <input
-              type="text"
-              value={safeProjectPath}
-              onChange={handleProjectPathChange}
-              placeholder="Project folder path..."
-              aria-label="Project folder path"
-              title={safeProjectPath}
-            />
-          </div>
-        )}
-
         <div className="chat-composer">
           {isResourceMenuOpen && (
             <ResourceToggleMenu
@@ -1563,16 +1527,6 @@ export function ChatInput({
 
           <div className="chat-composer-footer">
             <div className="chat-composer-left-actions">
-              <button
-                type="button"
-                className="composer-icon-button"
-                onClick={() => void handleChooseFolder()}
-                aria-label="Choose a project folder"
-                title="Choose a project folder"
-              >
-                <FolderOpen size={17} />
-              </button>
-
               <button
                 type="button"
                 className={`composer-icon-button${

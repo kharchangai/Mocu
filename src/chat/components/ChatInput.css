@@ -28,43 +28,6 @@
     box-shadow 150ms ease;
 }
 
-/* Small, quiet project address shown above the composer */
-
-.project-path-bar {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  max-width: 100%;
-  height: 24px;
-  margin: 0 0 7px 4px;
-  color: #9ca3af;
-  box-sizing: border-box;
-}
-
-.project-path-bar input {
-  width: min(420px, calc(100vw - 90px));
-  min-width: 0;
-  padding: 0;
-  overflow: hidden;
-  color: #6b7280;
-  background: transparent;
-  border: 0;
-  outline: none;
-  font: inherit;
-  font-size: 11px;
-  line-height: 24px;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.project-path-bar input::placeholder {
-  color: #b0b5bd;
-}
-
-.project-path-bar input:focus {
-  color: #374151;
-}
-
 .chat-composer:focus-within {
   border-color: #c5cbd3;
   box-shadow:
