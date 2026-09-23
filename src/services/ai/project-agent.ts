@@ -32,6 +32,12 @@ import {
 } from "../../chat/services/memoryActivity";
 
 import {
+  hasActiveStepWorkflow,
+  runStepWorkflowTurn,
+  createStartStepByStepWorkflowTool,
+} from "./stepbystep/workflowManager";
+
+import {
   CHAT_EMPTY_RESPONSE,
   CHAT_EMPTY_TOOL_RESULT,
   CHAT_TOOL_FAILURE_RESULT,
@@ -1008,6 +1014,35 @@ export const callProjectAgent =
       signal,
     );
 
+    /*
+     * Step-by-step workflow routing.
+     *
+     * While a step-by-step workflow is active for this chat, every user
+     * message is handled by the dedicated execution agent instead of the
+     * project agent pipeline. The workflow stays on the current step until
+     * the user explicitly asks to move to the next one or to exit.
+     */
+    const stepWorkflowChatId =
+      getChatIdFromConfig(runnableConfig) || "default";
+
+    if (
+      await hasActiveStepWorkflow(stepWorkflowChatId)
+    ) {
+      const workflowResponse =
+        await runStepWorkflowTurn(
+          stepWorkflowChatId,
+          rawUserText,
+          runnableConfig,
+          {
+            projectPath: normalizedProjectPath,
+          },
+        );
+
+      return {
+        messages: [workflowResponse],
+      };
+    }
+
     const selectedSkillNames =
       getSelectedSkillNames(
         runnableConfig,
@@ -1184,6 +1219,19 @@ export const callProjectAgent =
       }) as TerminalTool;
 
     /*
+     * The step-by-step start tool is created per request because LangChain
+     * tool callbacks do not receive the request config: the chat id and the
+     * latest user message are bound at creation time.
+     */
+    const startStepWorkflowTool =
+      createStartStepByStepWorkflowTool({
+        chatId: getChatIdFromConfig(
+          runnableConfig,
+        ) || "default",
+        userMessage: userText,
+      });
+
+    /*
      * Expose extension commands as callable tools so the agent can run
      * them itself when the user asks to use an extension (or a task
      * matches one). Extensions are never executed up front; when the
@@ -1274,6 +1322,7 @@ export const callProjectAgent =
         perplexitySearchTool,
         skillLoaderTool,
         createAgentTool,
+        startStepWorkflowTool,
         ...docTools,
         ...extensionTools.tools,
         ...mcpTools.tools,
@@ -1288,6 +1337,16 @@ export const callProjectAgent =
         terminalTool,
         runnableConfig,
       );
+
+    toolExecutor.registerTool({
+      name: "start_step_by_step_workflow",
+      description: startStepWorkflowTool.description,
+      execute: async (args) =>
+        startStepWorkflowTool.invoke(
+          args as { task_description: string },
+          runnableConfig,
+        ),
+    });
 
     extensionTools.registerAll(
       toolExecutor,

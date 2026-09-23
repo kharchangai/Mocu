@@ -19,6 +19,8 @@ import {
 import {
   ChatBox,
 } from './components/ChatBox';
+import { StepWorkflowPanel } from './components/StepWorkflowPanel';
+import { RightPanelDock } from './components/RightPanelDock';
 
 import {
   SkillsPage,
@@ -109,6 +111,13 @@ function ChatPage() {
     recoveredJobsTick,
     setRecoveredJobsTick,
   ] = useState(0);
+
+  /* Whether a step-by-step workflow is active for the current chat. Drives
+   * the right dock: collapsed (no space) when nothing is active. */
+  const [
+    stepWorkflowActive,
+    setStepWorkflowActive,
+  ] = useState(false);
 
   useEffect(() => {
     /*
@@ -610,43 +619,54 @@ function ChatPage() {
     );
 
   const renderConversation = () => (
-    <>
-      <header className="chat-header">
-        <span className="chat-header-title">
-          {activeChat?.title ??
-            'New chat'}
-        </span>
-      </header>
+    <div className="chat-conversation-layout">
+      <div className="chat-conversation-main">
+        <header className="chat-header">
+          <span className="chat-header-title">
+            {activeChat?.title ??
+              'New chat'}
+          </span>
+        </header>
 
-      <ChatBox
-        chatId={activeChatId}
-        messages={
-          activeChat?.messages ?? []
-        }
-        agentName="Mocu"
-        projectPath={
-          currentProjectPath
-        }
-        onEnsureChat={
-          handleEnsureChat
-        }
-        onAppendMessage={
-          appendMessage
-        }
-        onProjectPathChange={
-          handleProjectPathChange
-        }
-        onChooseProjectFolder={
-          handleChooseProjectFolder
-        }
-      />
+        <ChatBox
+          chatId={activeChatId}
+          messages={
+            activeChat?.messages ?? []
+          }
+          agentName="Mocu"
+          projectPath={
+            currentProjectPath
+          }
+          onEnsureChat={
+            handleEnsureChat
+          }
+          onAppendMessage={
+            appendMessage
+          }
+          onProjectPathChange={
+            handleProjectPathChange
+          }
+          onChooseProjectFolder={
+            handleChooseProjectFolder
+          }
+        />
+      </div>
+
+      <RightPanelDock hidden={!stepWorkflowActive}>
+        <StepWorkflowPanel
+          key={`step-workflow-sidebar-${activeChatId ?? 'new-chat'}`}
+          chatId={activeChatId}
+          refreshKey={activeChat?.messages.length ?? 0}
+          onActiveChange={setStepWorkflowActive}
+        />
+      </RightPanelDock>
 
       {/*
        * Floating mini Mocu cube. Clicking it reveals the
        * Mocu avatar window.
        */}
       <MocuMiniCube />
-    </>
+    </div>
   );
 
   const renderMainContent = () => {

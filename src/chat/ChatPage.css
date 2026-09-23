@@ -371,6 +371,29 @@ textarea {
   background: #ffffff;
 }
 
+/*
+ * Conversation workspace. The workflow transcript intentionally lives
+ * outside ChatBox, so it can sit beside the chatbot without shrinking or
+ * interfering with the normal message composer.
+ */
+.chat-conversation-layout {
+  display: flex;
+  flex: 1;
+  min-width: 0;
+  min-height: 0;
+  gap: 22px;
+  overflow: hidden;
+  padding-right: 18px;
+}
+
+.chat-conversation-main {
+  display: flex;
+  flex: 1;
+  min-width: 0;
+  min-height: 0;
+  flex-direction: column;
+}
+
 /* Schedule event notification shown inside the chat window. */
 .chat-schedule-notice {
   display: flex;
@@ -512,6 +535,30 @@ textarea {
   color: #8a887f;
   font-size: 14px;
   line-height: 1.6;
+}
+
+/* ---------- Workflow sidebar responsive layout ---------- */
+
+@media (max-width: 900px) {
+  .chat-conversation-layout {
+    flex-direction: column;
+    gap: 0;
+    padding-right: 0;
+  }
+
+  .chat-conversation-main {
+    min-height: 56%;
+  }
+
+  .right-panel-dock {
+    flex-basis: auto;
+    width: auto;
+    min-width: 0;
+    max-height: 42%;
+    margin: 0;
+    padding: 0 10px 10px;
+    order: 2;
+  }
 }
 
 /* ---------- Narrow screens: icon rail ---------- */
