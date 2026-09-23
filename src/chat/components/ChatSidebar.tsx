@@ -1,5 +1,14 @@
-import { useEffect, useState, type ReactNode } from 'react';
-import { Check, Folder, Pencil, Trash2, X } from 'lucide-react';
+import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react';
+import {
+  AlertTriangle,
+  Check,
+  Folder,
+  FolderOpen,
+  Pencil,
+  Trash2,
+  X,
+} from 'lucide-react';
+import { createPortal } from 'react-dom';
 
 import { confirm } from '@tauri-apps/plugin-dialog';
 
@@ -32,6 +41,7 @@ type ChatSidebarProps = {
   onSelect: (item: ChatSidebarItemId) => void;
   onSelectChat: (chatId: string) => void;
   onSelectProject: (path: string) => void;
+  onDeleteProject: (path: string, deleteFolder: boolean) => Promise<void>;
   onToggleChats: () => void;
   onToggleProjects: () => void;
   onDeleteChat?: (chatId: string) => void;
@@ -247,32 +257,251 @@ function ChatList({
   );
 }
 
+function ProjectDeleteDialog({
+  project,
+  onCancel,
+  onConfirm,
+}: {
+  project: ProjectWorkspace;
+  onCancel: () => void;
+  onConfirm: (deleteFolder: boolean) => Promise<void>;
+}) {
+  const [deleteFolder, setDeleteFolder] = useState(false);
+  const [isDeleting, setIsDeleting] = useState(false);
+  const [deleteError, setDeleteError] = useState('');
+  const cancelButtonRef = useRef<HTMLButtonElement>(null);
+  const dialogRef = useRef<HTMLElement>(null);
+
+  useEffect(() => {
+    cancelButtonRef.current?.focus();
+  }, []);
+
+  useEffect(() => {
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape' && !isDeleting) {
+        event.preventDefault();
+        onCancel();
+        return;
+      }
+
+      if (event.key === 'Tab') {
+        if (isDeleting) {
+          event.preventDefault();
+          return;
+        }
+
+        const buttons = dialogRef.current?.querySelectorAll<HTMLButtonElement>(
+          'button:not([disabled])',
+        );
+        if (!buttons?.length) return;
+
+        const firstButton = buttons[0];
+        const lastButton = buttons[buttons.length - 1];
+        if (event.shiftKey && document.activeElement === firstButton) {
+          event.preventDefault();
+          lastButton.focus();
+        } else if (!event.shiftKey && document.activeElement === lastButton) {
+          event.preventDefault();
+          firstButton.focus();
+        }
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [isDeleting, onCancel]);
+
+  const handleConfirm = async () => {
+    setIsDeleting(true);
+    setDeleteError('');
+    try {
+      await onConfirm(deleteFolder);
+    } catch (error) {
+      console.error('[Projects] Failed to remove project:', error);
+      setDeleteError(
+        error instanceof Error ? error.message : 'Could not remove the project.',
+      );
+      setIsDeleting(false);
+    }
+  };
+
+  return createPortal(
+    <div
+      className="project-delete-backdrop"
+      onMouseDown={(event) => {
+        if (event.target === event.currentTarget && !isDeleting) onCancel();
+      }}
+    >
+      <section
+        ref={dialogRef}
+        className="project-delete-dialog"
+        role="alertdialog"
+        aria-modal="true"
+        aria-labelledby="project-delete-title"
+        aria-describedby="project-delete-description"
+      >
+        <button
+          type="button"
+          className="project-delete-close"
+          onClick={onCancel}
+          aria-label="Cancel project removal"
+          disabled={isDeleting}
+        >
+          <X size={17} aria-hidden="true" />
+        </button>
+
+        <div className="project-delete-icon" aria-hidden="true">
+          <AlertTriangle size={21} />
+        </div>
+        <p className="project-delete-eyebrow">PROJECT REMOVAL</p>
+        <h2 id="project-delete-title">Remove {project.name}?</h2>
+        <p className="project-delete-description" id="project-delete-description">
+          This removes the project and its saved Mocu conversation data. You can
+          also choose to permanently delete the project folder below.
+        </p>
+
+        <div className="project-delete-summary">
+          <span className="project-delete-folder-icon" aria-hidden="true">
+            <FolderOpen size={17} />
+          </span>
+          <span className="project-delete-project-copy">
+            <strong>{project.name}</strong>
+            <small title={project.path}>{project.path}</small>
+          </span>
+        </div>
+
+        <div className="project-delete-notice">
+          <AlertTriangle size={15} aria-hidden="true" />
+          <span>The saved Mocu conversation cannot be restored after removal.</span>
+        </div>
+
+        <label
+          className={`project-delete-folder-option ${
+            deleteFolder ? 'project-delete-folder-option-checked' : ''
+          }`}
+        >
+          <input
+            type="checkbox"
+            checked={deleteFolder}
+            onChange={(event) => setDeleteFolder(event.target.checked)}
+            disabled={isDeleting}
+          />
+          <span className="project-delete-folder-option-copy">
+            <strong>Also delete the project folder</strong>
+            <small>Permanently remove its files from your device.</small>
+          </span>
+        </label>
+
+        {deleteFolder ? (
+          <div className="project-delete-folder-warning">
+            <AlertTriangle size={15} aria-hidden="true" />
+            <span>
+              This permanently deletes the folder and everything inside it:
+              <strong title={project.path}>{project.path}</strong>
+            </span>
+          </div>
+        ) : null}
+
+        {deleteError ? (
+          <p className="project-delete-error" role="alert">{deleteError}</p>
+        ) : null}
+
+        <footer className="project-delete-actions">
+          <button
+            ref={cancelButtonRef}
+            type="button"
+            className="project-delete-cancel"
+            onClick={onCancel}
+            disabled={isDeleting}
+          >
+            Keep project
+          </button>
+          <button
+            type="button"
+            className="project-delete-confirm"
+            onClick={() => void handleConfirm()}
+            disabled={isDeleting}
+          >
+            <Trash2 size={15} aria-hidden="true" />
+            {isDeleting
+              ? 'Removing…'
+              : deleteFolder
+                ? 'Delete folder & project'
+                : 'Remove project'}
+          </button>
+        </footer>
+      </section>
+    </div>,
+    document.body,
+  );
+}
+
 function ProjectList({
   projects,
   onSelectProject,
+  onDeleteProject,
 }: {
   projects: ProjectWorkspace[];
   onSelectProject: (path: string) => void;
+  onDeleteProject: (path: string, deleteFolder: boolean) => Promise<void>;
 }) {
+  const [projectToDelete, setProjectToDelete] = useState<
+    ProjectWorkspace | null
+  >(null);
+
+  const cancelProjectRemoval = useCallback(() => {
+    setProjectToDelete(null);
+  }, []);
+
+  const confirmProjectRemoval = useCallback(
+    async (deleteFolder: boolean) => {
+      if (!projectToDelete) return;
+      await onDeleteProject(projectToDelete.path, deleteFolder);
+      setProjectToDelete(null);
+    },
+    [onDeleteProject, projectToDelete],
+  );
+
   if (projects.length === 0) {
     return <p className="chat-sidebar-chats-empty">No projects yet</p>;
   }
 
   return (
-    <div className="chat-sidebar-project-list">
-      {projects.map((project) => (
-        <button
-          type="button"
-          className="chat-sidebar-project-open"
-          key={project.path}
-          title={project.path}
-          onClick={() => onSelectProject(project.path)}
-        >
-          <span className="chat-sidebar-project-icon" aria-hidden="true"><Folder size={14} /></span>
-          <span>{project.name}</span>
-        </button>
-      ))}
-    </div>
+    <>
+      <div className="chat-sidebar-project-list">
+        {projects.map((project) => (
+          <div className="chat-sidebar-project-row" key={project.path}>
+            <button
+              type="button"
+              className="chat-sidebar-project-open"
+              title={project.path}
+              onClick={() => onSelectProject(project.path)}
+            >
+              <span className="chat-sidebar-project-icon" aria-hidden="true">
+                <Folder size={14} />
+              </span>
+              <span>{project.name}</span>
+            </button>
+            <button
+              type="button"
+              className="chat-sidebar-project-delete"
+              onClick={() => setProjectToDelete(project)}
+              aria-label={`Remove ${project.name} from Mocu`}
+              title="Remove project"
+            >
+              <Trash2 size={13} aria-hidden="true" />
+            </button>
+          </div>
+        ))}
+      </div>
+      {projectToDelete ? (
+        <ProjectDeleteDialog
+          project={projectToDelete}
+          onCancel={cancelProjectRemoval}
+          onConfirm={confirmProjectRemoval}
+        />
+      ) : null}
+    </>
   );
 }
 
@@ -287,6 +516,7 @@ export function ChatSidebar({
   onSelect,
   onSelectChat,
   onSelectProject,
+  onDeleteProject,
   onToggleChats,
   onToggleProjects,
   onDeleteChat,
@@ -536,6 +766,7 @@ export function ChatSidebar({
               <ProjectList
                 projects={projects}
                 onSelectProject={onSelectProject}
+                onDeleteProject={onDeleteProject}
               />
             </div>
           ) : null}

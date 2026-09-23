@@ -5,6 +5,7 @@ import {
   useState,
 } from 'react';
 import { listen } from '@tauri-apps/api/event';
+import { exists, remove } from '@tauri-apps/plugin-fs';
 import { BellRing, Bot, X } from 'lucide-react';
 
 import {
@@ -52,6 +53,7 @@ import {
 
 import { AgentsPage } from './components/agents/AgentsPage';
 import { ProjectLanding } from './components/ProjectLanding';
+import { deleteProjectConversationFile } from './services/projectChatHistory';
 import {
   createProjectFolder,
   getNewProjectPath,
@@ -87,6 +89,20 @@ type ScheduleNotice = {
   message: string;
   status?: 'completed' | 'failed';
 };
+
+function isFilesystemRootPath(path: string): boolean {
+  const normalizedPath = path
+    .trim()
+    .replace(/\\/g, '/')
+    .replace(/\/+$/, '');
+
+  return (
+    !normalizedPath ||
+    /^[a-z]:$/i.test(normalizedPath) ||
+    /^\/\/[^/]+\/[^/]+$/.test(normalizedPath) ||
+    /^\/\/\?\/(?:[a-z]:)?$/i.test(normalizedPath)
+  );
+}
 
 function ChatPage() {
   const [
@@ -413,6 +429,42 @@ function ChatPage() {
     setIsProjectsOpen(false);
     setActiveItem('home');
   }, [startNewChat]);
+
+  const handleDeleteProject = useCallback(
+    async (path: string, deleteFolder: boolean): Promise<void> => {
+      const normalizedPath = normalizeProjectPath(path);
+      const projectChats = chats.filter(
+        (chat) =>
+          chat.projectPath?.trim() &&
+          normalizeProjectPath(chat.projectPath) === normalizedPath,
+      );
+
+      if (deleteFolder) {
+        if (isFilesystemRootPath(path)) {
+          throw new Error('For safety, a filesystem root cannot be deleted as a project.');
+        }
+
+        if (await exists(path)) {
+          await remove(path, { recursive: true });
+        }
+      } else {
+        await deleteProjectConversationFile(path);
+      }
+
+      projectChats.forEach((chat) => deleteChat(chat.id));
+
+      setProjectWorkspaces((current) =>
+        current.filter(
+          (project) => normalizeProjectPath(project.path) !== normalizedPath,
+        ),
+      );
+
+      if (normalizeProjectPath(currentProjectPath) === normalizedPath) {
+        handleExitProject();
+      }
+    },
+    [chats, currentProjectPath, deleteChat, handleExitProject],
+  );
 
   /*
    * Handles every sidebar navigation item.
@@ -744,6 +796,7 @@ function ChatPage() {
         chats={regularChats}
         projects={projectWorkspaces}
         onSelectProject={(path) => void handleOpenProject(path)}
+        onDeleteProject={handleDeleteProject}
         onSelect={
           handleSidebarSelect
         }

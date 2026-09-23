@@ -128,6 +128,10 @@
   -ms-overflow-style: none;
 }
 
+.chat-composer textarea:focus-visible {
+  outline: none;
+}
+
 .chat-composer textarea::-webkit-scrollbar {
   display: none;
   width: 0;
