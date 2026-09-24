@@ -189,10 +189,10 @@ function ToolActivityFeedImpl({
             const accent =
               activity.status ===
               'done'
-                ? '#4d8f5a'
+                ? '#15803d'
                 : activity.status ===
                     'error'
-                  ? '#c04c3d'
+                  ? '#b91c1c'
                   : undefined;
 
             const inputText =

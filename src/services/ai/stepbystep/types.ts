@@ -27,7 +27,7 @@ export interface WorkflowState {
   id: string;
   /** Chat that owns this workflow. Messages from other chats never touch it. */
   chatId: string;
-  /** Model selected when the workflow was started; used only by the execution agent. */
+  /** Latest explicit model choice for the execution agent; omitted for the configured default. */
   selectedModel?: string;
   plan: StepPlan;
   currentStepIndex: number;

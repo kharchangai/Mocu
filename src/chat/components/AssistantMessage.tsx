@@ -12,6 +12,11 @@ import "./AssistantMessage.css";
 
 type AssistantMessageProps = {
   content: string;
+  failureDetails?: {
+    summary: string;
+    progress: string;
+  };
+  onRegenerate?: () => void;
 
   /*
    * Optional content rendered directly below the response text and
@@ -86,6 +91,8 @@ function RetryIcon() {
 function AssistantMessageImpl({
   content,
   footer,
+  failureDetails,
+  onRegenerate,
 }: AssistantMessageProps) {
   const [isCopied, setIsCopied] =
     useState(false);
@@ -139,12 +146,62 @@ function AssistantMessageImpl({
       className="assistant-message"
       aria-label="Mocu response"
     >
-      <div className="assistant-message__body">
-        <MarkdownRenderer
-          content={content}
-          direction="auto"
-        />
-      </div>
+      {failureDetails ? (
+        <section
+          className="assistant-failure-card"
+          role="alert"
+          aria-label="Project agent request failed"
+        >
+          <div className="assistant-failure-card__heading">
+            <span
+              className="assistant-failure-card__icon"
+              aria-hidden="true"
+            >
+              !
+            </span>
+            <div>
+              <p className="assistant-failure-card__eyebrow">
+                Request interrupted
+              </p>
+              <h3>The agent couldn’t finish this task</h3>
+            </div>
+          </div>
+
+          <p className="assistant-failure-card__summary">
+            {failureDetails.summary}
+          </p>
+
+          <div className="assistant-failure-card__saved">
+            Completed work and tool results are saved with this conversation.
+            Retry to continue from that progress.
+          </div>
+
+          {failureDetails.progress ? (
+            <details className="assistant-failure-card__details">
+              <summary>View completed work</summary>
+              <pre>{failureDetails.progress}</pre>
+            </details>
+          ) : null}
+
+          {onRegenerate ? (
+            <button
+              type="button"
+              className="assistant-failure-card__retry"
+              onClick={onRegenerate}
+            >
+              <RetryIcon />
+              <span>Retry from saved progress</span>
+            </button>
+          ) : null}
+        </section>
+      ) : (
+        <div className="assistant-message__body">
+          <MarkdownRenderer
+            content={content}
+            direction="auto"
+          />
+        </div>
+      )}
 
       {footer}
 
@@ -154,7 +211,7 @@ function AssistantMessageImpl({
       >
         <button
           type="button"
-          className="assistant-message__action-button"
+          className="assistant-message__action"
           onClick={handleCopy}
           aria-label={
             isCopied
@@ -174,14 +231,6 @@ function AssistantMessageImpl({
           )}
         </button>
 
-        <button
-          type="button"
-          className="assistant-message__action-button"
-          aria-label="Regenerate response"
-          title="Regenerate response"
-        >
-          <RetryIcon />
-        </button>
       </div>
     </article>
   );

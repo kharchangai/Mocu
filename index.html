@@ -11,17 +11,17 @@
     <div id="root"></div>
     <script>
       /*
-       * Dev-only guard against Vite full page reloads while a Mocu agent
-       * request is running (e.g. a long pi extension run). A full reload
-       * kills the running agent loop in the webview and the conversation
-       * appears to lose the assistant's answer.
+       * Dev-only guard against Vite full page reloads. These are suppressed
+       * for the lifetime of the webview because a delayed reload can still
+       * orphan Tauri callbacks after an agent request appears to finish,
+       * killing the running agent loop or losing its answer.
        *
        * This inline classic script runs BEFORE the Vite HMR client (which
        * is injected as a deferred module script), so it can wrap
-       * window.WebSocket and drop "full-reload" HMR frames while a run is
-       * active. `src/services/devReloadGuard.ts` increments/decrements
-       * activeRuns; when the last run finishes and a reload was deferred,
-       * it reloads the page then.
+       * window.WebSocket and drop every Vite "full-reload" HMR frame,
+       * including ones arriving after a run finishes. This prevents Vite from
+       * navigating the webview while Rust/Tauri callbacks may still be pending.
+       * The user can reload manually when safe to apply the latest code.
        *
        * In a production build this has no effect: no dev server, and the
        * guard only ever reacts to HMR "full-reload" frames.
@@ -37,19 +37,17 @@
         window.__mocuDevReloadGuard = state;
 
         var shouldBlockMessage = function (data) {
-          if (state.activeRuns === 0) {
-            return false;
-          }
-
           try {
             var message = JSON.parse(data);
 
             if (message && message.type === "full-reload") {
-              state.pendingFullReload = true;
+              if (state.activeRuns > 0) {
+                state.pendingFullReload = true;
+              }
 
               console.warn(
-                "[Mocu] Deferred dev-server full reload while an agent request is running. " +
-                  "The page will reload when the request finishes. (triggeredBy: " +
+                "[Mocu] Suppressed automatic dev-server full reload. " +
+                  "Reload manually when it is safe to apply the latest code. (triggeredBy: " +
                   String(message.triggeredBy || "unknown") + ")"
               );
 

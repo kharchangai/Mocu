@@ -17,8 +17,8 @@
  * anyway). This module only drives the guard state:
  *
  *   - `beginGuardedRun()` while a chat request runs,
- *   - `endGuardedRun()` when it finishes; if a full reload was deferred in
- *     the meantime, the page reloads at that point.
+ *   - `endGuardedRun()` when it finishes; a deferred full reload is dropped
+ *     rather than applied while Tauri operations may still be settling.
  *
  * In a production build the inline script still exists but never sees HMR
  * frames (no dev server), so this is a no-op there.
@@ -55,18 +55,17 @@ export function endGuardedRun(): void {
   state.activeRuns = Math.max(0, state.activeRuns - 1);
 
   /*
-   * A full reload was requested (file change, dependency re-optimization,
-   * ...) while a request was running. Now that the last request finished,
-   * apply it so the dev code stays fresh.
+   * A full reload was requested while an agent was running. Do not replay it
+   * automatically: Tauri invoke callbacks can still be settling after the
+   * chat request returns, and destroying the webview would orphan them. The
+   * user can reload manually once all work is finished.
    */
   if (state.activeRuns === 0 && state.pendingFullReload) {
     state.pendingFullReload = false;
 
-    console.info(
-      "[Mocu] Agent request finished — applying the deferred dev-server reload.",
+    console.warn(
+      "[Mocu] A dev-server reload was deferred during agent work. Reload manually when it is safe to apply the latest code.",
     );
-
-    window.location.reload();
   }
 }
 

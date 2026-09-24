@@ -263,10 +263,34 @@
  * Model picker. The anchor is position:relative so the menu can hover
  * above the button without affecting the footer layout.
  */
-.model-selector-anchor {
+.model-selector-anchor,
+.effort-selector-anchor {
   position: relative;
   display: inline-flex;
   min-width: 0;
+}
+
+.model-selector-menu.effort-selector-menu {
+  right: 0;
+  left: auto;
+  width: min(300px, calc(100vw - 32px));
+}
+
+.effort-selector-menu .model-selector-item {
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 10px;
+  min-height: 54px;
+  padding: 9px 11px;
+}
+
+.effort-selector-menu .model-selector-item-description {
+  overflow: visible;
+  text-overflow: clip;
+  white-space: normal;
+}
+
+.effort-selector-button {
+  white-space: nowrap;
 }
 
 .model-selector-button {
@@ -785,6 +809,223 @@
   color: #dc2626;
 }
 
+.file-mention-header {
+  display: flex;
+  min-height: 40px;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 0 12px;
+  color: #374151;
+  background: #fafafa;
+  border-bottom: 1px solid #eceff2;
+  font-size: 11px;
+  font-weight: 650;
+}
+
+.file-mention-heading,
+.file-mention-breadcrumb-part,
+.file-mention-footer,
+.file-mention-footer span {
+  display: inline-flex;
+  align-items: center;
+}
+
+.file-mention-heading {
+  gap: 7px;
+}
+
+.file-mention-heading-icon {
+  display: grid;
+  width: 23px;
+  height: 23px;
+  color: #2563eb;
+  background: #eff6ff;
+  border-radius: 7px;
+  place-items: center;
+}
+
+.file-mention-location {
+  display: flex;
+  min-height: 35px;
+  align-items: center;
+  gap: 3px;
+  padding: 0 10px;
+  overflow: hidden;
+  color: #9ca3af;
+  background: #fff;
+  border-bottom: 1px solid #f0f1f3;
+  white-space: nowrap;
+}
+
+.file-mention-breadcrumb-part {
+  min-width: 0;
+  gap: 2px;
+}
+
+.file-mention-breadcrumb {
+  max-width: 150px;
+  overflow: hidden;
+  padding: 3px 4px;
+  color: #6b7280;
+  background: transparent;
+  border: 0;
+  border-radius: 5px;
+  font: inherit;
+  font-size: 10px;
+  text-overflow: ellipsis;
+  cursor: pointer;
+}
+
+.file-mention-breadcrumb:hover {
+  color: #1d4ed8;
+  background: #eff6ff;
+}
+
+.file-mention-back {
+  display: grid;
+  width: 25px;
+  height: 25px;
+  flex: 0 0 auto;
+  margin-left: auto;
+  color: #6b7280;
+  background: #f3f4f6;
+  border: 0;
+  border-radius: 7px;
+  place-items: center;
+  cursor: pointer;
+}
+
+.file-mention-back:hover {
+  color: #1d4ed8;
+  background: #eff6ff;
+}
+
+.file-mention-list {
+  max-height: 280px;
+  padding: 5px;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+
+.file-mention-row {
+  display: flex;
+  min-height: 39px;
+  align-items: center;
+  border-radius: 9px;
+}
+
+.file-mention-row:hover,
+.file-mention-row--selected {
+  background: #f3f6fa;
+}
+
+.file-mention-item {
+  display: flex;
+  min-width: 0;
+  min-height: 39px;
+  flex: 1;
+  align-items: center;
+  gap: 9px;
+  padding: 5px 8px;
+  color: #1f2937;
+  background: transparent;
+  border: 0;
+  border-radius: 9px;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.file-mention-item-icon {
+  display: grid;
+  width: 27px;
+  height: 27px;
+  flex: 0 0 auto;
+  color: #64748b;
+  background: #fff;
+  border: 1px solid #e8ebef;
+  border-radius: 8px;
+  place-items: center;
+}
+
+.file-mention-item-icon--folder {
+  color: #d28a20;
+  background: #fff8e8;
+  border-color: #f4e4bd;
+}
+
+.file-mention-item-name {
+  min-width: 0;
+  flex: 1;
+  overflow: hidden;
+  font-size: 11px;
+  font-weight: 570;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.file-mention-item-type {
+  color: #9ca3af;
+  font-size: 9px;
+}
+
+.file-mention-open-folder {
+  display: inline-flex;
+  min-width: 48px;
+  height: 29px;
+  align-items: center;
+  justify-content: center;
+  gap: 1px;
+  margin-right: 5px;
+  padding: 0 6px;
+  color: #8b95a3;
+  background: transparent;
+  border: 0;
+  border-radius: 7px;
+  cursor: pointer;
+}
+
+.file-mention-open-folder:hover {
+  color: #2563eb;
+  background: #eaf1fc;
+}
+
+.file-mention-footer {
+  min-height: 30px;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 0 12px;
+  color: #9ca3af;
+  background: #fafafa;
+  border-top: 1px solid #f0f1f3;
+  font-size: 9px;
+}
+
+.file-mention-footer span {
+  gap: 5px;
+}
+
+.file-mention-loading {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 9px;
+}
+
+.file-mention-spinner {
+  width: 13px;
+  height: 13px;
+  border: 2px solid #dbeafe;
+  border-top-color: #3b82f6;
+  border-radius: 50%;
+  animation: file-mention-spin 700ms linear infinite;
+}
+
+@keyframes file-mention-spin {
+  to { transform: rotate(360deg); }
+}
+
 @media (max-width: 640px) {
   .chat-input-shell {
     padding-right: 10px;
@@ -793,6 +1034,10 @@
 
   .composer-menu-button {
     display: none;
+  }
+
+  .effort-selector-anchor .composer-menu-button {
+    display: inline-flex;
   }
 
   /* Keep the model chooser available on small screens. */

@@ -1,6 +1,9 @@
 import { ChatOpenAI } from "@langchain/openai";
 import { readSettings } from "../../store";
-import { getMainGatewayBaseUrl } from "./model-catalog";
+import {
+  getMainGatewayBaseUrl,
+  type GatewayReasoningEffort,
+} from "./model-catalog";
 
 export type LlmTier = "cheap" | "medium" | "expensive";
 
@@ -13,6 +16,7 @@ export type LlmGenerationOptions = {
   systemPrompt?: string;
   temperature?: number;
   maxTokens?: number;
+  reasoningEffort?: GatewayReasoningEffort | null;
 };
 
 function normalizeBaseUrl(baseUrl: string): string | undefined {
@@ -76,6 +80,13 @@ export const getAsyncLLM = async (
     ...(options.maxTokens === undefined
       ? {}
       : { maxTokens: options.maxTokens }),
+    ...(options.reasoningEffort
+      ? {
+          modelKwargs: {
+            reasoning: { effort: options.reasoningEffort },
+          },
+        }
+      : {}),
     configuration: {
       baseURL: normalizeBaseUrl(selectedModel.baseUrl),
     },
@@ -160,6 +171,13 @@ export const getMainAgentLlm = async (
       ...(options.maxTokens === undefined
         ? {}
         : { maxTokens: options.maxTokens }),
+      ...(options.reasoningEffort
+        ? {
+            modelKwargs: {
+              reasoning: { effort: options.reasoningEffort },
+            },
+          }
+        : {}),
       configuration: {
         baseURL: normalizeBaseUrl(baseUrl),
       },
@@ -180,6 +198,20 @@ export const getSelectedChatModel = (
   const value = config?.configurable?.selectedModel;
 
   return typeof value === "string" ? value.trim() : "";
+};
+
+export const getSelectedChatReasoningEffort = (
+  config?: { configurable?: Record<string, unknown> },
+): GatewayReasoningEffort | null => {
+  const value = config?.configurable?.reasoningEffort;
+
+  return value === "minimal" ||
+    value === "low" ||
+    value === "medium" ||
+    value === "high" ||
+    value === "xhigh"
+    ? value
+    : null;
 };
 
 export { getMainGatewayBaseUrl };

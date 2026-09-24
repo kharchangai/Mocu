@@ -21,6 +21,7 @@ import type { SelectedSkill } from '../components/skillTypes';
 import type { SelectedExtension } from '../components/extensionTypes';
 import type { SelectedAgent } from '../components/agentTypes';
 import type { SelectedMcpServer } from '../components/mcpTypes';
+import type { GatewayReasoningEffort } from '../../services/ai/model-catalog';
 
 /** Key used for selections made before the chat exists. */
 export const NEW_CHAT_RESOURCE_KEY = 'new-chat';
@@ -41,6 +42,8 @@ export type ChatResourceSelection = {
    * configured default model, and other chats never see this value.
    */
   model: string | null;
+  /** Optional gateway reasoning level selected for this conversation. */
+  reasoningEffort?: GatewayReasoningEffort | null;
 };
 
 const EMPTY_SELECTION: ChatResourceSelection = {
@@ -49,6 +52,7 @@ const EMPTY_SELECTION: ChatResourceSelection = {
   mcpServers: [],
   agent: null,
   model: null,
+  reasoningEffort: null,
 };
 
 const selections = new Map<string, ChatResourceSelection>();
@@ -79,7 +83,14 @@ function isSelection(value: unknown): value is ChatResourceSelection {
      */
     (candidate.model === undefined ||
       candidate.model === null ||
-      typeof candidate.model === 'string')
+      typeof candidate.model === 'string') &&
+    (candidate.reasoningEffort === undefined ||
+      candidate.reasoningEffort === null ||
+      candidate.reasoningEffort === 'minimal' ||
+      candidate.reasoningEffort === 'low' ||
+      candidate.reasoningEffort === 'medium' ||
+      candidate.reasoningEffort === 'high' ||
+      candidate.reasoningEffort === 'xhigh')
   );
 }
 
@@ -161,7 +172,8 @@ export function setChatResourceSelection(
     selection.extensions.length === 0 &&
     selection.mcpServers.length === 0 &&
     selection.agent === null &&
-    !selection.model;
+    !selection.model &&
+    !selection.reasoningEffort;
 
   if (isEmpty) {
     selections.delete(chatId);
@@ -172,6 +184,7 @@ export function setChatResourceSelection(
       mcpServers: [...selection.mcpServers],
       agent: selection.agent,
       model: selection.model?.trim() || null,
+      reasoningEffort: selection.reasoningEffort ?? null,
     });
   }
 

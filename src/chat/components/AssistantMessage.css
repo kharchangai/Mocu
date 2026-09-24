@@ -89,6 +89,133 @@
   flex: 0 0 auto;
 }
 
+.assistant-failure-card {
+  width: 100%;
+  max-width: 760px;
+  margin: 0 auto;
+  padding: 18px;
+  border: 1px solid #efd5d0;
+  border-radius: 14px;
+  background: #fffaf9;
+  color: #343434;
+  box-shadow: 0 4px 18px rgba(108, 44, 35, 0.05);
+}
+
+.assistant-failure-card__heading {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.assistant-failure-card__icon {
+  display: grid;
+  width: 34px;
+  height: 34px;
+  flex: 0 0 auto;
+  place-items: center;
+  border-radius: 50%;
+  background: #fce8e5;
+  color: #a33b30;
+  font-size: 20px;
+  font-weight: 700;
+}
+
+.assistant-failure-card__eyebrow {
+  margin: 0 0 3px;
+  color: #a33b30;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+}
+
+.assistant-failure-card h3 {
+  margin: 0;
+  font-size: 15px;
+  font-weight: 650;
+}
+
+.assistant-failure-card__summary {
+  margin: 14px 0 0;
+  color: #5c514f;
+  font-size: 13px;
+  line-height: 1.55;
+}
+
+.assistant-failure-card__saved {
+  margin-top: 12px;
+  padding: 10px 12px;
+  border: 1px solid #dce9de;
+  border-radius: 9px;
+  background: #f5faf5;
+  color: #365a3b;
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.assistant-failure-card__details {
+  margin-top: 12px;
+  color: #57534e;
+  font-size: 12px;
+}
+
+.assistant-failure-card__details summary {
+  width: fit-content;
+  cursor: pointer;
+  font-weight: 600;
+}
+
+.assistant-failure-card__details pre {
+  max-height: 240px;
+  margin: 9px 0 0;
+  padding: 11px;
+  overflow: auto;
+  border: 1px solid #e8e4df;
+  border-radius: 8px;
+  background: #fff;
+  color: #4d4945;
+  font: 11px/1.5 ui-monospace, SFMono-Regular, Consolas, monospace;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.assistant-failure-card__retry {
+  display: inline-flex;
+  min-height: 38px;
+  margin-top: 14px;
+  padding: 0 13px;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  border: 0;
+  border-radius: 9px;
+  background: #343434;
+  color: #fff;
+  font: inherit;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background-color 140ms ease, transform 140ms ease;
+}
+
+.assistant-failure-card__retry:hover {
+  background: #202020;
+}
+
+.assistant-failure-card__retry:active {
+  transform: translateY(1px);
+}
+
+.assistant-failure-card__retry:focus-visible {
+  outline: 3px solid rgba(37, 99, 235, 0.24);
+  outline-offset: 2px;
+}
+
+.assistant-failure-card__retry svg {
+  width: 15px;
+  height: 15px;
+}
+
 /* Streaming cursor */
 
 .assistant-message__cursor {

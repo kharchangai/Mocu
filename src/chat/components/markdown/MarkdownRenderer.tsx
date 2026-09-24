@@ -12,6 +12,7 @@ import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import rehypeHighlight from "rehype-highlight";
 
+import { getTextDirection } from "../textDirection";
 import "./MarkdownRenderer.css";
 
 export type MarkdownDirection =
@@ -284,6 +285,11 @@ function MarkdownRendererImpl({
     return null;
   }
 
+  const resolvedDirection =
+    direction === "auto"
+      ? getTextDirection(content)
+      : direction;
+
   const rootClassName = [
     "mocu-markdown",
     className,
@@ -294,7 +300,7 @@ function MarkdownRendererImpl({
   return (
     <div
       className={rootClassName}
-      dir={direction}
+      dir={resolvedDirection}
     >
       <ReactMarkdown
         remarkPlugins={[remarkGfm]}

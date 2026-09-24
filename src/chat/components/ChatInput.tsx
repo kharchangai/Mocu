@@ -60,8 +60,19 @@ import type {
   AvailableAgent,
   SelectedAgent,
 } from './agentTypes';
-import { listGatewayModels } from '../../services/ai/model-catalog';
-import type { GatewayModel } from '../../services/ai/model-catalog';
+import {
+  getMainAgentDefaultModel,
+  listGatewayModels,
+} from '../../services/ai/model-catalog';
+import type {
+  GatewayModel,
+  GatewayReasoningEffort,
+} from '../../services/ai/model-catalog';
+import { readDir } from '@tauri-apps/plugin-fs';
+import { join } from '@tauri-apps/api/path';
+import { FileMentionMenu, type ProjectFileEntry } from './FileMentionMenu';
+import { resolveFileMentions, type SelectedFileReference } from './fileMentionReferences';
+import { getTextDirection } from './textDirection';
 import './ChatInput.css';
 
 export type SendOptions = {
@@ -76,10 +87,9 @@ export type SendOptions = {
    * configured default model is used.
    */
   selectedModel: string | null;
+  selectedReasoningEffort: GatewayReasoningEffort | null;
+  fileReferences: SelectedFileReference[];
 };
-
-const RTL_CHARACTER_PATTERN = /[\u0590-\u08ff\ufb1d-\ufdff\ufe70-\ufefc]/;
-const STRONG_CHARACTER_PATTERN = /[A-Za-z\u0590-\u08ff\ufb1d-\ufdff\ufe70-\ufefc]/;
 
 export type ChatInputProps = {
   value?: string;
@@ -105,6 +115,34 @@ export type ChatInputProps = {
 };
 
 type CommandMenuMode = 'commands' | 'skills' | 'extensions' | 'agents' | 'mcp';
+
+type ActiveFileMention = {
+  start: number;
+  end: number;
+  query: string;
+};
+
+const findActiveFileMention = (
+  value: string,
+  caretPosition: number,
+): ActiveFileMention | null => {
+  const textBeforeCaret = value.slice(0, caretPosition);
+  const match = textBeforeCaret.match(/(^|[\s([{])@([^\s]*)$/);
+
+  if (!match) {
+    return null;
+  }
+
+  const markerOffset = match[0].lastIndexOf('@');
+  const start = textBeforeCaret.length - match[0].length + markerOffset;
+  let end = caretPosition;
+
+  while (end < value.length && !/\s/.test(value[end])) {
+    end += 1;
+  }
+
+  return { start, end, query: match[2] ?? '' };
+};
 
 /*
  * Keys of a resource selection that identify the same resource. The
@@ -180,6 +218,7 @@ export function ChatInput({
   const textareaRef = useRef<HTMLTextAreaElement | null>(null);
   const highlightRef = useRef<HTMLDivElement | null>(null);
   const modelSelectorRef = useRef<HTMLDivElement | null>(null);
+  const effortSelectorRef = useRef<HTMLDivElement | null>(null);
 
   /*
    * The element inside the highlight layer that receives the scroll
@@ -214,6 +253,14 @@ export function ChatInput({
 
   const [activeCommand, setActiveCommand] =
     useState<ActiveSlashCommand | null>(null);
+  const [activeFileMention, setActiveFileMention] =
+    useState<ActiveFileMention | null>(null);
+  const [selectedFileReferences, setSelectedFileReferences] =
+    useState<SelectedFileReference[]>([]);
+  const [fileMentionDirectory, setFileMentionDirectory] = useState('');
+  const [projectEntries, setProjectEntries] = useState<ProjectFileEntry[]>([]);
+  const [isLoadingProjectEntries, setIsLoadingProjectEntries] = useState(false);
+  const [projectEntriesError, setProjectEntriesError] = useState<string | null>(null);
 
   const [selectedSkills, setSelectedSkills] = useState<
     SelectedSkill[]
@@ -230,8 +277,8 @@ export function ChatInput({
   >([]);
 
   /*
-   * Model picker state. The list is fetched lazily from the configured
-   * AI gateway the first time the menu is opened and then cached.
+   * Gateway model metadata is loaded once so both the model picker and
+   * model-specific reasoning controls can use the advertised capabilities.
    */
   const [availableModels, setAvailableModels] = useState<
     GatewayModel[]
@@ -241,6 +288,8 @@ export function ChatInput({
   const [modelsError, setModelsError] = useState<string | null>(null);
   const [isModelMenuOpen, setIsModelMenuOpen] = useState(false);
   const [modelSearchQuery, setModelSearchQuery] = useState('');
+  const [defaultMainAgentModel, setDefaultMainAgentModel] = useState('');
+  const [isEffortMenuOpen, setIsEffortMenuOpen] = useState(false);
 
   /*
    * Resources the user toggled ON for this conversation. They are
@@ -258,6 +307,18 @@ export function ChatInput({
    * selection is never shared between conversations.
    */
   const selectedModel = pinnedResources.model ?? null;
+  const activeModelId = selectedModel ?? defaultMainAgentModel;
+  const activeModel = availableModels.find(
+    (model) => model.id === activeModelId,
+  );
+  const supportedReasoningEfforts =
+    activeModel?.supportedReasoningEfforts ?? [];
+  const hasReasoningSupport = supportedReasoningEfforts.length > 0;
+  const selectedReasoningEffort =
+    pinnedResources.reasoningEffort &&
+    supportedReasoningEfforts.includes(pinnedResources.reasoningEffort)
+      ? pinnedResources.reasoningEffort
+      : null;
 
   const [isResourceMenuOpen, setIsResourceMenuOpen] = useState(false);
 
@@ -290,15 +351,7 @@ export function ChatInput({
       ? safeProjectPath.trim()
       : null;
 
-  const inputDirection = (() => {
-    const firstStrongCharacter = safeValue.match(
-      STRONG_CHARACTER_PATTERN,
-    )?.[0];
-
-    return firstStrongCharacter && RTL_CHARACTER_PATTERN.test(firstStrongCharacter)
-      ? 'rtl'
-      : 'ltr';
-  })();
+  const inputDirection = getTextDirection(safeValue);
 
   const mentionResourceNames = useMemo(
     () => ({
@@ -560,6 +613,20 @@ export function ChatInput({
     return filterAgents(availableAgents, activeCommandQuery);
   }, [commandMenuMode, availableAgents, activeCommandQuery]);
 
+  const filteredProjectEntries = useMemo(() => {
+    const query = activeFileMention?.query.trim().toLocaleLowerCase() ?? '';
+
+    if (!query) {
+      return projectEntries;
+    }
+
+    return projectEntries.filter((entry) =>
+      entry.name.toLocaleLowerCase().includes(query),
+    );
+  }, [projectEntries, activeFileMention?.query]);
+
+  const isFileMentionMenuOpen = activeFileMention !== null && !isLoading;
+
   const loadSkills = useCallback(async () => {
     setIsLoadingSkills(true);
     setSkillsError(null);
@@ -676,9 +743,13 @@ export function ChatInput({
     setModelsError(null);
 
     try {
-      const models = await listGatewayModels();
+      const [models, configuredModel] = await Promise.all([
+        listGatewayModels(),
+        getMainAgentDefaultModel(),
+      ]);
 
       setAvailableModels(models);
+      setDefaultMainAgentModel(configuredModel);
     } catch (error) {
       console.error('Failed to load gateway models:', error);
 
@@ -698,6 +769,10 @@ export function ChatInput({
   }, [loadSkills]);
 
   useEffect(() => {
+    void loadModels();
+  }, [loadModels]);
+
+  useEffect(() => {
     void loadExtensions();
   }, [loadExtensions]);
 
@@ -715,6 +790,84 @@ export function ChatInput({
       void loadMcpServers();
     });
   }, [loadMcpServers]);
+
+  useEffect(() => {
+    setSelectedFileReferences([]);
+  }, [chatId]);
+
+  useEffect(() => {
+    if (!activeFileMention || !normalizedProjectPath) {
+      setProjectEntries([]);
+      setProjectEntriesError(null);
+      setIsLoadingProjectEntries(false);
+      return undefined;
+    }
+
+    let cancelled = false;
+    setIsLoadingProjectEntries(true);
+    setProjectEntriesError(null);
+
+    const loadProjectEntries = async () => {
+      try {
+        const directoryParts = fileMentionDirectory
+          .split('/')
+          .filter(Boolean);
+        const directory = directoryParts.length > 0
+          ? await join(normalizedProjectPath, ...directoryParts)
+          : normalizedProjectPath;
+        const entries = await readDir(directory);
+        const mappedEntries = entries
+          .filter((entry) => entry.isDirectory || entry.isFile)
+          .map((entry) => ({
+            name: entry.name,
+            relativePath: fileMentionDirectory
+              ? `${fileMentionDirectory}/${entry.name}`
+              : entry.name,
+            isDirectory: Boolean(entry.isDirectory),
+          }))
+          .sort((first, second) =>
+            Number(second.isDirectory) - Number(first.isDirectory) ||
+            first.name.localeCompare(second.name, undefined, { numeric: true, sensitivity: 'base' }),
+          );
+
+        if (!cancelled) {
+          setProjectEntries(mappedEntries);
+        }
+      } catch (error) {
+        if (!cancelled) {
+          setProjectEntries([]);
+          setProjectEntriesError(
+            error instanceof Error
+              ? error.message
+              : 'Could not read files from this project folder.',
+          );
+        }
+      } finally {
+        if (!cancelled) {
+          setIsLoadingProjectEntries(false);
+        }
+      }
+    };
+
+    void loadProjectEntries();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [
+    activeFileMention !== null,
+    fileMentionDirectory,
+    normalizedProjectPath,
+  ]);
+
+  useEffect(() => {
+    if (
+      selectedItemIndex >= filteredProjectEntries.length &&
+      filteredProjectEntries.length > 0
+    ) {
+      setSelectedItemIndex(filteredProjectEntries.length - 1);
+    }
+  }, [filteredProjectEntries.length, selectedItemIndex]);
 
   /*
    * useLayoutEffect (not useEffect) so the height and highlight offset are
@@ -740,6 +893,10 @@ export function ChatInput({
   }, [safeValue]);
 
   useEffect(() => {
+    if (!isCommandMenuOpen) {
+      return;
+    }
+
     const menuItemCount =
       commandMenuMode === 'skills'
         ? filteredSkills.length
@@ -764,6 +921,7 @@ export function ChatInput({
     filteredMcpServers.length,
     selectedItemIndex,
     commandMenuMode,
+    isCommandMenuOpen,
   ]);
 
   const updateActiveCommand = (
@@ -817,11 +975,22 @@ export function ChatInput({
       );
 
     setActiveCommand(matchesSettledMention ? null : command);
+
+    const fileMention = findActiveFileMention(nextValue, caretPosition);
+    if (fileMention?.start !== activeFileMention?.start) {
+      setFileMentionDirectory('');
+    }
+    setActiveFileMention(fileMention);
     setSelectedItemIndex(0);
   };
 
   const closeCommandMenu = () => {
     setActiveCommand(null);
+    setSelectedItemIndex(0);
+  };
+
+  const closeFileMentionMenu = () => {
+    setActiveFileMention(null);
     setSelectedItemIndex(0);
   };
 
@@ -836,6 +1005,61 @@ export function ChatInput({
       textarea.focus();
       textarea.setSelectionRange(position, position);
     });
+  };
+
+  const handleProjectEntrySelect = async (entry: ProjectFileEntry) => {
+    if (!activeFileMention || !normalizedProjectPath) {
+      return;
+    }
+
+    const absolutePath = await join(
+      normalizedProjectPath,
+      ...entry.relativePath.split('/'),
+    );
+    const mention = /\s/.test(entry.relativePath)
+      ? `@"${entry.relativePath.replace(/"/g, '\\"')}"`
+      : `@${entry.relativePath}`;
+    const textBeforeMention = safeValue.slice(0, activeFileMention.start);
+    const textAfterMention = safeValue.slice(activeFileMention.end);
+    const insertedMention = `${mention} `;
+    const nextValue = textBeforeMention + insertedMention + textAfterMention;
+    const nextCaretPosition = textBeforeMention.length + insertedMention.length;
+
+    onValueChange(nextValue);
+    setSelectedFileReferences((current) => [
+      ...current.filter((reference) => reference.mention !== mention),
+      { mention, absolutePath },
+    ]);
+    closeFileMentionMenu();
+    setFileMentionDirectory('');
+    setTextareaCaret(nextCaretPosition);
+  };
+
+  const handleFileDirectoryChange = (relativePath: string) => {
+    if (!activeFileMention) {
+      return;
+    }
+
+    const textBeforeMention = safeValue.slice(0, activeFileMention.start);
+    const textAfterMention = safeValue.slice(activeFileMention.end);
+    const nextValue = `${textBeforeMention}@${textAfterMention}`;
+    const nextCaretPosition = textBeforeMention.length + 1;
+
+    onValueChange(nextValue);
+    setFileMentionDirectory(relativePath);
+    setActiveFileMention({
+      start: textBeforeMention.length,
+      end: nextCaretPosition,
+      query: '',
+    });
+    setSelectedItemIndex(0);
+    setTextareaCaret(nextCaretPosition);
+  };
+
+  const handleFileDirectoryBack = () => {
+    const directoryParts = fileMentionDirectory.split('/').filter(Boolean);
+    directoryParts.pop();
+    handleFileDirectoryChange(directoryParts.join('/'));
   };
 
   const keepSelectedResourcesInSync = (nextValue: string) => {
@@ -859,6 +1083,11 @@ export function ChatInput({
     setSelectedMcpServers((currentServers) =>
       currentServers.filter((server) =>
         nextValue.includes(`/mcp ${server.name}`),
+      ),
+    );
+    setSelectedFileReferences((currentReferences) =>
+      currentReferences.filter((reference) =>
+        nextValue.includes(reference.mention),
       ),
     );
   };
@@ -1037,12 +1266,18 @@ export function ChatInput({
   };
 
   /*
-   * Opens the model picker and fetches the gateway model list once.
-   * Failures are shown inside the menu and never block sending.
+   * Opens the model picker. Model metadata is preloaded for capability-aware
+   * controls; failures are shown here and never block sending.
    */
   const handleToggleModelMenu = () => {
+    setIsEffortMenuOpen(false);
     setIsModelMenuOpen((open) => {
-      if (!open && availableModels.length === 0 && !modelsError) {
+      if (
+        !open &&
+        availableModels.length === 0 &&
+        !modelsError &&
+        !isLoadingModels
+      ) {
         void loadModels();
       }
 
@@ -1051,6 +1286,7 @@ export function ChatInput({
   };
 
   const handleModelSelect = (modelId: string | null) => {
+    setIsEffortMenuOpen(false);
     /*
      * The model belongs to THIS chat only: it is stored in the same
      * per-chat selection as the pinned resources. New chats start with
@@ -1065,7 +1301,7 @@ export function ChatInput({
   };
 
   useEffect(() => {
-    if (!isModelMenuOpen) {
+    if (!isModelMenuOpen && !isEffortMenuOpen) {
       return undefined;
     }
 
@@ -1074,9 +1310,11 @@ export function ChatInput({
 
       if (
         target instanceof Node &&
-        !modelSelectorRef.current?.contains(target)
+        !modelSelectorRef.current?.contains(target) &&
+        !effortSelectorRef.current?.contains(target)
       ) {
         setIsModelMenuOpen(false);
+        setIsEffortMenuOpen(false);
       }
     };
 
@@ -1085,7 +1323,17 @@ export function ChatInput({
     return () => {
       document.removeEventListener('pointerdown', handleOutsidePointerDown);
     };
-  }, [isModelMenuOpen]);
+  }, [isModelMenuOpen, isEffortMenuOpen]);
+
+  const handleReasoningEffortSelect = (
+    effort: GatewayReasoningEffort | null,
+  ) => {
+    persistPinnedResources({
+      ...pinnedResources,
+      reasoningEffort: effort,
+    });
+    setIsEffortMenuOpen(false);
+  };
 
   const handleModelSearchKeyDown = (
     event: React.KeyboardEvent<HTMLInputElement>,
@@ -1103,17 +1351,27 @@ export function ChatInput({
       return;
     }
 
+    const fileReferencesToSend = selectedFileReferences.filter((reference) =>
+      message.includes(reference.mention),
+    );
+
     if (interactionActive) {
       if (!interactionInputEnabled || !onInteractionSend) {
         return;
       }
       setSendError(null);
+      closeCommandMenu();
+      closeFileMentionMenu();
+      setSelectedFileReferences([]);
       onValueChange('');
       try {
-        await onInteractionSend(message);
+        await onInteractionSend(
+          resolveFileMentions(message, fileReferencesToSend),
+        );
         return;
       } catch (error) {
         onValueChange(message);
+        setSelectedFileReferences(fileReferencesToSend);
         setSendError(
           error instanceof Error
             ? error.message
@@ -1149,12 +1407,15 @@ export function ChatInput({
 
     setSendError(null);
     closeCommandMenu();
+    closeFileMentionMenu();
     setIsResourceMenuOpen(false);
     setIsModelMenuOpen(false);
+    setIsEffortMenuOpen(false);
     setSelectedSkills([]);
     setSelectedExtensions([]);
     setSelectedAgent(null);
     setSelectedMcpServers([]);
+    setSelectedFileReferences([]);
     onValueChange('');
 
     try {
@@ -1165,6 +1426,8 @@ export function ChatInput({
         selectedMcpServers: mcpServersToSend,
         selectedAgent: agentToSend,
         selectedModel,
+        selectedReasoningEffort,
+        fileReferences: fileReferencesToSend,
       });
 
       settledMentionsRef.current = [];
@@ -1173,6 +1436,7 @@ export function ChatInput({
        * Restore the message and the selected resources when sending fails.
        */
       onValueChange(message);
+      setSelectedFileReferences(fileReferencesToSend);
       setSelectedSkills(
         skillsToSend.filter(
           (skill) => !pinnedSkillNames.includes(skill.name),
@@ -1205,10 +1469,65 @@ export function ChatInput({
   const handleKeyDown = (
     event: React.KeyboardEvent<HTMLTextAreaElement>,
   ) => {
-    if (event.key === 'Escape' && isModelMenuOpen) {
+    if (event.key === 'Escape' && (isModelMenuOpen || isEffortMenuOpen)) {
       event.preventDefault();
       setIsModelMenuOpen(false);
+      setIsEffortMenuOpen(false);
       return;
+    }
+
+    if (isFileMentionMenuOpen) {
+      const entryCount = filteredProjectEntries.length;
+
+      if (event.key === 'ArrowDown') {
+        event.preventDefault();
+        if (entryCount > 0) {
+          setSelectedItemIndex((index) => (index + 1) % entryCount);
+        }
+        return;
+      }
+
+      if (event.key === 'ArrowUp') {
+        event.preventDefault();
+        if (entryCount > 0) {
+          setSelectedItemIndex((index) =>
+            index <= 0 ? entryCount - 1 : index - 1,
+          );
+        }
+        return;
+      }
+
+      if (event.key === 'ArrowRight') {
+        event.preventDefault();
+        const selectedEntry = filteredProjectEntries[selectedItemIndex];
+        if (selectedEntry?.isDirectory) {
+          handleFileDirectoryChange(selectedEntry.relativePath);
+        }
+        return;
+      }
+
+      if (event.key === 'ArrowLeft') {
+        event.preventDefault();
+        if (fileMentionDirectory) {
+          handleFileDirectoryBack();
+        }
+        return;
+      }
+
+      if (event.key === 'Enter' || event.key === 'Tab') {
+        event.preventDefault();
+        const selectedEntry = filteredProjectEntries[selectedItemIndex];
+        if (selectedEntry) {
+          handleProjectEntrySelect(selectedEntry);
+        }
+        return;
+      }
+
+      if (event.key === 'Escape') {
+        event.preventDefault();
+        closeFileMentionMenu();
+        return;
+      }
     }
 
     if (isCommandMenuOpen) {
@@ -1501,6 +1820,28 @@ export function ChatInput({
             </div>
           )}
 
+          {isFileMentionMenuOpen && (
+            <FileMentionMenu
+              projectName={
+                normalizedProjectPath
+                  ?.split('\\').join('/')
+                  .split('/')
+                  .filter(Boolean)
+                  .pop() ?? 'Project'
+              }
+              directoryPath={fileMentionDirectory}
+              entries={filteredProjectEntries}
+              selectedIndex={selectedItemIndex}
+              isLoading={isLoadingProjectEntries}
+              error={projectEntriesError}
+              hasProject={normalizedProjectPath !== null}
+              onSelect={handleProjectEntrySelect}
+              onOpenDirectory={handleFileDirectoryChange}
+              onGoBack={handleFileDirectoryBack}
+              onHover={setSelectedItemIndex}
+            />
+          )}
+
           {isCommandMenuOpen && (
             <CommandMenu
               mode={commandMenuMode ?? 'commands'}
@@ -1578,11 +1919,13 @@ export function ChatInput({
                 ? `Reply to ${interaction?.extensionName ?? 'extension'}`
                 : `Message ${agentName}`
             }
-            aria-expanded={isCommandMenuOpen}
+            aria-expanded={isCommandMenuOpen || isFileMentionMenuOpen}
             aria-controls={
-              isCommandMenuOpen
-                ? 'command-menu-list'
-                : undefined
+              isFileMentionMenuOpen
+                ? 'file-mention-menu-list'
+                : isCommandMenuOpen
+                  ? 'command-menu-list'
+                  : undefined
             }
             />
           </div>
@@ -1793,13 +2136,116 @@ export function ChatInput({
                 )}
               </div>
 
-              <button
-                type="button"
-                className="composer-menu-button"
-              >
-                {effortLabel}
-                <span>⌄</span>
-              </button>
+              {hasReasoningSupport ? (
+                <div
+                  ref={effortSelectorRef}
+                  className="effort-selector-anchor"
+                >
+                  <button
+                    type="button"
+                    className={`composer-menu-button effort-selector-button${
+                      selectedReasoningEffort
+                        ? ' composer-menu-button--active'
+                        : ''
+                    }`}
+                    onClick={() => {
+                      setIsModelMenuOpen(false);
+                      setIsEffortMenuOpen((open) => !open);
+                    }}
+                    aria-label="Choose the thinking level"
+                    aria-expanded={isEffortMenuOpen}
+                    title="Choose the model's thinking level"
+                  >
+                    {selectedReasoningEffort
+                      ? `Thinking · ${selectedReasoningEffort}`
+                      : effortLabel}
+                    <ChevronDown
+                      size={13}
+                      className={
+                        isEffortMenuOpen
+                          ? 'model-selector-chevron model-selector-chevron--open'
+                          : 'model-selector-chevron'
+                      }
+                    />
+                  </button>
+
+                  {isEffortMenuOpen && (
+                    <div
+                      className="model-selector-menu effort-selector-menu"
+                      role="listbox"
+                      aria-label="Thinking level"
+                    >
+                      <div className="model-selector-list">
+                        <button
+                          type="button"
+                          role="option"
+                          aria-selected={selectedReasoningEffort === null}
+                          className={`model-selector-item${
+                            selectedReasoningEffort === null
+                              ? ' model-selector-item--selected'
+                              : ''
+                          }`}
+                          onClick={() => handleReasoningEffortSelect(null)}
+                        >
+                          <span className="model-selector-item-copy">
+                            <span className="model-selector-item-name">Default</span>
+                            <span className="model-selector-item-description">
+                              Let the gateway choose the thinking level
+                            </span>
+                          </span>
+                          {selectedReasoningEffort === null && (
+                            <Check
+                              size={16}
+                              className="model-selector-check"
+                              strokeWidth={2.5}
+                            />
+                          )}
+                        </button>
+
+                        {supportedReasoningEfforts.map((effort) => (
+                          <button
+                            key={effort}
+                            type="button"
+                            role="option"
+                            aria-selected={selectedReasoningEffort === effort}
+                            className={`model-selector-item${
+                              selectedReasoningEffort === effort
+                                ? ' model-selector-item--selected'
+                                : ''
+                            }`}
+                            onClick={() => handleReasoningEffortSelect(effort)}
+                          >
+                            <span className="model-selector-item-copy">
+                              <span className="model-selector-item-name">
+                                {effort.charAt(0).toUpperCase() + effort.slice(1)}
+                              </span>
+                              <span className="model-selector-item-description">
+                                {effort === 'high' || effort === 'xhigh'
+                                  ? 'Use more reasoning for complex tasks'
+                                  : effort === 'minimal' || effort === 'low'
+                                    ? 'Use less reasoning for faster responses'
+                                    : 'Use balanced reasoning'}
+                              </span>
+                            </span>
+                            {selectedReasoningEffort === effort && (
+                              <Check
+                                size={16}
+                                className="model-selector-check"
+                                strokeWidth={2.5}
+                              />
+                            )}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                </div>
+              ) : (
+                <button type="button" className="composer-menu-button">
+                  {effortLabel}
+                  <span>⌄</span>
+                </button>
+              )}
             </div>
 
             <div className="chat-composer-right-actions">

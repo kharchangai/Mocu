@@ -1,38 +1,26 @@
 /* src/chat/components/StepWorkflowPanel.css */
 
-/* =========================================================
-   Step-by-step workflow card (lives inside RightPanelDock)
-   Simple, modern, collapsible.
-   ========================================================= */
-
 .step-workflow-panel {
   display: flex;
   flex: 0 0 auto;
   flex-direction: column;
   min-height: 0;
   overflow: hidden;
-  border: 1px solid #e7e4de;
-  border-radius: 16px;
+  border: 1px solid #e5e7eb;
+  border-radius: 14px;
   background: #fff;
-  box-shadow:
-    0 6px 20px rgb(60 50 40 / 6%),
-    0 1px 3px rgb(60 50 40 / 4%);
+  box-shadow: 0 8px 24px rgb(15 23 42 / 5%);
 }
 
-.step-workflow-panel--open {
-  flex: 1 1 auto;
-}
-
-/* ---------------- header ---------------- */
-
+/* Header */
 .step-workflow-panel__header {
   display: flex;
   flex-shrink: 0;
   align-items: center;
   gap: 10px;
   width: 100%;
-  padding: 12px 14px;
-  border: none;
+  padding: 12px 13px;
+  border: 0;
   background: transparent;
   cursor: pointer;
   text-align: left;
@@ -40,28 +28,28 @@
 }
 
 .step-workflow-panel__header:hover {
-  background: rgb(240 237 232 / 50%);
+  background: #f8fafc;
 }
 
 .step-workflow-panel__pulse {
   flex-shrink: 0;
   width: 8px;
   height: 8px;
-  border-radius: 999px;
-  background: #c96343;
-  box-shadow: 0 0 0 3px rgb(201 99 67 / 15%);
+  border-radius: 50%;
+  background: #111827;
+  box-shadow: 0 0 0 3px #f1f5f9;
 }
 
 .step-workflow-panel__heading {
   display: flex;
   flex: 1;
   flex-direction: column;
-  gap: 1px;
+  gap: 2px;
   min-width: 0;
 }
 
 .step-workflow-panel__title {
-  color: #2f2c28;
+  color: #111827;
   font-size: 13px;
   font-weight: 650;
   line-height: 1.2;
@@ -69,7 +57,7 @@
 
 .step-workflow-panel__meta {
   overflow: hidden;
-  color: #8f897f;
+  color: #6b7280;
   font-size: 11px;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -78,9 +66,10 @@
 .step-workflow-panel__progress-pill {
   flex-shrink: 0;
   padding: 3px 8px;
+  border: 1px solid #e5e7eb;
   border-radius: 999px;
-  background: #f3efe9;
-  color: #6b655b;
+  background: #f9fafb;
+  color: #374151;
   font-size: 10.5px;
   font-weight: 650;
   font-variant-numeric: tabular-nums;
@@ -94,7 +83,7 @@
   width: 22px;
   height: 22px;
   border-radius: 7px;
-  color: #8f897f;
+  color: #6b7280;
   transition: transform 0.18s ease;
 }
 
@@ -102,50 +91,42 @@
   transform: rotate(180deg);
 }
 
-/* ---------------- body ---------------- */
-
+/* Plan and progress */
 .step-workflow-panel__body {
   display: flex;
-  flex: 1;
   flex-direction: column;
-  min-height: 0;
-  gap: 10px;
-  padding: 0 14px 12px;
+  gap: 11px;
+  padding: 0 13px 12px;
 }
 
 .step-workflow-panel__progress-track {
-  flex-shrink: 0;
   height: 4px;
   overflow: hidden;
   border-radius: 999px;
-  background: #efede8;
+  background: #eef0f3;
 }
 
 .step-workflow-panel__progress-fill {
   height: 100%;
-  border-radius: 999px;
-  background: linear-gradient(90deg, #d97c58, #c96343);
+  border-radius: inherit;
+  background: #111827;
   transition: width 0.3s ease;
 }
 
 .step-workflow-panel__goal {
   display: -webkit-box;
-  flex-shrink: 0;
   margin: 0;
   overflow: hidden;
-  color: #6b655b;
+  color: #6b7280;
   font-size: 12px;
-  line-height: 1.45;
+  line-height: 1.5;
   -webkit-box-orient: vertical;
-  -webkit-line-clamp: 2;
+  -webkit-line-clamp: 3;
 }
-
-/* -------- plan timeline -------- */
 
 .step-workflow-panel__steps {
   position: relative;
   display: flex;
-  flex-shrink: 0;
   flex-direction: column;
   gap: 2px;
   margin: 0;
@@ -160,16 +141,15 @@
   padding: 4px 0;
 }
 
-/* connector line */
 .step-workflow-panel__step::before {
-  content: '';
   position: absolute;
   top: 24px;
   bottom: -6px;
   left: 9px;
   width: 2px;
   border-radius: 2px;
-  background: #eceae4;
+  background: #e5e7eb;
+  content: '';
 }
 
 .step-workflow-panel__step:last-child::before {
@@ -177,34 +157,34 @@
 }
 
 .step-workflow-panel__step-marker {
-  display: flex;
   z-index: 1;
+  display: flex;
+  flex-shrink: 0;
   align-items: center;
   justify-content: center;
-  flex-shrink: 0;
   width: 20px;
   height: 20px;
-  border-radius: 999px;
-  background: #efede8;
-  color: #7c766c;
+  border-radius: 50%;
+  background: #f3f4f6;
+  color: #6b7280;
   font-size: 10px;
   font-weight: 650;
   font-variant-numeric: tabular-nums;
 }
 
 .step-workflow-panel__step--done .step-workflow-panel__step-marker {
-  background: #6f9b52;
+  background: #111827;
   color: #fff;
 }
 
 .step-workflow-panel__step--current .step-workflow-panel__step-marker {
-  background: #c96343;
-  color: #fff;
-  box-shadow: 0 0 0 3px rgb(201 99 67 / 14%);
+  background: #e5e7eb;
+  color: #111827;
+  box-shadow: 0 0 0 3px #f3f4f6;
 }
 
 .step-workflow-panel__step--pending {
-  opacity: 0.55;
+  opacity: 0.58;
 }
 
 .step-workflow-panel__step-body {
@@ -216,277 +196,67 @@
 }
 
 .step-workflow-panel__step-title {
-  color: #3a3733;
+  color: #374151;
   font-size: 12px;
   font-weight: 550;
-  line-height: 1.35;
+  line-height: 1.4;
 }
 
 .step-workflow-panel__step--current .step-workflow-panel__step-title {
-  color: #2f2c28;
+  color: #111827;
   font-weight: 650;
 }
 
 .step-workflow-panel__step-detail {
   display: -webkit-box;
   overflow: hidden;
-  color: #8f897f;
+  color: #6b7280;
   font-size: 11px;
-  line-height: 1.4;
+  line-height: 1.45;
   -webkit-box-orient: vertical;
   -webkit-line-clamp: 2;
 }
 
 .step-workflow-panel__step-detail--dim {
-  color: #a49d92;
+  color: #9ca3af;
 }
 
 .step-workflow-panel__step-tips {
   margin: 2px 0 0;
   padding-left: 14px;
-  color: #948d82;
+  color: #6b7280;
   font-size: 10.5px;
   line-height: 1.45;
 }
 
-/* -------- log feed -------- */
-
-.step-workflow-panel__log-toolbar {
-  display: flex;
-  flex-shrink: 0;
-  align-items: center;
-  justify-content: space-between;
-  margin-top: 4px;
-}
-
-.step-workflow-panel__log-label {
-  color: #a49d92;
-  font-size: 10px;
-  font-weight: 700;
-  letter-spacing: 0.1em;
-  text-transform: uppercase;
-}
-
-.step-workflow-panel__filters {
-  display: flex;
-  gap: 2px;
-  padding: 2px;
-  border-radius: 9px;
-  background: #f3f1ec;
-}
-
-.step-workflow-panel__filter {
-  padding: 3px 9px;
-  border: none;
-  border-radius: 7px;
-  background: transparent;
-  color: #7c766c;
-  cursor: pointer;
-  font-family: inherit;
-  font-size: 11px;
-  font-weight: 550;
-  transition:
-    background-color 0.12s ease,
-    color 0.12s ease;
-}
-
-.step-workflow-panel__filter:hover {
-  color: #4d4942;
-}
-
-.step-workflow-panel__filter--active {
-  background: #fff;
-  color: #2f2c28;
-  box-shadow: 0 1px 3px rgb(60 50 40 / 12%);
-}
-
-.step-workflow-panel__logs {
-  display: flex;
-  flex: 1;
-  flex-direction: column;
-  gap: 4px;
-  min-height: 120px;
-  overflow-x: hidden;
-  overflow-y: auto;
-  padding: 2px;
-  scrollbar-color: #d8d5cf transparent;
-  scrollbar-width: thin;
-}
-
-.step-workflow-log-entry {
-  overflow: hidden;
-  border-radius: 10px;
-  background: #faf9f6;
-  border: 1px solid transparent;
-  transition: border-color 0.12s ease;
-}
-
-.step-workflow-log-entry:hover {
-  border-color: #e7e4de;
-}
-
-.step-workflow-log-entry--user {
-  background: #f2f6fd;
-}
-
-.step-workflow-log-entry--assistant {
-  background: #f4f7f0;
-}
-
-.step-workflow-log-entry--error {
-  background: #fdf3f1;
-}
-
-.step-workflow-log-entry__summary {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  width: 100%;
-  padding: 6px 9px;
-  border: none;
-  background: transparent;
-  cursor: pointer;
-  text-align: left;
-  font-family: inherit;
-}
-
-.step-workflow-log-entry__kind {
-  flex-shrink: 0;
-  min-width: 46px;
-  padding: 2px 6px;
-  border-radius: 5px;
-  font-size: 9.5px;
-  font-weight: 650;
-  text-align: center;
-  letter-spacing: 0.01em;
-}
-
-.step-workflow-log-entry__kind--user {
-  background: #dce7f8;
-  color: #3a5a8c;
-}
-
-.step-workflow-log-entry__kind--assistant {
-  background: #e2ecdb;
-  color: #4d6b33;
-}
-
-.step-workflow-log-entry__kind--tool_call {
-  background: #f1e7d6;
-  color: #7a5b28;
-}
-
-.step-workflow-log-entry__kind--tool_result {
-  background: #eceae4;
-  color: #6b655b;
-}
-
-.step-workflow-log-entry__kind--summary {
-  background: #e8e3f0;
-  color: #5c4a86;
-}
-
-.step-workflow-log-entry__kind--transition {
-  background: #d9e8e3;
-  color: #33695a;
-}
-
-.step-workflow-log-entry__kind--error {
-  background: #f6ddd7;
-  color: #a4552f;
-}
-
-.step-workflow-log-entry__preview {
-  flex: 1;
-  overflow: hidden;
-  color: #4d4942;
-  font-size: 11.5px;
-  line-height: 1.4;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.step-workflow-log-entry__time {
-  flex-shrink: 0;
-  color: #b3ada3;
-  font-size: 10px;
-  font-variant-numeric: tabular-nums;
-}
-
-.step-workflow-log-entry__detail {
-  border-top: 1px solid #efede8;
-  background: #fff;
-}
-
-.step-workflow-log-entry__detail pre {
-  max-height: 240px;
-  margin: 0;
-  overflow: auto;
-  padding: 9px 11px;
-  color: #3a3733;
-  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
-  font-size: 10.5px;
-  line-height: 1.5;
-  white-space: pre-wrap;
-  word-break: break-word;
-}
-
-.step-workflow-log-entry__more {
-  margin: 0 11px 8px;
-  padding: 2px 8px;
-  border: 1px solid #e7e4de;
-  border-radius: 6px;
-  background: #faf9f6;
-  color: #c96343;
-  cursor: pointer;
-  font-family: inherit;
-  font-size: 10.5px;
-}
-
-.step-workflow-log-entry__more:hover {
-  background: #f3f1ec;
-}
-
-/* -------- footer -------- */
-
 .step-workflow-panel__footer {
   display: flex;
-  flex-shrink: 0;
   align-items: center;
   justify-content: space-between;
-  margin-top: 2px;
   padding-top: 9px;
-  border-top: 1px solid #f0eee9;
+  border-top: 1px solid #f1f2f4;
 }
 
-.step-workflow-panel__count {
-  color: #a49d92;
+.step-workflow-panel__status {
+  color: #9ca3af;
   font-size: 10.5px;
-  font-variant-numeric: tabular-nums;
 }
 
 .step-workflow-panel__cancel {
-  padding: 4px 10px;
-  border: 1px solid #ecd5cd;
-  border-radius: 8px;
-  background: transparent;
-  color: #a4552f;
+  padding: 4px 9px;
+  border: 1px solid #e5e7eb;
+  border-radius: 7px;
+  background: #fff;
+  color: #4b5563;
   cursor: pointer;
   font-family: inherit;
   font-size: 11px;
-  font-weight: 550;
-  transition: background-color 0.12s ease;
+  transition:
+    background-color 0.12s ease,
+    border-color 0.12s ease;
 }
 
 .step-workflow-panel__cancel:hover {
-  background: rgb(201 99 67 / 9%);
-}
-
-.step-workflow-panel__empty,
-.step-workflow-panel__loading {
-  margin: 0;
-  padding: 10px 4px;
-  color: #a49d92;
-  font-size: 11.5px;
-  text-align: center;
+  border-color: #d1d5db;
+  background: #f9fafb;
 }

@@ -71,6 +71,7 @@ import {
 import {
   getMainAgentLlm,
   getSelectedChatModel,
+  getSelectedChatReasoningEffort,
 } from "./llm";
 
 import {
@@ -398,6 +399,7 @@ const addFileManagerRulesToSystemPrompt = (
     "FILE MANAGEMENT TOOL RULES",
     "",
     "Use file_manager whenever the user asks to inspect, search, create, delete, or otherwise manage files or directories.",
+    "Treat absolute file and folder paths written in backticks in the user's message as references; inspect relevant paths before answering, and do not modify them unless asked.",
     "When calling file_manager, provide an absolute permitted root directory in location.",
     "Put the complete requested filesystem operation in task.",
     "Do not invent a filesystem location.",
@@ -1401,10 +1403,13 @@ export const callChatAgent =
       getSelectedChatModel(
         runnableConfig,
       );
+    const reasoningEffort =
+      getSelectedChatReasoningEffort(runnableConfig);
 
     const llm =
       await getMainAgentLlm(
         selectedModel,
+        { reasoningEffort },
       );
 
     throwIfAborted(

@@ -90,6 +90,34 @@ type ScheduleNotice = {
   status?: 'completed' | 'failed';
 };
 
+const ACTIVE_PAGE_SESSION_KEY = 'mocu-active-page-v1';
+const CHAT_PAGE_ITEMS: readonly ChatSidebarItemId[] = [
+  'home',
+  'new-chat',
+  'chats',
+  'projects',
+  'skills',
+  'schedule',
+  'docs',
+  'extensions',
+  'mcp',
+  'agents',
+  'settings',
+];
+
+function getInitialActiveItem(): ChatSidebarItemId {
+  try {
+    const savedItem = sessionStorage.getItem(ACTIVE_PAGE_SESSION_KEY);
+    if (CHAT_PAGE_ITEMS.includes(savedItem as ChatSidebarItemId)) {
+      return savedItem as ChatSidebarItemId;
+    }
+  } catch {
+    // Fall back to Home when session storage is unavailable.
+  }
+
+  return 'home';
+}
+
 function isFilesystemRootPath(path: string): boolean {
   const normalizedPath = path
     .trim()
@@ -108,9 +136,15 @@ function ChatPage() {
   const [
     activeItem,
     setActiveItem,
-  ] = useState<ChatSidebarItemId>(
-    'home',
-  );
+  ] = useState<ChatSidebarItemId>(getInitialActiveItem);
+
+  useEffect(() => {
+    try {
+      sessionStorage.setItem(ACTIVE_PAGE_SESSION_KEY, activeItem);
+    } catch {
+      // Navigation remains functional when session storage is unavailable.
+    }
+  }, [activeItem]);
 
   const [projectWorkspaces, setProjectWorkspaces] = useState<ProjectWorkspace[]>(
     () => loadProjectWorkspaces(),

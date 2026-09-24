@@ -2,12 +2,22 @@
 
 import { readSettings } from "../../store";
 
+export type GatewayReasoningEffort =
+  | "minimal"
+  | "low"
+  | "medium"
+  | "high"
+  | "xhigh";
+
 export type GatewayModel = {
   id: string;
 
   name?: string;
 
   contextLength?: number;
+
+  /** Effort levels advertised by the gateway for this model. */
+  supportedReasoningEfforts?: GatewayReasoningEffort[];
 };
 
 function normalizeBaseUrl(baseUrl: string): string {
@@ -30,6 +40,13 @@ export const getMainGatewayBaseUrl = (
   ).trim();
 };
 
+/** The configured model used by the main chat and project agents by default. */
+export const getMainAgentDefaultModel = async (): Promise<string> => {
+  const config = await readSettings();
+
+  return config.expensiveModel.trim();
+};
+
 type RawGatewayModel = {
   id?: unknown;
 
@@ -38,6 +55,10 @@ type RawGatewayModel = {
   context_length?: unknown;
 
   context_window?: unknown;
+
+  supported_parameters?: unknown;
+
+  reasoning?: unknown;
 };
 
 const parseGatewayModels = (
@@ -89,6 +110,35 @@ const parseGatewayModels = (
           ? rawModel.context_window
           : undefined;
 
+    const supportedParameters = Array.isArray(rawModel.supported_parameters)
+      ? rawModel.supported_parameters.filter(
+          (parameter): parameter is string => typeof parameter === "string",
+        )
+      : [];
+    const reasoningMetadata =
+      rawModel.reasoning && typeof rawModel.reasoning === "object"
+        ? (rawModel.reasoning as { supported_efforts?: unknown })
+        : undefined;
+    const advertisedEfforts = Array.isArray(reasoningMetadata?.supported_efforts)
+      ? reasoningMetadata.supported_efforts.filter(
+          (effort): effort is GatewayReasoningEffort =>
+            effort === "minimal" ||
+            effort === "low" ||
+            effort === "medium" ||
+            effort === "high" ||
+            effort === "xhigh",
+        )
+      : [];
+    const supportsReasoning =
+      supportedParameters.includes("reasoning") ||
+      supportedParameters.includes("reasoning_effort") ||
+      advertisedEfforts.length > 0;
+    const supportedReasoningEfforts = supportsReasoning
+      ? advertisedEfforts.length > 0
+        ? advertisedEfforts
+        : (["low", "medium", "high"] as GatewayReasoningEffort[])
+      : undefined;
+
     models.set(id, {
       id,
 
@@ -96,6 +146,10 @@ const parseGatewayModels = (
 
       ...(contextLengthRaw && contextLengthRaw > 0
         ? { contextLength: contextLengthRaw }
+        : {}),
+
+      ...(supportedReasoningEfforts
+        ? { supportedReasoningEfforts }
         : {}),
     });
   }

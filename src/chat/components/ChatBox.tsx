@@ -15,6 +15,7 @@ import {
 } from '@langchain/core/messages';
 
 import { ChatInput } from './ChatInput';
+import { resolveFileMentions, type SelectedFileReference } from './fileMentionReferences';
 import { UserMessage } from './UserMessage';
 import { AssistantMessage } from './AssistantMessage';
 import { ChatStatusBubble } from './ChatStatusBubble';
@@ -26,7 +27,11 @@ import {
 } from '../../extensions/services/extension-interaction-store';
 
 import { callChatAgent } from '../../services/ai/chat-agent';
-import { callProjectAgent } from '../../services/ai/project-agent';
+import {
+  callProjectAgent,
+  PROJECT_AGENT_PARTIAL_PROGRESS_MARKER,
+  ProjectAgentModelError,
+} from '../../services/ai/project-agent';
 import { isAbortError } from '../../services/aiService';
 
 import {
@@ -48,7 +53,12 @@ import {
 
 import {
   CHAT_ID_CONFIG_KEY,
+  type AgentToolActivity,
 } from '../services/toolActivity';
+import {
+  getStepWorkflowLogs,
+  type StepWorkflowLogPage,
+} from '../../services/ai/stepbystep/workflowManager';
 
 import { useToolActivity } from '../hooks/useToolActivity';
 import {
@@ -70,6 +80,7 @@ import type { SelectedSkill } from './skillTypes';
 import type { SelectedExtension } from './extensionTypes';
 import type { SelectedAgent } from './agentTypes';
 import type { SelectedMcpServer } from './mcpTypes';
+import type { GatewayReasoningEffort } from '../../services/ai/model-catalog';
 
 import './ChatBox.css';
 
@@ -83,10 +94,12 @@ import './ChatBox.css';
 const EditableUserMessage = memo(function EditableUserMessage({
   message,
   resourceNames,
+  isStepWorkflow,
   onEdit,
 }: {
   message: ChatMessage;
   resourceNames: MentionResourceNames;
+  isStepWorkflow: boolean;
   onEdit: (message: ChatMessage) => void;
 }) {
   const handleEdit = useCallback(
@@ -98,6 +111,7 @@ const EditableUserMessage = memo(function EditableUserMessage({
     <UserMessage
       content={message.content}
       resourceNames={resourceNames}
+      isStepWorkflow={isStepWorkflow}
       onEdit={handleEdit}
     />
   );
@@ -124,7 +138,204 @@ type SendOptions = {
    * configured default model.
    */
   selectedModel?: string | null;
+  selectedReasoningEffort?: GatewayReasoningEffort | null;
+  fileReferences?: SelectedFileReference[];
 };
+
+type ProjectAgentFailureDetails = {
+  summary: string;
+  progress: string;
+};
+
+type WorkflowLogEntry = StepWorkflowLogPage['entries'][number];
+
+type WorkflowLogTurn = {
+  message: string;
+  time: string;
+  entries: WorkflowLogEntry[];
+};
+
+type WorkflowMessageMapping = {
+  activitiesByMessage: Map<string, AgentToolActivity[]>;
+  messageIds: Set<string>;
+};
+
+function workflowLogData(entry: WorkflowLogEntry): Record<string, unknown> {
+  try {
+    const value: unknown = JSON.parse(entry.preview);
+
+    return value && typeof value === 'object' && !Array.isArray(value)
+      ? value as Record<string, unknown>
+      : {};
+  } catch {
+    // Large tool output can truncate the JSON preview. Recover the leading
+    // scalar fields (especially callId/name) so completed calls still update.
+    const partial: Record<string, unknown> = {};
+
+    for (const key of ['callId', 'name', 'message', 'reply', 'result', 'action']) {
+      const match = new RegExp(`"${key}"\\s*:\\s*"((?:\\\\.|[^"\\\\])*)`).exec(entry.preview);
+
+      if (!match) {
+        continue;
+      }
+
+      try {
+        partial[key] = JSON.parse(`"${match[1]}"`);
+      } catch {
+        partial[key] = match[1]
+          .replace(/\\"/g, '"')
+          .replace(/\\\\/g, '\\');
+      }
+    }
+
+    return partial;
+  }
+}
+
+function buildWorkflowMessageMapping(
+  entries: WorkflowLogEntry[],
+  messages: ChatMessage[],
+): WorkflowMessageMapping {
+  const turns: WorkflowLogTurn[] = [];
+  let currentTurn: WorkflowLogTurn | null = null;
+
+  for (const entry of entries) {
+    if (entry.kind === 'user') {
+      if (currentTurn) {
+        turns.push(currentTurn);
+      }
+
+      const message = workflowLogData(entry).message;
+      currentTurn = typeof message === 'string'
+        ? { message, time: entry.time, entries: [] }
+        : null;
+    } else if (currentTurn) {
+      currentTurn.entries.push(entry);
+    }
+  }
+
+  if (currentTurn) {
+    turns.push(currentTurn);
+  }
+
+  const userMessages = messages.filter((message) => message.role === 'user');
+  const activitiesByMessage = new Map<string, AgentToolActivity[]>();
+  const workflowMessageIds = new Set<string>();
+  let messageSearchStart = 0;
+
+  for (const turn of turns) {
+    const matchingIndexes = userMessages
+      .map((message, index) => ({ message, index }))
+      .filter(({ message, index }) =>
+        index >= messageSearchStart &&
+        message.content.trim() === turn.message.trim(),
+      )
+      .map(({ index }) => index);
+
+    if (matchingIndexes.length === 0) {
+      continue;
+    }
+
+    const turnTime = Date.parse(turn.time);
+    const messageIndex = Number.isFinite(turnTime)
+      ? matchingIndexes.reduce((closest, candidate) => {
+          const closestTime = Math.abs(
+            Date.parse(userMessages[closest].createdAt) - turnTime,
+          );
+          const candidateTime = Math.abs(
+            Date.parse(userMessages[candidate].createdAt) - turnTime,
+          );
+          return candidateTime < closestTime ? candidate : closest;
+        }, matchingIndexes[0])
+      : matchingIndexes[0];
+
+    const matchedMessage = userMessages[messageIndex];
+    workflowMessageIds.add(matchedMessage.id);
+
+    const activities: AgentToolActivity[] = [];
+    const activityByCallId = new Map<string, number>();
+
+    for (const entry of turn.entries) {
+      const data = workflowLogData(entry);
+
+      if (entry.kind === 'tool_call') {
+        const callId = typeof data.callId === 'string' ? data.callId : entry.id;
+        const args = data.arguments;
+        const activity: AgentToolActivity = {
+          id: callId,
+          tool: typeof data.name === 'string' ? data.name : 'workflow_tool',
+          args: args && typeof args === 'object' && !Array.isArray(args)
+            ? args as Record<string, unknown>
+            : {},
+          status: 'running',
+        };
+
+        activityByCallId.set(callId, activities.length);
+        activities.push(activity);
+      } else if (entry.kind === 'tool_result') {
+        const callId = typeof data.callId === 'string' ? data.callId : '';
+        const activityIndex = activityByCallId.get(callId);
+
+        if (activityIndex === undefined) {
+          continue;
+        }
+
+        const result = typeof data.result === 'string'
+          ? data.result
+          : JSON.stringify(data.result ?? '');
+        let status: AgentToolActivity['status'] = 'done';
+
+        try {
+          const parsed: unknown = JSON.parse(result);
+          if (
+            parsed && typeof parsed === 'object' &&
+            ('ok' in parsed && parsed.ok === false || 'error' in parsed)
+          ) {
+            status = 'error';
+          }
+        } catch {
+          // Most successful tool results are plain text, not JSON.
+        }
+
+        activities[activityIndex] = {
+          ...activities[activityIndex],
+          result,
+          status,
+        };
+      }
+    }
+
+    if (activities.length > 0) {
+      activitiesByMessage.set(matchedMessage.id, activities);
+    }
+
+    messageSearchStart = messageIndex + 1;
+  }
+
+  return {
+    activitiesByMessage,
+    messageIds: workflowMessageIds,
+  };
+}
+
+function getProjectAgentFailureDetails(
+  content: string,
+): ProjectAgentFailureDetails | undefined {
+  const markerIndex = content.indexOf(
+    PROJECT_AGENT_PARTIAL_PROGRESS_MARKER,
+  );
+
+  if (markerIndex < 0) {
+    return undefined;
+  }
+
+  return {
+    summary: content.slice(0, markerIndex).trim(),
+    progress: content
+      .slice(markerIndex + PROJECT_AGENT_PARTIAL_PROGRESS_MARKER.length)
+      .trim(),
+  };
+}
 
 type ChatBoxProps = {
   chatId: string | null;
@@ -211,6 +422,81 @@ export function ChatBox({
    * response. Parallel conversations never share activities.
    */
   const toolActivity = useToolActivity(chatId);
+  const [stepWorkflowLogEntries, setStepWorkflowLogEntries] =
+    useState<WorkflowLogEntry[]>([]);
+
+  useEffect(() => {
+    setStepWorkflowLogEntries([]);
+  }, [chatId]);
+
+  /*
+   * Step-workflow tool calls are persisted separately from regular agent
+   * activities. Load them for this chat and refresh while a turn is running
+   * so the same compact activity cards can appear under the matching user
+   * message in real time.
+   */
+  useEffect(() => {
+    if (!chatId) {
+      setStepWorkflowLogEntries([]);
+      return;
+    }
+
+    let cancelled = false;
+    let loading = false;
+
+    const loadLogs = async () => {
+      if (cancelled || loading) {
+        return;
+      }
+
+      loading = true;
+
+      try {
+        const result = await getStepWorkflowLogs(chatId, null, 0, 400);
+        const all = result.entries;
+
+        if (!cancelled) {
+          setStepWorkflowLogEntries((current) => {
+            // Completing/canceling a workflow clears its active chat pointer.
+            // Keep the already-loaded turn logs visible in this chat instead
+            // of erasing them on the final refresh.
+            if (all.length === 0 && current.length > 0) {
+              return current;
+            }
+
+            const unchanged = current.length === all.length &&
+              current.every((entry, index) =>
+                entry.id === all[index]?.id &&
+                entry.preview === all[index]?.preview,
+              );
+
+            return unchanged ? current : all;
+          });
+        }
+      } catch {
+        // Workflow logging is supplemental; it must not interrupt chat.
+      } finally {
+        loading = false;
+      }
+    };
+
+    void loadLogs();
+
+    if (!isLoading) {
+      return () => {
+        cancelled = true;
+      };
+    }
+
+    const interval = window.setInterval(() => {
+      void loadLogs();
+    }, 2500);
+
+    return () => {
+      cancelled = true;
+      window.clearInterval(interval);
+    };
+  }, [chatId, isLoading, messages.length]);
 
   /*
    * Names of every available skill, extension, and agent, so sent user
@@ -594,7 +880,9 @@ export function ChatBox({
     const nextMessages: BaseMessage[] = [
       ...memoryHistory,
       ...currentHistory,
-      new HumanMessage(normalizedText),
+      new HumanMessage(
+        resolveFileMentions(normalizedText, options?.fileReferences ?? []),
+      ),
     ];
 
     try {
@@ -651,6 +939,8 @@ export function ChatBox({
            */
           selectedModel:
             options?.selectedModel?.trim() || null,
+          reasoningEffort:
+            options?.selectedReasoningEffort ?? null,
         },
       };
 
@@ -760,12 +1050,22 @@ export function ChatBox({
         error,
       );
 
-      const errorMessage =
-        onAppendMessage(
-          requestChatId,
-          'assistant',
-          'Sorry, I encountered an error while processing that request.',
-        );
+      const failureContent =
+        error instanceof ProjectAgentModelError
+          ? [
+              `The model request failed after ${error.attempts} attempt${error.attempts === 1 ? '' : 's'}.`,
+              '',
+              PROJECT_AGENT_PARTIAL_PROGRESS_MARKER,
+              error.progressSummary.length > 0
+                ? error.progressSummary.join('\n\n')
+                : 'No project tool actions completed before the model error.',
+            ].join('\n')
+          : 'Sorry, I encountered an error while processing that request.';
+      const errorMessage = onAppendMessage(
+        requestChatId,
+        'assistant',
+        failureContent,
+      );
 
       /*
        * Even on failure, keep the tools that already ran attached to
@@ -827,6 +1127,38 @@ export function ChatBox({
       ? messages
       : projectMemoryMessages;
 
+  const stepWorkflowMessageMapping = useMemo(
+    () => buildWorkflowMessageMapping(
+      stepWorkflowLogEntries,
+      displayMessages,
+    ),
+    [stepWorkflowLogEntries, displayMessages],
+  );
+
+  const stepWorkflowMessageIds = useMemo(() => {
+    const messageIds = new Set(stepWorkflowMessageMapping.messageIds);
+
+    displayMessages.forEach((message, assistantIndex) => {
+      if (
+        message.role !== 'assistant' ||
+        !toolActivity.getForMessage(message.id).some(
+          (activity) => activity.tool === 'start_step_by_step_workflow',
+        )
+      ) {
+        return;
+      }
+
+      for (let index = assistantIndex - 1; index >= 0; index -= 1) {
+        if (displayMessages[index].role === 'user') {
+          messageIds.add(displayMessages[index].id);
+          break;
+        }
+      }
+    });
+
+    return messageIds;
+  }, [displayMessages, stepWorkflowMessageMapping, toolActivity.getForMessage]);
+
   /*
    * The mind icon sits directly below the agent's latest response
    * (rendered inside that message, above its action buttons).
@@ -848,6 +1180,16 @@ export function ChatBox({
     }
   }
 
+  const retryFromAssistantMessage = (messageIndex: number): void => {
+    for (let index = messageIndex - 1; index >= 0; index -= 1) {
+      const previousMessage = displayMessages[index];
+      if (previousMessage.role === 'user') {
+        void handleSendMessage(previousMessage.content);
+        return;
+      }
+    }
+  };
+
   return (
     <section
       className="chat-box"
@@ -862,12 +1204,19 @@ export function ChatBox({
             {displayMessages.map(
               (message, messageIndex) =>
                 message.role === 'user' ? (
-                  <EditableUserMessage
-                    key={message.id}
-                    message={message}
-                    resourceNames={mentionResourceNames}
-                    onEdit={handleEditMessage}
-                  />
+                  <Fragment key={message.id}>
+                    <EditableUserMessage
+                      message={message}
+                      resourceNames={mentionResourceNames}
+                      isStepWorkflow={stepWorkflowMessageIds.has(message.id)}
+                      onEdit={handleEditMessage}
+                    />
+                    <ToolActivityFeed
+                      activities={
+                        stepWorkflowMessageMapping.activitiesByMessage.get(message.id) ?? []
+                      }
+                    />
+                  </Fragment>
                 ) : (
                   <Fragment
                     key={message.id}
@@ -892,6 +1241,16 @@ export function ChatBox({
                         lastAssistantIndex ? (
                           memoryFooter
                         ) : undefined
+                      }
+                      failureDetails={
+                        getProjectAgentFailureDetails(message.content)
+                      }
+                      onRegenerate={
+                        message.content.includes(
+                          PROJECT_AGENT_PARTIAL_PROGRESS_MARKER,
+                        )
+                          ? () => retryFromAssistantMessage(messageIndex)
+                          : undefined
                       }
                     />
                   </Fragment>

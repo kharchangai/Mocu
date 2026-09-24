@@ -227,6 +227,10 @@ export async function startStepByStepWorkflow(input: {
   );
 
   await store.setChatWorkflow(input.chatId, workflowId);
+  await store.append(workflowId, 1, "user", {
+    message: input.userMessage,
+    workflowStart: true,
+  });
 
   return plan;
 }
@@ -269,12 +273,36 @@ export async function handleStepWorkflowMessage(
     );
   }
 
+  const configurable = config.configurable;
+  const hasSelectedModel =
+    configurable !== undefined &&
+    Object.prototype.hasOwnProperty.call(configurable, "selectedModel");
+  const selectedModel = hasSelectedModel
+    ? getSelectedChatModel(config)
+    : state.selectedModel?.trim() || "";
+
+  /*
+   * The composer includes `selectedModel: null` when the user chooses the
+   * configured default. Treat that as an explicit choice, not as a reason to
+   * fall back to the model captured when the workflow started.
+   */
+  if (
+    hasSelectedModel &&
+    (state.selectedModel?.trim() || "") !== selectedModel
+  ) {
+    if (selectedModel) {
+      state.selectedModel = selectedModel;
+    } else {
+      delete state.selectedModel;
+    }
+
+    await store.save(state);
+  }
+
   const tools = await buildMainAgentToolRuntime(
     config,
     options.projectPath?.trim() || undefined,
   );
-  const selectedModel =
-    getSelectedChatModel(config) || state.selectedModel?.trim() || "";
 
   return executor.send(
     workflowId,
@@ -469,19 +497,29 @@ export async function getStepWorkflowLogs(
   offset = 0,
   limit = 20,
 ): Promise<StepWorkflowLogPage> {
-  const workflowId = await store.getChatWorkflow(chatId);
-
-  if (!workflowId) {
+  const workflowIds = await store.getChatWorkflowIds(chatId);
+  if (workflowIds.length === 0) {
     return { entries: [], nextOffset: null };
   }
 
-  const page =
-    stepNumber === null
-      ? await store.readAllLogs(workflowId, offset, limit)
-      : await store.readLogs(workflowId, stepNumber, offset, limit);
+  const pages = await Promise.all(
+    workflowIds.map((workflowId) =>
+      stepNumber === null
+        ? store.readAllLogs(workflowId, 0, 400)
+        : store.readLogs(workflowId, stepNumber, 0, 400),
+    ),
+  );
+  const entries = pages
+    .flatMap((page) => page.entries)
+    .sort((first, second) =>
+      first.time.localeCompare(second.time) || first.id.localeCompare(second.id),
+    );
+  const pageSize = Math.min(Math.max(limit, 1), 400);
+  const start = Math.max(offset, 0);
+  const page = entries.slice(start, start + pageSize);
 
   return {
-    entries: page.entries.map((entry) => ({
+    entries: page.map((entry) => ({
       id: entry.id,
       stepNumber: (entry as { stepNumber?: number }).stepNumber ?? 0,
       time: entry.time,
@@ -489,7 +527,7 @@ export async function getStepWorkflowLogs(
       preview: entry.preview,
       truncated: entry.truncated,
     })),
-    nextOffset: page.nextOffset,
+    nextOffset: start + page.length < entries.length ? start + page.length : null,
   };
 }
 
@@ -499,11 +537,15 @@ export async function getStepWorkflowLogEntry(
   offset = 0,
   length = 6000,
 ): Promise<{ text: string; nextOffset: number | null }> {
-  const workflowId = await store.getChatWorkflow(chatId);
+  const workflowIds = await store.getChatWorkflowIds(chatId);
 
-  if (!workflowId) {
-    return { text: "", nextOffset: null };
+  for (const workflowId of workflowIds) {
+    try {
+      return await store.readLogEntry(workflowId, logId, offset, length);
+    } catch {
+      // Search the next workflow associated with this conversation.
+    }
   }
 
-  return store.readLogEntry(workflowId, logId, offset, length);
+  return { text: "", nextOffset: null };
 }

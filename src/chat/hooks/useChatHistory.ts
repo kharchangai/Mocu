@@ -79,9 +79,24 @@ export type EnsureChatResult = {
   wasCreated: boolean;
 };
 
+const ACTIVE_CHAT_SESSION_KEY = 'mocu-active-chat-id-v1';
+
+function readActiveChatId(chats: ChatConversation[]): string | null {
+  try {
+    const savedId = sessionStorage.getItem(ACTIVE_CHAT_SESSION_KEY);
+    return savedId && chats.some((chat) => chat.id === savedId)
+      ? savedId
+      : null;
+  } catch {
+    return null;
+  }
+}
+
 export function useChatHistory() {
   const [chats, setChats] = useState<ChatConversation[]>(() => loadChats());
-  const [activeChatId, setActiveChatId] = useState<string | null>(null);
+  const [activeChatId, setActiveChatId] = useState<string | null>(() =>
+    readActiveChatId(chats),
+  );
 
   /*
    * Keep the selected chat synchronously as well as in React state. A
@@ -89,11 +104,21 @@ export function useChatHistory() {
    * next frame; callbacks created during that frame would otherwise still
    * see the previous null chat ID and create a new chat.
    */
-  const activeChatIdRef = useRef<string | null>(null);
+  const activeChatIdRef = useRef<string | null>(activeChatId);
 
   const setActiveChat = useCallback((chatId: string | null) => {
     activeChatIdRef.current = chatId;
     setActiveChatId(chatId);
+
+    try {
+      if (chatId) {
+        sessionStorage.setItem(ACTIVE_CHAT_SESSION_KEY, chatId);
+      } else {
+        sessionStorage.removeItem(ACTIVE_CHAT_SESSION_KEY);
+      }
+    } catch {
+      // Chat selection still works when session storage is unavailable.
+    }
   }, []);
 
   useEffect(() => {

@@ -110,6 +110,30 @@ export class WorkflowStore {
     await writeTextFile(path, toJson(index));
   }
 
+  async getChatWorkflowIds(chatId: string): Promise<string[]> {
+    const root = await this.rootPromise;
+    const workflowIds: string[] = [];
+
+    for (const entry of await readDir(root)) {
+      const workflowId = entry.name ?? "";
+      if (!/^[a-zA-Z0-9_-]+$/.test(workflowId)) continue;
+
+      try {
+        const statePath = await join(await this.directory(workflowId), "state.json");
+        if (!(await exists(statePath))) continue;
+
+        const state = JSON.parse(await readTextFile(statePath)) as Partial<WorkflowState>;
+        if (state.chatId === chatId) {
+          workflowIds.push(workflowId);
+        }
+      } catch {
+        // Ignore unrelated folders and corrupt workflow state files.
+      }
+    }
+
+    return workflowIds;
+  }
+
   async getChatWorkflow(chatId: string): Promise<string | null> {
     const path = await this.indexFile();
 
@@ -319,7 +343,7 @@ export class WorkflowStore {
         a.id.localeCompare(b.id),
     );
 
-    const size = Math.min(Math.max(limit, 1), 50);
+    const size = Math.min(Math.max(limit, 1), 400);
     const start = Math.max(offset, 0);
     const page = entries.slice(start, start + size);
 

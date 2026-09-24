@@ -9,15 +9,15 @@
   display: flex;
   flex-direction: column;
   gap: 5px;
-  max-width: 640px;
-  padding: 2px 0 6px;
+  width: min(100%, 640px);
+  padding: 2px 0 8px;
 }
 
 .tool-activity-card {
   overflow: hidden;
-  border: 1px solid #eceae5;
-  border-radius: 8px;
-  background: #faf9f7;
+  border: 1px solid #e5e7eb;
+  border-radius: 9px;
+  background: #fbfcfd;
 }
 
 /* ---------------- Header (always visible) ---------------- */
@@ -37,11 +37,11 @@
 }
 
 .tool-activity-card__header:hover {
-  background: rgb(236 234 229 / 45%);
+  background: #f3f4f6;
 }
 
 .tool-activity-card__header:focus-visible {
-  outline: 1.5px solid #c96343;
+  outline: 1.5px solid #64748b;
   outline-offset: -1.5px;
 }
 
@@ -53,15 +53,15 @@
   flex-shrink: 0;
   width: 14px;
   height: 14px;
-  color: var(--tool-accent, #c96343);
+  color: var(--tool-accent, #475569);
   background: transparent;
 }
 
 .tool-activity-card__spinner {
   width: 10px;
   height: 10px;
-  border: 1.5px solid rgb(201 99 67 / 25%);
-  border-top-color: var(--tool-accent, #c96343);
+  border: 1.5px solid rgb(71 85 105 / 22%);
+  border-top-color: var(--tool-accent, #475569);
   border-radius: 50%;
   animation: tool-activity-spin 0.8s linear infinite;
 }
@@ -82,7 +82,7 @@
 
 .tool-activity-card__label {
   flex-shrink: 0;
-  color: #4b4944;
+  color: #374151;
   font-size: 11.5px;
   font-weight: 500;
   line-height: 1.3;
@@ -92,7 +92,7 @@
 .tool-activity-card__preview {
   flex: 1;
   overflow: hidden;
-  color: #9b978e;
+  color: #9ca3af;
   font-size: 11px;
   line-height: 1.3;
   text-overflow: ellipsis;
@@ -116,7 +116,7 @@
 }
 
 .tool-activity-card__chevron--open {
-  color: #c96343;
+  color: #475569;
   transform: rotate(90deg);
 }
 
@@ -127,7 +127,7 @@
   flex-direction: column;
   gap: 4px;
   padding: 7px 9px 9px;
-  border-top: 1px solid #eceae5;
+  border-top: 1px solid #e5e7eb;
   animation: tool-activity-expand 0.18s ease;
 }
 
@@ -144,7 +144,7 @@
 }
 
 .tool-activity-card__section-title {
-  color: #9b978e;
+  color: #9ca3af;
   font-size: 9px;
   font-weight: 700;
   letter-spacing: 0.08em;
@@ -157,8 +157,8 @@
   padding: 7px 9px;
   overflow: auto;
   border-radius: 6px;
-  color: #4b4944;
-  background: #f2f0ec;
+  color: #374151;
+  background: #f3f4f6;
   font-family: "JetBrains Mono", Consolas, "Courier New", monospace;
   font-size: 11px;
   line-height: 1.5;

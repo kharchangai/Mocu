@@ -1,0 +1,9 @@
+﻿{
+    "name":  "filesystem-regex-search",
+    "private":  true,
+    "type":  "module",
+    "scripts":  {
+                    "test":  "node --experimental-strip-types test_regex_search.ts",
+                    "search":  "node --experimental-strip-types regex_search.ts"
+                }
+}

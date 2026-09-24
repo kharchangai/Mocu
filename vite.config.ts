@@ -16,11 +16,12 @@ export default defineConfig(async () => ({
     port: 1431,
     strictPort: true,
     host: host || "localhost",
-    hmr: {
-      protocol: "ws",
-      host: host || "localhost",
-      port: 1431,
-    },
+    /*
+     * HMR can request a full WebView reload while a Tauri invoke is still
+     * pending, orphaning its callback. Keep it disabled in dev; restart or
+     * manually refresh the WebView when you want to load frontend changes.
+     */
+    hmr: false,
     watch: {
       /*
        * Project conversations and memory databases are stored inside
