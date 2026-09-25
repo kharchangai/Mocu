@@ -3,7 +3,6 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 
 const MAX_FILE_BYTES = 2 * 1024 * 1024;
-const MAX_LINE_CHARS = 10_000;
 const MAX_PATTERN_CHARS = 256;
 
 export type SearchResult = {
@@ -13,6 +12,32 @@ export type SearchResult = {
   line_start: number;
   line_end: number;
 };
+
+type Paragraph = { text: string; startLine: number };
+
+function splitParagraphs(content: string): Paragraph[] {
+  // Normalize line endings so offsets and line counting behave consistently.
+  const lines = content.replace(/\r\n?/g, "\n").split("\n");
+  const paragraphs: Paragraph[] = [];
+  let current: string[] = [];
+  let startLine = 1;
+
+  const flush = () => {
+    if (current.length > 0) paragraphs.push({ text: current.join("\n"), startLine });
+    current = [];
+  };
+
+  for (let i = 0; i < lines.length; i++) {
+    if (lines[i].trim() === "") {
+      flush();
+    } else {
+      if (current.length === 0) startLine = i + 1;
+      current.push(lines[i]);
+    }
+  }
+  flush();
+  return paragraphs;
+}
 
 export function search(folder: string, patterns: string[], extensions: string[]): SearchResult[] {
   const root = realpathSync(folder);
@@ -26,19 +51,11 @@ export function search(folder: string, patterns: string[], extensions: string[])
     throw new Error("extensions must be a nonempty list like ['.txt', '.ts']");
   }
 
-  const compiled = patterns.map((pattern) => new RegExp(pattern, "g"));
+  // Regex is evaluated against an entire paragraph, not one line. The `s` flag
+  // lets `.` match newlines, so the agent can describe a multi-line excerpt.
+  const compiled = patterns.map((pattern) => new RegExp(pattern, "gs"));
   const allowed = new Set(extensions.map((e) => `.${e.replace(/^\./, "").toLowerCase()}`));
   const results: SearchResult[] = [];
-
-  function sectionHasMatch(lines: string[]): boolean {
-    return lines.some((line) => {
-      if (line.length > MAX_LINE_CHARS) return false;
-      return compiled.some((regex) => {
-        regex.lastIndex = 0;
-        return Array.from(line.matchAll(regex)).some((match) => match[0].length > 0);
-      });
-    });
-  }
 
   function visit(directory: string): void {
     let entries;
@@ -58,32 +75,32 @@ export function search(folder: string, patterns: string[], extensions: string[])
       try {
         if (lstatSync(filePath).size > MAX_FILE_BYTES) continue;
         const content = readFileSync(filePath, "utf8");
-        const lines = content.split(/\r?\n/);
-        let sectionLines: string[] = [];
-        let sectionStart = 0;
+        const paragraphs = splitParagraphs(content);
 
-        const addSection = (endIndex: number) => {
-          if (sectionLines.length > 0 && sectionHasMatch(sectionLines)) {
-            results.push({
-              file_name: entry.name,
-              path: filePath,
-              text: sectionLines.join("\n"),
-              line_start: sectionStart + 1,
-              line_end: endIndex,
-            });
-          }
-          sectionLines = [];
-        };
+        for (const paragraph of paragraphs) {
+          for (const regex of compiled) {
+            regex.lastIndex = 0;
+            for (const match of paragraph.text.matchAll(regex)) {
+              const text = match[0];
+              if (text.length === 0) continue;
 
-        for (let index = 0; index < lines.length; index++) {
-          if (lines[index].trim() === "") {
-            addSection(index);
-          } else {
-            if (sectionLines.length === 0) sectionStart = index;
-            sectionLines.push(lines[index]);
+              const before = paragraph.text.slice(0, match.index);
+              const line_start = paragraph.startLine + (before.match(/\n/g)?.length ?? 0);
+              // Count through the final matched character, not a newline just after it.
+              const lastCharacterOffset = match.index + text.length - 1;
+              const line_end = paragraph.startLine +
+                ((paragraph.text.slice(0, lastCharacterOffset).match(/\n/g)?.length) ?? 0);
+
+              results.push({
+                file_name: entry.name,
+                path: filePath,
+                text,
+                line_start,
+                line_end,
+              });
+            }
           }
         }
-        addSection(lines.length);
       } catch (error) {
         console.error(`Skipped ${filePath}: ${String(error)}`);
       }
@@ -121,4 +138,5 @@ if (isMain) {
     process.exitCode = 1;
   }
 }
+
 

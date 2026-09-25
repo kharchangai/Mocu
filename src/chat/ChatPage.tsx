@@ -17,6 +17,7 @@ import {
   ChatBox,
 } from './components/ChatBox';
 import { StepWorkflowPanel } from './components/StepWorkflowPanel';
+import { FocusPanel } from './components/FocusPanel';
 import { RightPanelDock } from './components/RightPanelDock';
 
 import {
@@ -180,6 +181,7 @@ function ChatPage() {
     stepWorkflowActive,
     setStepWorkflowActive,
   ] = useState(false);
+  const [focusActive, setFocusActive] = useState(false);
 
   useEffect(() => {
     /*
@@ -736,12 +738,18 @@ function ChatPage() {
         />
       </div>
 
-      <RightPanelDock hidden={!stepWorkflowActive}>
+      <RightPanelDock hidden={!stepWorkflowActive && !focusActive}>
         <StepWorkflowPanel
           key={`step-workflow-sidebar-${activeChatId ?? 'new-chat'}`}
           chatId={activeChatId}
           refreshKey={activeChat?.messages.length ?? 0}
           onActiveChange={setStepWorkflowActive}
+        />
+        <FocusPanel
+          key={`focus-sidebar-${activeChatId ?? 'new-chat'}`}
+          chatId={activeChatId}
+          refreshKey={activeChat?.messages.length ?? 0}
+          onActiveChange={setFocusActive}
         />
       </RightPanelDock>
 

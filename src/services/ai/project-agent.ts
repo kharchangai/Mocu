@@ -1,6 +1,7 @@
 // src/project-agent.ts
 
 import {
+  AIMessage,
   BaseMessage,
   HumanMessage,
   SystemMessage,
@@ -35,7 +36,17 @@ import {
   hasActiveStepWorkflow,
   runStepWorkflowTurn,
   createStartStepByStepWorkflowTool,
+  recordStepWorkflowStartReply,
 } from "./stepbystep/workflowManager";
+
+import {
+  FOCUS_START_REPLY_PREFIX,
+  createStartFocusTool,
+  hasActiveFocusSession,
+  parseFocusStartGoal,
+  runFocusTurn,
+  startFocusFromRequest,
+} from "./focus/focusManager";
 
 import {
   CHAT_EMPTY_RESPONSE,
@@ -1201,6 +1212,29 @@ export const callProjectAgent =
       signal,
     );
 
+    const focusChatId = getChatIdFromConfig(runnableConfig) || "default";
+    if (await hasActiveFocusSession(focusChatId)) {
+      const focusResponse = await runFocusTurn(
+        focusChatId,
+        rawUserText,
+        runnableConfig,
+        { projectPath: normalizedProjectPath },
+      );
+      return { messages: [focusResponse] };
+    }
+
+    const requestedFocusGoal = parseFocusStartGoal(rawUserText);
+    if (requestedFocusGoal) {
+      const focusResponse = await startFocusFromRequest({
+        chatId: focusChatId,
+        userMessage: rawUserText,
+        goal: requestedFocusGoal,
+        config: runnableConfig,
+        projectPath: normalizedProjectPath,
+      });
+      return { messages: [focusResponse] };
+    }
+
     /*
      * Step-by-step workflow routing.
      *
@@ -1415,14 +1449,20 @@ export const callProjectAgent =
      * tool callbacks do not receive the request config: the chat id and the
      * latest user message are bound at creation time.
      */
+    const projectChatId = getChatIdFromConfig(runnableConfig) || "default";
     const startStepWorkflowTool =
       createStartStepByStepWorkflowTool({
-        chatId: getChatIdFromConfig(
-          runnableConfig,
-        ) || "default",
+        chatId: projectChatId,
         userMessage: userText,
         selectedModel,
+        projectPath: normalizedProjectPath,
       });
+    const startFocusTool = createStartFocusTool({
+      chatId: projectChatId,
+      userMessage: userText,
+      projectPath: normalizedProjectPath,
+      config: runnableConfig,
+    });
 
     /*
      * Expose extension commands as callable tools so the agent can run
@@ -1516,6 +1556,7 @@ export const callProjectAgent =
         skillLoaderTool,
         createAgentTool,
         startStepWorkflowTool,
+        startFocusTool,
         ...docTools,
         ...extensionTools.tools,
         ...mcpTools.tools,
@@ -1540,6 +1581,11 @@ export const callProjectAgent =
           runnableConfig,
         ),
     });
+    toolExecutor.registerTool({
+      name: "start_focus_session",
+      description: startFocusTool.description,
+      execute: async (args) => startFocusTool.invoke(args, runnableConfig),
+    });
 
     extensionTools.registerAll(
       toolExecutor,
@@ -1562,6 +1608,8 @@ export const callProjectAgent =
       perplexitySearchTool.name,
       skillLoaderTool.name,
       createAgentTool.name,
+      startStepWorkflowTool.name,
+      startFocusTool.name,
       ...docTools.map((docTool) => docTool.name),
       ...extensionTools.entries.map((entry) => entry.name),
       ...mcpTools.tools.map((mcpTool) => mcpTool.name),
@@ -1616,6 +1664,7 @@ export const callProjectAgent =
 
     let stepCount =
       0;
+    let focusStartReply: string | null = null;
 
     while (
       response.tool_calls
@@ -1637,10 +1686,15 @@ export const callProjectAgent =
 
       const toolMessages:
         ToolMessage[] = [];
+      const toolCallsToExecute = response.tool_calls.some(
+        (toolCall) => toolCall.name === "start_focus_session",
+      )
+        ? response.tool_calls.filter((toolCall) => toolCall.name === "start_focus_session")
+        : response.tool_calls;
 
       for (
         const toolCall
-        of response.tool_calls
+        of toolCallsToExecute
       ) {
         throwIfAborted(
           signal,
@@ -1698,6 +1752,25 @@ export const callProjectAgent =
         toolResultsSummary.push(
           summary,
         );
+
+        if (toolCall.name === "start_focus_session") {
+          const toolText = getTextContent(toolMessage.content).trim();
+          if (toolText.startsWith(FOCUS_START_REPLY_PREFIX)) {
+            focusStartReply = toolText.slice(FOCUS_START_REPLY_PREFIX.length);
+            break;
+          }
+        }
+      }
+
+      if (focusStartReply !== null) {
+        return {
+          messages: [
+            new AIMessage({
+              content: focusStartReply,
+              additional_kwargs: { mocuFocus: true },
+            }),
+          ],
+        };
       }
 
       throwIfAborted(
@@ -1839,14 +1912,23 @@ export const callProjectAgent =
     response.content =
       finalAssistantContent;
 
-    saveProjectMemoryInBackground(
-      userText,
-      finalAssistantContent,
-      normalizedProjectPath,
-      getChatIdFromConfig(
-        runnableConfig,
-      ),
+    const workflowOwnsThisTurn = await hasActiveStepWorkflow(
+      getChatIdFromConfig(runnableConfig) || "default",
     );
+
+    if (workflowOwnsThisTurn) {
+      await recordStepWorkflowStartReply(
+        getChatIdFromConfig(runnableConfig) || "default",
+        finalAssistantContent,
+      );
+    } else {
+      saveProjectMemoryInBackground(
+        userText,
+        finalAssistantContent,
+        normalizedProjectPath,
+        getChatIdFromConfig(runnableConfig),
+      );
+    }
 
     return {
       messages: [

@@ -1,9 +1,13 @@
 ﻿{
-    "name":  "filesystem-regex-search",
+    "name":  "filesystem-semantic-search",
+    "version":  "0.1.0",
     "private":  true,
     "type":  "module",
+    "description":  "Mocu filesystem search extension with Jev relevance filtering.",
+    "dependencies":  {
+                         "@mocu/extension-sdk":  "file:./vendor/extension-sdk"
+                     },
     "scripts":  {
-                    "test":  "node --experimental-strip-types test_regex_search.ts",
-                    "search":  "node --experimental-strip-types regex_search.ts"
+                    "test":  "node --experimental-strip-types test_regex_search.ts"
                 }
 }

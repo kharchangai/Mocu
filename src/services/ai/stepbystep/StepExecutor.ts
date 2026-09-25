@@ -16,10 +16,12 @@ import {
 } from "./createStepPlan";
 import { buildStepPrompt } from "./buildStepPrompt";
 import type { WorkflowStore } from "./workflowStore";
+import { dispatchAgentToolActivity } from "../../../chat/services/toolActivity";
 
 import {
   emptyMemory,
   type ExecutorTurnContext,
+  type LogEntry,
   type SendInput,
   type SendResult,
   type StepMemory,
@@ -35,11 +37,106 @@ const MemorySchema = z.object({
   openItems: z.array(z.string()),
 });
 
-/** Tool results longer than this are truncated for the model conversation. */
-const MAX_TOOL_RESULT_CHARS = 12_000;
+const SHORT_TOOL_DESCRIPTIONS: Record<string, string> = {
+  desktop_vision_action: "Inspect the user's screen when requested.",
+  terminal_executor: "Run a PowerShell command in the selected project.",
+  perplexity_search: "Search the web for current information.",
+  load_skill: "Load instructions for a selected skill.",
+  delete_knowledge_doc: "Delete a knowledge document when explicitly requested.",
+  list_knowledge_docs: "List saved knowledge documents.",
+  read_step_logs: "Read workflow log summaries.",
+  read_log_entry: "Read a specific workflow log entry.",
+  read_step_memory: "Read a workflow step and its saved summary.",
+  move_to_next_step: "Advance only when the user explicitly asks.",
+  update_plan: "Update the plan only when the user explicitly asks.",
+  finish_workflow: "End the workflow when the user explicitly asks.",
+};
+
+function shortToolDescription(name: string): string {
+  const knownDescription = SHORT_TOOL_DESCRIPTIONS[name];
+  if (knownDescription) return knownDescription;
+  if (name.startsWith("extension_")) return "Run a selected extension command.";
+  if (name.startsWith("mcp_")) return "Call a selected MCP tool.";
+  if (name.startsWith("agent_")) return "Delegate to a selected specialist agent.";
+  return `Run the ${name} operation.`;
+}
+
+function asRecord(value: unknown): Record<string, unknown> {
+  return value && typeof value === "object" && !Array.isArray(value)
+    ? value as Record<string, unknown>
+    : {};
+}
+
+function buildMessagesFromStepHistory(entries: LogEntry[]): BaseMessage[] {
+  const messages: BaseMessage[] = [];
+
+  for (const entry of entries) {
+    const data = asRecord(entry.data);
+
+    if (entry.kind === "user" && typeof data.message === "string") {
+      messages.push(new HumanMessage(data.message));
+    } else if (entry.kind === "assistant" && typeof data.reply === "string") {
+      messages.push(new AIMessage(data.reply));
+    } else if (entry.kind === "tool_call") {
+      const callId = typeof data.callId === "string" ? data.callId : entry.id;
+      const name = typeof data.name === "string" ? data.name : "workflow_tool";
+      messages.push(new AIMessage({
+        content: "",
+        tool_calls: [{
+          id: callId,
+          name,
+          args: asRecord(data.arguments),
+          type: "tool_call",
+        }],
+      }));
+    } else if (entry.kind === "tool_result") {
+      const callId = typeof data.callId === "string" ? data.callId : entry.id;
+      const content = typeof data.result === "string"
+        ? data.result
+        : JSON.stringify(data.result ?? "");
+      messages.push(new ToolMessage({
+        content,
+        tool_call_id: callId,
+        ...(typeof data.name === "string" ? { name: data.name } : {}),
+      }));
+    } else if (entry.kind === "error") {
+      messages.push(new HumanMessage(
+        `[Workflow error] ${typeof data.message === "string" ? data.message : JSON.stringify(data)}`,
+      ));
+    }
+  }
+
+  return messages;
+}
+
+function withShortDescription<T extends StructuredToolLike>(item: T): T {
+  return new Proxy(item, {
+    get(target, property, receiver) {
+      if (property === "description") {
+        return shortToolDescription(target.name);
+      }
+
+      return Reflect.get(target, property, receiver);
+    },
+  });
+}
 
 function errorMessage(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
+}
+
+function isToolErrorResult(result: string): boolean {
+  try {
+    const parsed: unknown = JSON.parse(result);
+
+    return (
+      typeof parsed === "object" &&
+      parsed !== null &&
+      (("ok" in parsed && parsed.ok === false) || "error" in parsed)
+    );
+  } catch {
+    return false;
+  }
 }
 
 function messageText(message: BaseMessage): string {
@@ -94,6 +191,7 @@ export class StepExecutor {
     plan: StepPlan,
     chatId: string,
     selectedModel?: string,
+    projectPath?: string,
   ): Promise<string> {
     const parsed = StepPlanSchema.parse(plan);
 
@@ -118,7 +216,9 @@ export class StepExecutor {
 
     const state: WorkflowState = {
       id,
+      createdAt: new Date().toISOString(),
       chatId,
+      ...(projectPath?.trim() ? { projectPath: projectPath.trim() } : {}),
       ...(selectedModel?.trim()
         ? { selectedModel: selectedModel.trim() }
         : {}),
@@ -478,34 +578,29 @@ export class StepExecutor {
     const workflowTools = this.createWorkflowTools(state);
 
     const allTools = [...mainTools, ...workflowTools];
+    const llmTools = allTools.map(withShortDescription);
 
     const toolMap = new Map<string, StructuredToolLike>();
     for (const item of allTools) {
       toolMap.set(item.name, item);
     }
 
-    const toolsDescription = allTools
+    const toolsDescription = llmTools
       .map((item) => `- ${item.name}: ${item.description}`)
       .join("\n");
 
     const llm = await this.options.buildTurnLlm(turn.selectedModel);
     const llmWithTools =
-      allTools.length > 0 ? llm.bindTools(allTools) : llm;
+      llmTools.length > 0 ? llm.bindTools(llmTools) : llm;
 
+    const history = await this.store.readStepHistory(state.id, stepNumber);
     const messages: BaseMessage[] = [
       new SystemMessage(
         buildStepPrompt(state, toolsDescription),
       ),
+      ...buildMessagesFromStepHistory(history),
+      new HumanMessage(message),
     ];
-
-    for (const previousTurn of state.recentTurns) {
-      messages.push(
-        new HumanMessage(previousTurn.user),
-        new AIMessage(previousTurn.assistant),
-      );
-    }
-
-    messages.push(new HumanMessage(message));
 
     await this.store.append(state.id, stepNumber, "user", {
       message,
@@ -532,16 +627,27 @@ export class StepExecutor {
 
       messages.push(response);
 
-      for (const toolCall of toolCalls) {
-        const toolCallId = toolCall.id ?? "";
+      for (const [toolCallIndex, toolCall] of toolCalls.entries()) {
+        const toolCallId =
+          toolCall.id || `${state.id}-${stepNumber}-${round}-${toolCallIndex}`;
+        const toolArgs = toolCall.args ?? {};
 
         await this.store.append(state.id, stepNumber, "tool_call", {
           callId: toolCallId,
           name: toolCall.name,
-          arguments: toolCall.args ?? {},
+          arguments: toolArgs,
+        });
+
+        dispatchAgentToolActivity({
+          id: toolCallId,
+          tool: toolCall.name,
+          args: toolArgs,
+          status: "running",
+          chatId: state.chatId,
         });
 
         let resultText: string;
+        let activityStatus: "done" | "error" = "done";
 
         try {
           const selectedTool = toolMap.get(toolCall.name);
@@ -573,7 +679,11 @@ export class StepExecutor {
             typeof output === "string"
               ? output
               : JSON.stringify(output);
+          if (isToolErrorResult(resultText)) {
+            activityStatus = "error";
+          }
         } catch (error) {
+          activityStatus = "error";
           resultText = JSON.stringify({
             ok: false,
             error: errorMessage(error),
@@ -586,12 +696,18 @@ export class StepExecutor {
           result: resultText,
         });
 
+        dispatchAgentToolActivity({
+          id: toolCallId,
+          tool: toolCall.name,
+          args: toolArgs,
+          result: resultText,
+          status: activityStatus,
+          chatId: state.chatId,
+        });
+
         messages.push(
           new ToolMessage({
-            content:
-              resultText.length > MAX_TOOL_RESULT_CHARS
-                ? `${resultText.slice(0, MAX_TOOL_RESULT_CHARS)}\n\n[Result truncated. Use read_log_entry with the log ID of this tool_result to read the full content.]`
-                : resultText,
+            content: resultText,
             tool_call_id: toolCallId,
             name: toolCall.name,
           }),
@@ -663,8 +779,6 @@ export class StepExecutor {
         assistant: reply,
       });
 
-      // Older details remain available through the logs.
-      state.recentTurns = state.recentTurns.slice(-6);
     }
 
     await this.store.save(state);
@@ -698,6 +812,7 @@ export class StepExecutor {
     const memory = await this.generateStepSummary(state, stepNumber);
 
     state.memories[String(stepNumber)] = memory;
+    await this.store.saveStepMemory(state.id, stepNumber, memory);
 
     await this.store.append(state.id, stepNumber, "summary", memory);
 
@@ -754,26 +869,18 @@ export class StepExecutor {
     };
 
     try {
-      const logs = await this.store.readLogs(
-        state.id,
-        stepNumber,
-        0,
-        20,
-      );
-
+      const logs = await this.store.readStepHistory(state.id, stepNumber);
       const relevantKinds = new Set([
         "user",
         "assistant",
+        "tool_call",
         "tool_result",
-        "summary",
+        "error",
       ]);
 
-      const logText = logs.entries
+      const logText = logs
         .filter((entry) => relevantKinds.has(entry.kind))
-        .map(
-          (entry) =>
-            `[${entry.kind}] ${entry.preview}${entry.truncated ? " …" : ""}`,
-        )
+        .map((entry) => `[${entry.kind}] ${JSON.stringify(entry.data)}`)
         .join("\n\n");
 
       if (!logText.trim()) {

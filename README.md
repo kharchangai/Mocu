@@ -28,6 +28,7 @@ Mocu is in an **early stage of development** and is not yet stable. Due to poten
 
 ### Core
 - 💬 **Chat** — Full-featured chat with markdown rendering, code highlighting, chat history, and live tool-activity feeds.
+- 🎯 **Focus** — Start a goal directly, work in flexible user-controlled sections, and carry forward concise section memories without loading global memory or a generated plan. Say “Focus on …” to begin, “next section” to move on, and “end Focus” to return to normal chat.
 - 📁 **Projects** — Organize work into projects with their own chat history and **project memory** (episodes, turns, and retrieval).
 - 📅 **Schedule** — Set and manage schedules and tasks, with a built-in scheduler and schedule tools available to the AI.
 - 🧠 **Memory** — Layered memory system: short-term conversation memory, long-term personal memory (atomic memory extraction, relationship analysis, memory evolution), and project-level memory. Mocu remembers context across sessions.

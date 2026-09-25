@@ -22,12 +22,8 @@ import {
 import { terminalExecutionTool } from "../tools/terminal_execution_tool";
 import { perplexitySearchTool } from "../tools/perplexity_search_tool";
 import { skillLoaderTool } from "../tools/skill_loader_tool";
-import { createAgentTool } from "../tools/create_agent_tool";
 import { desktopVisionTool } from "../tools/desktop-vision-tool";
-import { scheduleTool } from "../../../schedule/schedule-tool";
 import {
-  createDocTool,
-  updateDocTool,
   deleteDocTool,
   listDocsTool,
 } from "../tools/docs_tools";
@@ -83,26 +79,22 @@ function getConfigReferences(
 /**
  * Builds the tool runtime for the execution agent.
  *
- * The workflow agent gets access to the same tools the main agent has for
- * the current request (terminal, files, web, skills, extensions, MCP,
- * child agents, ...) plus its own workflow tools, which are added by the
- * StepExecutor itself.
+ * The workflow agent gets the task-focused tools available for the current
+ * request (terminal, screen, web, skills, extensions, MCP, and knowledge-doc
+ * lookup/removal) plus its own workflow tools. Scheduling, agent creation,
+ * and knowledge-doc creation/updating stay out of step-by-step turns.
  */
 async function buildMainAgentToolRuntime(
   config: RunnableConfig,
   projectPath?: string,
 ): Promise<StructuredToolLike[]> {
   const tools: StructuredToolInterface[] = [
-    scheduleTool,
     desktopVisionTool,
     terminalExecutionTool({
       ...(projectPath ? { projectPath } : {}),
     }),
     perplexitySearchTool,
     skillLoaderTool,
-    createAgentTool,
-    createDocTool,
-    updateDocTool,
     deleteDocTool,
     listDocsTool,
   ];
@@ -214,6 +206,7 @@ export async function startStepByStepWorkflow(input: {
   userMessage: string;
   taskDescription: string;
   selectedModel?: string;
+  projectPath?: string;
 }): Promise<StepPlan> {
   const plan = await createStepPlan({
     userMessage: input.userMessage,
@@ -224,6 +217,7 @@ export async function startStepByStepWorkflow(input: {
     plan,
     input.chatId,
     input.selectedModel,
+    input.projectPath,
   );
 
   await store.setChatWorkflow(input.chatId, workflowId);
@@ -231,8 +225,23 @@ export async function startStepByStepWorkflow(input: {
     message: input.userMessage,
     workflowStart: true,
   });
-
   return plan;
+}
+
+export async function recordStepWorkflowStartReply(
+  chatId: string,
+  reply: string,
+): Promise<void> {
+  const workflowId = await store.getChatWorkflow(chatId);
+  if (!workflowId || !reply.trim()) return;
+
+  const state = await store.load(workflowId);
+  if (state.chatId !== chatId || state.status !== "active") return;
+
+  await store.append(workflowId, state.currentStepIndex + 1, "assistant", {
+    reply,
+    workflowStart: true,
+  });
 }
 
 export async function cancelStepWorkflow(
@@ -340,6 +349,7 @@ export function createStartStepByStepWorkflowTool(options: {
   chatId: string;
   userMessage: string;
   selectedModel?: string;
+  projectPath?: string;
 }): StructuredToolInterface {
   return tool(
     async ({ task_description }) => {
@@ -364,6 +374,7 @@ export function createStartStepByStepWorkflowTool(options: {
           userMessage,
           taskDescription: task_description,
           selectedModel: options.selectedModel,
+          projectPath: options.projectPath,
         });
 
         const firstStep = plan.steps[0];
@@ -421,6 +432,14 @@ export async function runStepWorkflowTurn(
  * UI-facing helpers ---------------------------------------------------------
  */
 
+export interface StepWorkflowHistoryEntry {
+  id: string;
+  stepNumber: number;
+  time: string;
+  kind: string;
+  data: unknown;
+}
+
 export interface StepWorkflowOverview {
   id: string;
   status: WorkflowState["status"];
@@ -441,10 +460,51 @@ export interface StepWorkflowOverview {
 /**
  * Compact overview of the workflow of a chat, used by the UI panel.
  */
+export async function getStepWorkflowStepHistory(
+  chatId: string,
+  workflowId: string,
+  stepNumber: number,
+): Promise<StepWorkflowHistoryEntry[]> {
+  if (!(await store.getChatWorkflowIds(chatId)).includes(workflowId)) {
+    return [];
+  }
+
+  const state = await store.load(workflowId);
+  if (state.chatId !== chatId) return [];
+
+  const entries = await store.readStepHistory(workflowId, stepNumber);
+  return entries.map((entry) => ({
+    id: entry.id,
+    stepNumber: entry.stepNumber,
+    time: entry.time,
+    kind: entry.kind,
+    data: entry.data,
+  }));
+}
+
 export async function getStepWorkflowOverview(
   chatId: string,
 ): Promise<StepWorkflowOverview | null> {
-  const state = await getActiveStepWorkflow(chatId);
+  let state = await getActiveStepWorkflow(chatId);
+
+  if (!state) {
+    const candidates = await Promise.all(
+      (await store.getChatWorkflowIds(chatId)).map(async (workflowId) => {
+        try {
+          return await store.load(workflowId);
+        } catch {
+          return null;
+        }
+      }),
+    );
+    state = candidates
+      .filter((candidate): candidate is WorkflowState =>
+        candidate !== null && candidate.chatId === chatId,
+      )
+      .sort((first, second) =>
+        (second.createdAt ?? "").localeCompare(first.createdAt ?? ""),
+      )[0] ?? null;
+  }
 
   if (!state) {
     return null;
@@ -465,7 +525,8 @@ export async function getStepWorkflowOverview(
       goal: step.goal,
       tips: step.tips,
       state:
-        step.step_number < currentStepNumber
+        step.step_number < currentStepNumber ||
+        (state.status === "completed" && step.step_number === currentStepNumber)
           ? "done"
           : step.step_number === currentStepNumber
             ? "current"
@@ -503,18 +564,35 @@ export async function getStepWorkflowLogs(
   }
 
   const pages = await Promise.all(
-    workflowIds.map((workflowId) =>
-      stepNumber === null
-        ? store.readAllLogs(workflowId, 0, 400)
-        : store.readLogs(workflowId, stepNumber, 0, 400),
-    ),
+    workflowIds.map(async (workflowId) => {
+      const entries: Array<{
+        id: string;
+        stepNumber?: number;
+        time: string;
+        kind: string;
+        preview: string;
+        truncated: boolean;
+      }> = [];
+      let offset = 0;
+
+      while (true) {
+        const page = stepNumber === null
+          ? await store.readAllLogs(workflowId, offset, 400)
+          : await store.readLogs(workflowId, stepNumber, offset, 20);
+        entries.push(...page.entries);
+        if (page.nextOffset === null) break;
+        offset = page.nextOffset;
+      }
+
+      return { entries };
+    }),
   );
   const entries = pages
     .flatMap((page) => page.entries)
     .sort((first, second) =>
       first.time.localeCompare(second.time) || first.id.localeCompare(second.id),
     );
-  const pageSize = Math.min(Math.max(limit, 1), 400);
+  const pageSize = Math.max(limit, 1);
   const start = Math.max(offset, 0);
   const page = entries.slice(start, start + pageSize);
 

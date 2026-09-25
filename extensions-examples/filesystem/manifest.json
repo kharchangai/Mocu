@@ -1,0 +1,22 @@
+﻿{
+  "id": "filesystem-semantic-search",
+  "name": "Filesystem Semantic Search",
+  "description": "Searches files with regex and then filters matching text semantically with Jev.",
+  "version": "0.1.0",
+  "runtime": "node",
+  "entry": "index.js",
+  "engines": {
+    "node": ">=20"
+  },
+  "permissions": [
+    "filesystem"
+  ],
+  "commands": [
+    {
+      "id": "search_files",
+      "title": "Search files semantically",
+      "description": "Use this command when the user asks to find relevant content inside files. Input must be an object with: folder (absolute folder path), query (natural-language description of what the agent is looking for), patterns (a non-empty array of JavaScript regular-expression strings used only to generate search candidates), extensions (a non-empty array of file extensions such as ['.txt', '.md']), optional threshold (a number from 0 to 1, default 0.6), and optional batch_size (an integer from 1 to 32, default 32). Example: {\"folder\":\"E:\\\\news\",\"query\":\"Find English text about stocks\",\"patterns\":[\".*[sS][tT][oO][cC][kK].*\"],\"extensions\":[\".txt\"],\"threshold\":0.6}. Use broad regex patterns for candidate generation and use query for semantic relevance. Do not put the entire natural-language request directly into patterns. The command returns only passages judged relevant by Jev, including file path, file name, text, line range, and relevance score.",
+      "timeoutSeconds": 0
+    }
+  ]
+}

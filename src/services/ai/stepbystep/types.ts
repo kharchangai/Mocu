@@ -25,8 +25,11 @@ export type WorkflowStatus = "active" | "completed" | "cancelled";
 
 export interface WorkflowState {
   id: string;
+  createdAt?: string;
   /** Chat that owns this workflow. Messages from other chats never touch it. */
   chatId: string;
+  /** Project folder used as the workflow's private on-disk storage location. */
+  projectPath?: string;
   /** Latest explicit model choice for the execution agent; omitted for the configured default. */
   selectedModel?: string;
   plan: StepPlan;

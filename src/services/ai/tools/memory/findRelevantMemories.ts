@@ -14,6 +14,10 @@ import {
 import { textSimilarity } from "../textSimilarity";
 import { getAsyncLLM } from "../../llm";
 import { MEMORY_RETRIEVAL_RERANK_PROMPT } from "./prompts";
+import {
+  isAbortError,
+  throwIfAborted,
+} from "../../agent/abort";
 
 const MEMORY_DIRECTORY = "memory";
 const TAGS_FILE_NAME = "tags.json";
@@ -137,11 +141,10 @@ const MemoryRerankJsonSchema = {
  * Finds relevant long-term memories for one user message.
  *
  * Pipeline:
- * 1. Extract atomic statements from the user message.
- * 2. Read every memory/*.json file in AppData except tags.json.
- * 3. Create an embedding for every extracted atomic statement.
- * 4. Compare it with stored memory embeddings.
- * 5. Keep top 10 matches above similarity 0.5 for each atomic statement.
+ * 1. Extract atomic statements from the user message while loading memory files.
+ * 2. Create embeddings for all extracted statements in one provider request.
+ * 3. Compare them with stored memory embeddings.
+ * 4. Keep top 10 matches above similarity 0.5 for each atomic statement.
  * 6. Merge duplicate candidates.
  * 7. Ask the LLM to remove semantic false positives.
  * 8. Load direct linked neighbors only if the LLM requests them.
@@ -149,6 +152,7 @@ const MemoryRerankJsonSchema = {
  */
 export async function findRelevantMemories(
   userText: string,
+  signal?: AbortSignal,
 ): Promise<FindRelevantMemoriesResult> {
   const text = userText?.trim();
 
@@ -157,7 +161,14 @@ export async function findRelevantMemories(
   }
 
   try {
-    const atomicMemories = await extractAtomicMemories(text);
+    throwIfAborted(signal);
+
+    const [atomicMemories, loadedMemories] = await Promise.all([
+      extractAtomicMemories(text, signal),
+      loadAllMemories(),
+    ]);
+
+    throwIfAborted(signal);
 
     if (atomicMemories.length === 0) {
       return {
@@ -165,8 +176,6 @@ export async function findRelevantMemories(
         atomicMemories,
       };
     }
-
-    const loadedMemories = await loadAllMemories();
 
     if (loadedMemories.length === 0) {
       return {
@@ -178,6 +187,7 @@ export async function findRelevantMemories(
     const candidates = await findSemanticCandidates(
       atomicMemories,
       loadedMemories,
+      signal,
     );
 
     if (candidates.length === 0) {
@@ -196,6 +206,7 @@ export async function findRelevantMemories(
       text,
       atomicMemories,
       candidatesForReranking,
+      signal,
     );
 
     const selectedMemories = getSelectedMemories(
@@ -224,6 +235,10 @@ export async function findRelevantMemories(
       context,
     };
   } catch (error) {
+    if (isAbortError(error) || signal?.aborted) {
+      throw error;
+    }
+
     console.error("[Find relevant memories] Failed:", error);
 
     return createEmptyResult(text);
@@ -309,12 +324,13 @@ async function loadAllMemories(): Promise<LoadedMemory[]> {
  * The stored memory embedding already represents:
  * content + context + key + tags.
  *
- * The new atomic memory has only content at this point, so it is embedded
- * with embedText() and compared directly against saved embeddings.
+ * The new atomic memories have only content at this point, so they are
+ * embedded together in one request and compared against saved embeddings.
  */
 async function findSemanticCandidates(
   atomicMemories: AtomicMemory[],
   loadedMemories: LoadedMemory[],
+  signal?: AbortSignal,
 ): Promise<MemorySearchCandidate[]> {
   const storedEmbeddings = loadedMemories.map(({ memory }) => ({
     id: memory.id,
@@ -326,11 +342,18 @@ async function findSemanticCandidates(
   );
 
   const candidateMap = new Map<string, MemorySearchCandidate>();
+  const atomicEmbeddings = await textSimilarity.embedTexts(
+    atomicMemories.map((memory) => memory.content),
+  );
 
-  for (const atomicMemory of atomicMemories) {
-    const atomicEmbedding = await textSimilarity.embedText(
-      atomicMemory.content,
-    );
+  throwIfAborted(signal);
+
+  for (const [index, atomicMemory] of atomicMemories.entries()) {
+    const atomicEmbedding = atomicEmbeddings[index];
+
+    if (!atomicEmbedding) {
+      continue;
+    }
 
     const comparison = textSimilarity.compareEmbeddingToList(
       atomicEmbedding,
@@ -390,13 +413,18 @@ async function rerankMemoryCandidates(
   userText: string,
   atomicMemories: AtomicMemory[],
   candidates: MemorySearchCandidate[],
+  signal?: AbortSignal,
 ): Promise<MemoryRerankItem[]> {
   if (candidates.length === 0) {
     return [];
   }
 
   try {
+    throwIfAborted(signal);
+
     const model = await getAsyncLLM("cheap");
+
+    throwIfAborted(signal);
 
     const structuredModel = model.withStructuredOutput(
       MemoryRerankJsonSchema,
@@ -414,7 +442,9 @@ async function rerankMemoryCandidates(
           candidates,
         ),
       ),
-    ]);
+    ], { signal });
+
+    throwIfAborted(signal);
 
     const validatedResult = MemoryRerankResultSchema.safeParse(result);
 
@@ -435,6 +465,10 @@ async function rerankMemoryCandidates(
       allowedMemoryIds.has(item.memoryId),
     );
   } catch (error) {
+    if (isAbortError(error) || signal?.aborted) {
+      throw error;
+    }
+
     console.error("[Find relevant memories] Reranking failed:", error);
 
     return [];

@@ -59,6 +59,10 @@ import {
   getStepWorkflowLogs,
   type StepWorkflowLogPage,
 } from '../../services/ai/stepbystep/workflowManager';
+import {
+  hasActiveFocusSession,
+  parseFocusStartGoal,
+} from '../../services/ai/focus/focusManager';
 
 import { useToolActivity } from '../hooks/useToolActivity';
 import {
@@ -232,13 +236,25 @@ function buildWorkflowMessageMapping(
       )
       .map(({ index }) => index);
 
-    if (matchingIndexes.length === 0) {
+    const turnTime = Date.parse(turn.time);
+    const fallbackIndexes = userMessages
+      .map((_message, index) => index)
+      .filter((index) =>
+        index >= messageSearchStart &&
+        Number.isFinite(Date.parse(userMessages[index].createdAt)),
+      );
+    const candidateIndexes = matchingIndexes.length > 0
+      ? matchingIndexes
+      : Number.isFinite(turnTime)
+        ? fallbackIndexes
+        : [];
+
+    if (candidateIndexes.length === 0) {
       continue;
     }
 
-    const turnTime = Date.parse(turn.time);
     const messageIndex = Number.isFinite(turnTime)
-      ? matchingIndexes.reduce((closest, candidate) => {
+      ? candidateIndexes.reduce((closest, candidate) => {
           const closestTime = Math.abs(
             Date.parse(userMessages[closest].createdAt) - turnTime,
           );
@@ -246,8 +262,16 @@ function buildWorkflowMessageMapping(
             Date.parse(userMessages[candidate].createdAt) - turnTime,
           );
           return candidateTime < closestTime ? candidate : closest;
-        }, matchingIndexes[0])
-      : matchingIndexes[0];
+        }, candidateIndexes[0])
+      : candidateIndexes[0];
+
+    if (
+      matchingIndexes.length === 0 &&
+      Number.isFinite(turnTime) &&
+      Math.abs(Date.parse(userMessages[messageIndex].createdAt) - turnTime) > 5 * 60 * 1000
+    ) {
+      continue;
+    }
 
     const matchedMessage = userMessages[messageIndex];
     workflowMessageIds.add(matchedMessage.id);
@@ -452,7 +476,12 @@ export function ChatBox({
       loading = true;
 
       try {
-        const result = await getStepWorkflowLogs(chatId, null, 0, 400);
+        const result = await getStepWorkflowLogs(
+          chatId,
+          null,
+          0,
+          Number.MAX_SAFE_INTEGER,
+        );
         const all = result.entries;
 
         if (!cancelled) {
@@ -731,10 +760,16 @@ export function ChatBox({
     let wasCreated: boolean;
 
     try {
+      /* Focus requests and active Focus turns do not load global project memory. */
+      const isFocusTurn =
+        parseFocusStartGoal(normalizedText) !== null ||
+        Boolean(chatId && await hasActiveFocusSession(chatId));
+
       /*
-       * Load project memory before creating the chat.
+       * Load project memory before creating the chat only for normal turns.
        */
       if (
+        !isFocusTurn &&
         hasSelectedProject &&
         projectMemoryLoadStateRef.current !==
           effectiveProjectPath
@@ -748,7 +783,7 @@ export function ChatBox({
        * Only project conversations should receive project history.
        */
       const initialHistory =
-        hasSelectedProject
+        hasSelectedProject && !isFocusTurn
           ? projectMemoryMessagesRef.current
           : [];
 
@@ -1010,27 +1045,29 @@ export function ChatBox({
         assistantMessage.id,
       );
 
-      /*
-       * Preserve the existing short-memory behavior.
-       */
-      try {
-        const saveResult =
-          await saveShortTermMemory({
+      /* Focus stays isolated from the ordinary short-memory store. */
+      const isFocusResponse =
+        lastAssistantMessage instanceof AIMessage &&
+        lastAssistantMessage.additional_kwargs?.mocuFocus === true;
+
+      if (!isFocusResponse) {
+        try {
+          const saveResult = await saveShortTermMemory({
             userMessage: normalizedText,
             agentResponse: response,
-            projectPath:
-              effectiveProjectPath,
+            projectPath: effectiveProjectPath,
           });
 
-        console.log(
-          `[Short Memory] Saved for chat ${requestChatId}:`,
-          saveResult,
-        );
-      } catch (memoryError) {
-        console.error(
-          `[Short Memory] Failed for chat ${requestChatId}:`,
-          memoryError,
-        );
+          console.log(
+            `[Short Memory] Saved for chat ${requestChatId}:`,
+            saveResult,
+          );
+        } catch (memoryError) {
+          console.error(
+            `[Short Memory] Failed for chat ${requestChatId}:`,
+            memoryError,
+          );
+        }
       }
     } catch (error) {
       if (
@@ -1160,6 +1197,23 @@ export function ChatBox({
   }, [displayMessages, stepWorkflowMessageMapping, toolActivity.getForMessage]);
 
   /*
+   * Workflow logs remain the fallback for older conversations, but live
+   * workflow tool calls now also use the regular per-turn activity feed.
+   * Hide log copies already present there to avoid rendering each box twice.
+   */
+  const renderedToolActivityIds = new Set(
+    toolActivity.pendingActivities.map((activity) => activity.id),
+  );
+
+  for (const message of displayMessages) {
+    if (message.role === 'assistant') {
+      for (const activity of toolActivity.getForMessage(message.id)) {
+        renderedToolActivityIds.add(activity.id);
+      }
+    }
+  }
+
+  /*
    * The mind icon sits directly below the agent's latest response
    * (rendered inside that message, above its action buttons).
    */
@@ -1212,9 +1266,9 @@ export function ChatBox({
                       onEdit={handleEditMessage}
                     />
                     <ToolActivityFeed
-                      activities={
+                      activities={(
                         stepWorkflowMessageMapping.activitiesByMessage.get(message.id) ?? []
-                      }
+                      ).filter((activity) => !renderedToolActivityIds.has(activity.id))}
                     />
                   </Fragment>
                 ) : (

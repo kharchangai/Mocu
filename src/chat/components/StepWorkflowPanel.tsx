@@ -16,7 +16,7 @@ interface StepWorkflowPanelProps {
   chatId: string | null;
   /** Changes whenever the conversation gains a message, so the panel refreshes. */
   refreshKey: number;
-  /** Reports whether a workflow is active, so the dock can collapse. */
+  /** Reports whether a workflow panel should be shown in the dock. */
   onActiveChange?: (active: boolean) => void;
 }
 
@@ -71,7 +71,7 @@ export function StepWorkflowPanel({
   }, []);
 
   const handleCancel = useCallback(async () => {
-    if (!chatId || !overview) {
+    if (!chatId || !overview || overview.status !== 'active') {
       return;
     }
 
@@ -209,14 +209,22 @@ export function StepWorkflowPanel({
           </ol>
 
           <div className="step-workflow-panel__footer">
-            <span className="step-workflow-panel__status">Workflow in progress</span>
-            <button
-              type="button"
-              className="step-workflow-panel__cancel"
-              onClick={() => void handleCancel()}
-            >
-              Cancel
-            </button>
+            <span className="step-workflow-panel__status">
+              {overview.status === 'active'
+                ? 'Workflow in progress'
+                : overview.status === 'completed'
+                  ? 'Workflow completed'
+                  : 'Workflow cancelled'}
+            </span>
+            {overview.status === 'active' ? (
+              <button
+                type="button"
+                className="step-workflow-panel__cancel"
+                onClick={() => void handleCancel()}
+              >
+                Cancel
+              </button>
+            ) : null}
           </div>
         </div>
       ) : null}

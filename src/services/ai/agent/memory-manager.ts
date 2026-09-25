@@ -420,7 +420,7 @@ export const getLongTermMemoryContextForAgent = async (
     );
 
     const memoryResult =
-      await findRelevantMemories(userText);
+      await findRelevantMemories(userText, signal);
 
     throwIfAborted(signal);
 

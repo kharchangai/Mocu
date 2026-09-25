@@ -12,6 +12,7 @@ import type {
 } from "@langchain/core/runnables";
 
 import {
+  createAbortError,
   isAbortError,
   throwIfAborted,
 } from "./agent/abort";
@@ -121,12 +122,6 @@ import {
 } from "./tools/personalMemory/personalMemoryGate";
 
 import {
-  hasActiveStepWorkflow,
-  runStepWorkflowTurn,
-  createStartStepByStepWorkflowTool,
-} from "./stepbystep/workflowManager";
-
-import {
   generateMainAgentPolicyPrompt,
 } from "./tools/personalMemory/generateMainAgentPrompt";
 
@@ -134,7 +129,182 @@ import {
   buildDocsContextPrompt,
 } from "../../chat/docs";
 
+import {
+  hasActiveFocusSession,
+  parseFocusStartGoal,
+  runFocusTurn,
+  startFocusFromRequest,
+} from "./focus/focusManager";
+
 const MAX_TOOL_STEPS = 5;
+const OPTIONAL_CONTEXT_TIMEOUT_MS = 10_000;
+const LONG_TERM_MEMORY_TIMEOUT_MS = 30_000;
+const CHAT_MODEL_TIMEOUT_MS = 45_000;
+const MAX_CHAT_MODEL_ATTEMPTS = 2;
+
+const waitForOptionalContext = async <T>(
+  task: (contextSignal: AbortSignal) => Promise<T>,
+  fallback: T,
+  contextName: string,
+  signal?: AbortSignal,
+  timeoutMs = OPTIONAL_CONTEXT_TIMEOUT_MS,
+): Promise<T> => {
+  throwIfAborted(signal);
+
+  const contextController = new AbortController();
+  let timeout: ReturnType<typeof setTimeout> | undefined;
+  let onAbort: (() => void) | undefined;
+
+  const timeoutPromise = new Promise<T>((resolve) => {
+    timeout = setTimeout(() => {
+      contextController.abort();
+      console.warn(
+        `[Chat Agent] ${contextName} timed out after ${timeoutMs / 1000}s; continuing without it.`,
+      );
+      resolve(fallback);
+    }, timeoutMs);
+  });
+
+  const abortPromise = new Promise<T>((_resolve, reject) => {
+    if (!signal) {
+      return;
+    }
+
+    onAbort = () => {
+      contextController.abort();
+      reject(createAbortError());
+    };
+    signal.addEventListener("abort", onAbort, { once: true });
+  });
+
+  const taskPromise = Promise.resolve()
+    .then(() => task(contextController.signal))
+    .catch((error: unknown) => {
+      if (isAbortError(error) || signal?.aborted) {
+        throw error;
+      }
+
+      console.warn(
+        `[Chat Agent] ${contextName} failed; continuing without it:`,
+        error,
+      );
+      return fallback;
+    });
+
+  try {
+    return await Promise.race([
+      taskPromise,
+      timeoutPromise,
+      abortPromise,
+    ]);
+  } finally {
+    if (timeout) {
+      clearTimeout(timeout);
+    }
+
+    if (signal && onAbort) {
+      signal.removeEventListener("abort", onAbort);
+    }
+  }
+};
+
+const invokeChatModelOnce = async <T>(
+  invoke: (config: RunnableConfig) => Promise<T>,
+  config: RunnableConfig,
+  requestLabel: string,
+): Promise<T> => {
+  const requestController = new AbortController();
+  const signal = config.signal;
+  let timeout: ReturnType<typeof setTimeout> | undefined;
+  let onAbort: (() => void) | undefined;
+
+  const timeoutPromise = new Promise<T>((_resolve, reject) => {
+    timeout = setTimeout(() => {
+      requestController.abort();
+      reject(
+        new Error(
+          `Chat model ${requestLabel} timed out after ${CHAT_MODEL_TIMEOUT_MS / 1000} seconds.`,
+        ),
+      );
+    }, CHAT_MODEL_TIMEOUT_MS);
+  });
+
+  const abortPromise = new Promise<T>((_resolve, reject) => {
+    if (!signal) {
+      return;
+    }
+
+    onAbort = () => {
+      requestController.abort();
+      reject(createAbortError());
+    };
+    signal.addEventListener("abort", onAbort, { once: true });
+  });
+
+  try {
+    throwIfAborted(signal);
+
+    return await Promise.race([
+      invoke({
+        ...config,
+        signal: requestController.signal,
+      }),
+      timeoutPromise,
+      abortPromise,
+    ]);
+  } finally {
+    if (timeout) {
+      clearTimeout(timeout);
+    }
+
+    if (signal && onAbort) {
+      signal.removeEventListener("abort", onAbort);
+    }
+  }
+};
+
+const invokeChatModel = async <T>(
+  invoke: (config: RunnableConfig) => Promise<T>,
+  config: RunnableConfig,
+  requestLabel: string,
+): Promise<T> => {
+  let lastError: unknown;
+
+  for (
+    let attempt = 1;
+    attempt <= MAX_CHAT_MODEL_ATTEMPTS;
+    attempt += 1
+  ) {
+    throwIfAborted(config.signal);
+
+    try {
+      return await invokeChatModelOnce(
+        invoke,
+        config,
+        requestLabel,
+      );
+    } catch (error: unknown) {
+      if (isAbortError(error) || config.signal?.aborted) {
+        throw error;
+      }
+
+      lastError = error;
+
+      if (attempt < MAX_CHAT_MODEL_ATTEMPTS) {
+        console.warn(
+          `[Chat Agent] ${requestLabel} failed; retrying (${attempt + 1}/${MAX_CHAT_MODEL_ATTEMPTS}):`,
+          error,
+        );
+      }
+    }
+  }
+
+  console.error(
+    `[Chat Agent] ${requestLabel} failed after ${MAX_CHAT_MODEL_ATTEMPTS} attempts:`,
+    lastError,
+  );
+  throw lastError;
+};
 
 type ToolArgs =
   Record<string, unknown>;
@@ -677,6 +847,7 @@ const getPolicyPromptText = (
 
 const generatePersonalPolicyPrompt = async (
   userText: string,
+  signal?: AbortSignal,
 ): Promise<string> => {
   if (
     !userText.trim()
@@ -688,6 +859,7 @@ const generatePersonalPolicyPrompt = async (
     const generatedPolicy =
       await generateMainAgentPolicyPrompt(
         userText,
+        { abortSignal: signal },
       );
 
     return getPolicyPromptText(
@@ -1216,35 +1388,25 @@ export const callChatAgent =
       signal,
     );
 
-    /*
-     * Step-by-step workflow routing.
-     *
-     * While a step-by-step workflow is active for this chat, every user
-     * message is handled by the dedicated execution agent instead of the
-     * normal chat pipeline. The workflow stays on the current step until
-     * the user explicitly asks to move to the next one or to exit.
-     */
-    const stepWorkflowChatId =
-      getChatIdFromConfig(runnableConfig) || "default";
+    const focusChatId = getChatIdFromConfig(runnableConfig) || "default";
+    if (await hasActiveFocusSession(focusChatId)) {
+      const focusResponse = await runFocusTurn(
+        focusChatId,
+        rawUserText,
+        runnableConfig,
+      );
+      return { messages: [focusResponse] };
+    }
 
-    if (
-      await hasActiveStepWorkflow(stepWorkflowChatId)
-    ) {
-      const workflowResponse =
-        await runStepWorkflowTurn(
-          stepWorkflowChatId,
-          rawUserText,
-          runnableConfig,
-        );
-
-      saveShortMemoryInBackground([
-        new HumanMessage(rawUserText),
-        workflowResponse,
-      ]);
-
-      return {
-        messages: [workflowResponse],
-      };
+    const requestedFocusGoal = parseFocusStartGoal(rawUserText);
+    if (requestedFocusGoal) {
+      const focusResponse = await startFocusFromRequest({
+        chatId: focusChatId,
+        userMessage: rawUserText,
+        goal: requestedFocusGoal,
+        config: runnableConfig,
+      });
+      return { messages: [focusResponse] };
     }
 
     const selectedSkillNames =
@@ -1356,38 +1518,42 @@ export const callChatAgent =
         conversationId,
       );
 
-    const personalPolicyPromptPromise =
-      generatePersonalPolicyPrompt(
-        userText,
-      );
-
-    const memoryContextPromise =
-      Promise.all([
-        getShortMemoryContextForAgent(
-          userText,
-          signal,
-        ),
-
-        getLongTermMemoryContextForAgent(
-          userText,
-          signal,
-        ),
-      ]);
-
-    processMessageMemoryInBackground(
-      userText,
-      signal,
-    );
-
     const [
       personalPolicyPrompt,
-      [
-        shortMemoryContext,
-        longTermMemoryContext,
-      ],
+      shortMemoryContext,
+      longTermMemoryContext,
     ] = await Promise.all([
-      personalPolicyPromptPromise,
-      memoryContextPromise,
+      waitForOptionalContext(
+        (contextSignal) =>
+          generatePersonalPolicyPrompt(
+            userText,
+            contextSignal,
+          ),
+        "",
+        "personal policy",
+        signal,
+      ),
+      waitForOptionalContext(
+        (contextSignal) =>
+          getShortMemoryContextForAgent(
+            userText,
+            contextSignal,
+          ),
+        "",
+        "short-term memory",
+        signal,
+      ),
+      waitForOptionalContext(
+        (contextSignal) =>
+          getLongTermMemoryContextForAgent(
+            userText,
+            contextSignal,
+          ),
+        "",
+        "long-term memory",
+        signal,
+        LONG_TERM_MEMORY_TIMEOUT_MS,
+      ),
     ]);
 
     throwIfAborted(
@@ -1418,18 +1584,6 @@ export const callChatAgent =
 
     const terminalTool =
       terminalExecutionTool() as TerminalTool;
-
-    /*
-     * The step-by-step start tool is created per request because LangChain
-     * tool callbacks do not receive the request config: the chat id and the
-     * latest user message are bound at creation time.
-     */
-    const startStepWorkflowTool =
-      createStartStepByStepWorkflowTool({
-        chatId: stepWorkflowChatId,
-        userMessage: userText,
-        selectedModel,
-      });
 
     /*
      * Expose extension commands as callable tools so the agent can run
@@ -1515,7 +1669,6 @@ export const callChatAgent =
         skillLoaderTool,
         createAgentTool,
         fileManagerTool,
-        startStepWorkflowTool,
         ...docTools,
         ...extensionTools.tools,
         ...mcpTools.tools,
@@ -1533,16 +1686,6 @@ export const callChatAgent =
         terminalTool,
         runnableConfig,
       );
-
-    toolExecutor.registerTool({
-      name: "start_step_by_step_workflow",
-      description: startStepWorkflowTool.description,
-      execute: async (args) =>
-        startStepWorkflowTool.invoke(
-          args as { task_description: string },
-          runnableConfig,
-        ),
-    });
 
     extensionTools.registerAll(
       toolExecutor,
@@ -1597,7 +1740,12 @@ export const callChatAgent =
     let docsContextPrompt = "";
 
     try {
-      docsContextPrompt = await buildDocsContextPrompt(userText);
+      docsContextPrompt = await waitForOptionalContext(
+        () => buildDocsContextPrompt(userText),
+        "",
+        "docs context",
+        signal,
+      );
     } catch (error: unknown) {
       console.warn(
         "[Chat Agent] Docs context search failed:",
@@ -1623,9 +1771,10 @@ export const callChatAgent =
       ];
 
     let response =
-      await llmWithTools.invoke(
-        messagesToRun,
+      await invokeChatModel(
+        (config) => llmWithTools.invoke(messagesToRun, config),
         runnableConfig,
+        "initial response",
       );
 
     throwIfAborted(
@@ -1732,9 +1881,10 @@ export const callChatAgent =
       ];
 
       response =
-        await llmWithTools.invoke(
-          messagesToRun,
+        await invokeChatModel(
+          (config) => llmWithTools.invoke(messagesToRun, config),
           runnableConfig,
+          `response after tool step ${currentStepNumber}`,
         );
 
       throwIfAborted(
@@ -1769,15 +1919,20 @@ export const callChatAgent =
       );
 
       response =
-        await plainLlm.invoke(
-          [
-            ...messagesToRun,
-            response,
-            new HumanMessage(
-              toolLimitPrompt,
+        await invokeChatModel(
+          (config) =>
+            plainLlm.invoke(
+              [
+                ...messagesToRun,
+                response,
+                new HumanMessage(
+                  toolLimitPrompt,
+                ),
+              ],
+              config,
             ),
-          ],
           runnableConfig,
+          "tool-limit response",
         );
 
       throwIfAborted(
@@ -1823,9 +1978,10 @@ export const callChatAgent =
       );
 
       const finalResponse =
-        await plainLlm.invoke(
-          cleanMessages,
+        await invokeChatModel(
+          (config) => plainLlm.invoke(cleanMessages, config),
           runnableConfig,
+          "final response after tools",
         );
 
       throwIfAborted(
@@ -1856,9 +2012,7 @@ export const callChatAgent =
     response.content =
       finalAssistantContent;
 
-    if (
-      !currentMessageCompletesMemoryCycle
-    ) {
+    if (!currentMessageCompletesMemoryCycle) {
       startNewPersonalMemoryCycle(
         conversationId,
         userText,
@@ -1866,15 +2020,13 @@ export const callChatAgent =
       );
     }
 
-    const completedMessages:
-      BaseMessage[] = [
-        ...chatMessages,
-        response,
-      ];
+    processMessageMemoryInBackground(userText, signal);
 
-    saveShortMemoryInBackground(
-      completedMessages,
-    );
+    const completedMessages: BaseMessage[] = [
+      ...chatMessages,
+      response,
+    ];
+    saveShortMemoryInBackground(completedMessages);
 
     return {
       messages: [
