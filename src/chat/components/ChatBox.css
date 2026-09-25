@@ -166,25 +166,72 @@
   max-width: min(62%, 560px);
 }
 
-/*
- * A small marker keeps workflow turns distinguishable from normal chat.
- */
-.user-message-workflow-tag {
+/* Timeline rail groups each Focus section / Step-by-Step step in the chat. */
+.chat-thread-row {
+  position: relative;
+  display: flow-root;
+  min-width: 0;
+}
+
+.chat-thread-row--focus,
+.chat-thread-row--step {
+  padding-left: 17px;
+}
+
+.chat-thread-row--focus::before,
+.chat-thread-row--step::before {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 6px;
+  width: 2px;
+  border-radius: 2px;
+  background: #a8c9b1;
+  content: '';
+}
+
+.chat-thread-row--step::before {
+  background: #e4b6a0;
+}
+
+.chat-thread-row--start::before { top: 18px; }
+.chat-thread-row--end::before { bottom: 18px; }
+.chat-thread-row--single::before { top: 18px; bottom: 18px; }
+
+.chat-thread-label {
+  display: block;
+  margin: 0 0 3px;
+  color: #64836c;
+  font-size: 10px;
+  font-weight: 600;
+  line-height: 1.3;
+}
+
+.chat-thread-row--step .chat-thread-label { color: #a36950; }
+
+.chat-thread-resume {
   display: inline-flex;
   align-items: center;
-  gap: 5px;
-  margin-bottom: 6px;
-  padding: 4px 8px;
-  border: 1px solid #efc7b5;
-  border-radius: 999px;
-  color: #a34d32;
-  background: #fff0e8;
+  margin: 1px 0 18px 1px;
+  padding: 4px 7px;
+  color: #52775d;
+  border: 1px solid #d7e5d9;
+  border-radius: 7px;
+  background: #f7fbf7;
+  cursor: pointer;
+  font: inherit;
   font-size: 10px;
-  font-weight: 650;
-  line-height: 1;
-  direction: ltr;
-  unicode-bidi: isolate;
+  line-height: 1.2;
 }
+
+.chat-thread-row--step .chat-thread-resume {
+  color: #936349;
+  border-color: #efdfd5;
+  background: #fdf9f6;
+}
+
+.chat-thread-resume:hover:not(:disabled) { filter: brightness(.97); }
+.chat-thread-resume:disabled { cursor: wait; opacity: .6; }
 
 /*
  * The bubble width is based on its content.

@@ -1,7 +1,6 @@
 // src/chat/components/UserMessage.tsx
 
 import { memo, useEffect, useRef, useState } from 'react';
-import { ListChecks } from 'lucide-react';
 import {
   SlashMentionText,
   type MentionResourceNames,
@@ -11,14 +10,12 @@ import { getTextDirection } from './textDirection';
 type UserMessageProps = {
   content: string;
   resourceNames?: MentionResourceNames;
-  isStepWorkflow: boolean;
   onEdit?: () => void;
 };
 
 function UserMessageImpl({
   content,
   resourceNames,
-  isStepWorkflow,
   onEdit,
 }: UserMessageProps) {
   const [isCopied, setIsCopied] = useState(false);
@@ -53,12 +50,6 @@ function UserMessageImpl({
   return (
     <article className="user-message" aria-label="User message">
       <div className="user-message-group">
-        {isStepWorkflow ? (
-          <span className="user-message-workflow-tag">
-            <ListChecks size={12} aria-hidden="true" />
-            Step-by-step
-          </span>
-        ) : null}
         <div className="user-message-bubble" dir={getTextDirection(content)}>
           <SlashMentionText
             content={content}

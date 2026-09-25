@@ -48,6 +48,7 @@ export function FocusPanel({ chatId, refreshKey, onActiveChange }: FocusPanelPro
     try {
       await cancelFocusSession(chatId);
       setOverview((current) => current ? { ...current, status: 'completed' } : current);
+      window.dispatchEvent(new CustomEvent('mocu_saved_work_changed', { detail: { chatId } }));
     } catch {
       // Errors are surfaced by the session manager when the current turn is busy.
     }
@@ -76,7 +77,7 @@ export function FocusPanel({ chatId, refreshKey, onActiveChange }: FocusPanelPro
                   className={`focus-panel__section${section.isCurrent ? ' focus-panel__section--current' : ''}`}
                 >
                   <span className="focus-panel__section-marker" aria-hidden="true">
-                    {section.memory ? '✓' : section.sectionNumber}
+                    {section.isCurrent ? section.sectionNumber : section.memory ? '✓' : section.sectionNumber}
                   </span>
                   <div className="focus-panel__section-content">
                     <strong>

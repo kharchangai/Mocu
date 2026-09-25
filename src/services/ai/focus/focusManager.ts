@@ -86,6 +86,32 @@ export async function cancelFocusSession(chatId: string): Promise<void> {
   await executor.cancel(chatId);
 }
 
+/** Reactivates a saved Focus session so the user can continue its goal. */
+export async function resumeFocusSession(chatId: string, focusId?: string): Promise<void> {
+  if (await hasActiveFocusSession(chatId)) {
+    throw new Error("A Focus session is already active in this chat.");
+  }
+
+  const ids = focusId ? [focusId] : await store.getChatSessionIds(chatId);
+  const candidates = await Promise.all(ids.map(async (id) => {
+    try { return await store.load(id); } catch { return null; }
+  }));
+  const state = candidates
+    .filter((candidate): candidate is FocusState => candidate !== null && candidate.chatId === chatId)
+    .sort((first, second) => second.createdAt.localeCompare(first.createdAt))[0];
+
+  if (!state) throw new Error("There is no saved Focus session to resume.");
+
+  const previousStatus = state.status;
+  state.status = "active";
+  await store.save(state);
+  await store.append(state.id, state.currentSectionNumber, "transition", {
+    action: "focus_resumed",
+    previousStatus,
+  });
+  await store.setChatFocus(chatId, state.id);
+}
+
 export async function handleFocusMessage(chatId: string, message: string, config: RunnableConfig, options: { projectPath?: string } = {}): Promise<FocusTurnResult> {
   const id = await store.getChatFocus(chatId);
   if (!id) throw new Error("There is no active Focus session in this chat.");
@@ -162,6 +188,13 @@ export function createStartFocusTool(options: {
   });
 }
 
+export interface FocusChatTurn {
+  focusId: string;
+  sectionNumber: number;
+  time: string;
+  message: string;
+}
+
 export interface FocusOverview {
   id: string;
   goal: string;
@@ -197,6 +230,34 @@ export async function getFocusSectionHistory(chatId: string, focusId: string, se
   const state = await store.load(focusId);
   if (state.chatId !== chatId || sectionNumber < 1 || sectionNumber > state.currentSectionNumber) return [];
   return store.readSectionHistory(focusId, sectionNumber);
+}
+
+/** User turns from saved Focus sessions, used to annotate their chat messages. */
+export async function getFocusChatTurns(chatId: string): Promise<FocusChatTurn[]> {
+  const ids = await store.getChatSessionIds(chatId);
+  const turns: FocusChatTurn[] = [];
+
+  for (const focusId of ids) {
+    let state: FocusState;
+    try {
+      state = await store.load(focusId);
+    } catch {
+      continue;
+    }
+    if (state.chatId !== chatId) continue;
+
+    for (let sectionNumber = 1; sectionNumber <= state.currentSectionNumber; sectionNumber += 1) {
+      const entries = await store.readSectionHistory(focusId, sectionNumber);
+      for (const entry of entries) {
+        if (entry.kind !== "user" || !entry.data || typeof entry.data !== "object") continue;
+        const message = (entry.data as { message?: unknown }).message;
+        if (typeof message !== "string" || !message.trim()) continue;
+        turns.push({ focusId, sectionNumber, time: entry.time, message });
+      }
+    }
+  }
+
+  return turns.sort((first, second) => first.time.localeCompare(second.time));
 }
 
 export async function getFocusHistoryPage(chatId: string, sectionNumber: number, offset = 0, limit = 20) {

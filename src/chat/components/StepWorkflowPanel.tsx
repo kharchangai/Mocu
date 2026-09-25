@@ -59,7 +59,7 @@ export function StepWorkflowPanel({
   }, [chatId, refreshKey]);
 
   useEffect(() => {
-    onActiveChange?.(overview !== null);
+    onActiveChange?.(overview?.status === 'active');
   }, [overview, onActiveChange]);
 
   const toggleExpanded = useCallback(() => {
@@ -81,7 +81,8 @@ export function StepWorkflowPanel({
 
     try {
       await cancelStepWorkflow(chatId);
-      setOverview(null);
+      setOverview((current) => current ? { ...current, status: 'cancelled' } : current);
+      window.dispatchEvent(new CustomEvent('mocu_saved_work_changed', { detail: { chatId } }));
     } catch {
       // Cancellation failures are logged by the manager.
     }
@@ -222,7 +223,7 @@ export function StepWorkflowPanel({
                 className="step-workflow-panel__cancel"
                 onClick={() => void handleCancel()}
               >
-                Cancel
+                End
               </button>
             ) : null}
           </div>

@@ -256,6 +256,43 @@ export async function cancelStepWorkflow(
   await executor.cancel(workflowId);
 }
 
+/** Reactivates a saved workflow so the user can continue from its last step. */
+export async function resumeStepByStepWorkflow(
+  chatId: string,
+  workflowId?: string,
+): Promise<void> {
+  if (await hasActiveStepWorkflow(chatId)) {
+    throw new Error("A step-by-step workflow is already active in this chat.");
+  }
+
+  const ids = workflowId
+    ? [workflowId]
+    : await store.getChatWorkflowIds(chatId);
+  const candidates = await Promise.all(ids.map(async (id) => {
+    try {
+      return await store.load(id);
+    } catch {
+      return null;
+    }
+  }));
+  const state = candidates
+    .filter((candidate): candidate is WorkflowState => candidate !== null && candidate.chatId === chatId)
+    .sort((first, second) => (second.createdAt ?? "").localeCompare(first.createdAt ?? ""))[0];
+
+  if (!state) {
+    throw new Error("There is no saved step-by-step workflow to resume.");
+  }
+
+  const previousStatus = state.status;
+  state.status = "active";
+  await store.save(state);
+  await store.append(state.id, state.currentStepIndex + 1, "transition", {
+    action: "workflow_resumed",
+    previousStatus,
+  });
+  await store.setChatWorkflow(chatId, state.id);
+}
+
 /**
  * Routes one user message into the active workflow and returns the
  * execution agent's reply.
@@ -539,6 +576,7 @@ export async function getStepWorkflowOverview(
 export interface StepWorkflowLogPage {
   entries: Array<{
     id: string;
+    workflowId: string;
     stepNumber: number;
     time: string;
     kind: string;
@@ -584,7 +622,7 @@ export async function getStepWorkflowLogs(
         offset = page.nextOffset;
       }
 
-      return { entries };
+      return { entries: entries.map((entry) => ({ ...entry, workflowId })) };
     }),
   );
   const entries = pages
@@ -599,6 +637,7 @@ export async function getStepWorkflowLogs(
   return {
     entries: page.map((entry) => ({
       id: entry.id,
+      workflowId: entry.workflowId,
       stepNumber: (entry as { stepNumber?: number }).stepNumber ?? 0,
       time: entry.time,
       kind: entry.kind,

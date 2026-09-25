@@ -1,5 +1,4 @@
 import {
-  Fragment,
   memo,
   useCallback,
   useEffect,
@@ -57,11 +56,19 @@ import {
 } from '../services/toolActivity';
 import {
   getStepWorkflowLogs,
+  getStepWorkflowOverview,
+  resumeStepByStepWorkflow,
   type StepWorkflowLogPage,
+  type StepWorkflowOverview,
 } from '../../services/ai/stepbystep/workflowManager';
 import {
+  getFocusChatTurns,
+  getFocusOverview,
   hasActiveFocusSession,
   parseFocusStartGoal,
+  resumeFocusSession,
+  type FocusChatTurn,
+  type FocusOverview,
 } from '../../services/ai/focus/focusManager';
 
 import { useToolActivity } from '../hooks/useToolActivity';
@@ -98,12 +105,10 @@ import './ChatBox.css';
 const EditableUserMessage = memo(function EditableUserMessage({
   message,
   resourceNames,
-  isStepWorkflow,
   onEdit,
 }: {
   message: ChatMessage;
   resourceNames: MentionResourceNames;
-  isStepWorkflow: boolean;
   onEdit: (message: ChatMessage) => void;
 }) {
   const handleEdit = useCallback(
@@ -115,7 +120,6 @@ const EditableUserMessage = memo(function EditableUserMessage({
     <UserMessage
       content={message.content}
       resourceNames={resourceNames}
-      isStepWorkflow={isStepWorkflow}
       onEdit={handleEdit}
     />
   );
@@ -154,14 +158,33 @@ type ProjectAgentFailureDetails = {
 type WorkflowLogEntry = StepWorkflowLogPage['entries'][number];
 
 type WorkflowLogTurn = {
+  workflowId: string;
+  stepNumber: number;
   message: string;
   time: string;
   entries: WorkflowLogEntry[];
 };
 
+type ChatThreadMarker = {
+  type: 'step' | 'focus';
+  sectionNumber: number;
+  position: 'start' | 'middle' | 'end' | 'single';
+  label: boolean;
+  canResume: boolean;
+};
+
+type ThreadMessageGroup = {
+  type: 'step' | 'focus';
+  id: string;
+  sectionNumber: number;
+  userMessageIds: string[];
+  firstIndex: number;
+  lastIndex: number;
+};
+
 type WorkflowMessageMapping = {
   activitiesByMessage: Map<string, AgentToolActivity[]>;
-  messageIds: Set<string>;
+  threadMarkers: Map<string, ChatThreadMarker>;
 };
 
 function workflowLogData(entry: WorkflowLogEntry): Record<string, unknown> {
@@ -199,6 +222,7 @@ function workflowLogData(entry: WorkflowLogEntry): Record<string, unknown> {
 function buildWorkflowMessageMapping(
   entries: WorkflowLogEntry[],
   messages: ChatMessage[],
+  resumableWorkflowId: string | null,
 ): WorkflowMessageMapping {
   const turns: WorkflowLogTurn[] = [];
   let currentTurn: WorkflowLogTurn | null = null;
@@ -211,7 +235,7 @@ function buildWorkflowMessageMapping(
 
       const message = workflowLogData(entry).message;
       currentTurn = typeof message === 'string'
-        ? { message, time: entry.time, entries: [] }
+        ? { workflowId: entry.workflowId, stepNumber: entry.stepNumber, message, time: entry.time, entries: [] }
         : null;
     } else if (currentTurn) {
       currentTurn.entries.push(entry);
@@ -222,9 +246,13 @@ function buildWorkflowMessageMapping(
     turns.push(currentTurn);
   }
 
-  const userMessages = messages.filter((message) => message.role === 'user');
+  const userMessageIndexes = messages
+    .map((message, index) => message.role === 'user' ? index : -1)
+    .filter((index) => index >= 0);
+  const userMessages = userMessageIndexes.map((index) => messages[index]);
   const activitiesByMessage = new Map<string, AgentToolActivity[]>();
-  const workflowMessageIds = new Set<string>();
+  const groups = new Map<string, ThreadMessageGroup>();
+  const lastMessageByWorkflowId = new Map<string, string>();
   let messageSearchStart = 0;
 
   for (const turn of turns) {
@@ -274,7 +302,21 @@ function buildWorkflowMessageMapping(
     }
 
     const matchedMessage = userMessages[messageIndex];
-    workflowMessageIds.add(matchedMessage.id);
+    const fullMessageIndex = userMessageIndexes[messageIndex];
+    const groupKey = `${turn.workflowId}:${turn.stepNumber}`;
+    const group = groups.get(groupKey) ?? {
+      type: 'step',
+      id: turn.workflowId,
+      sectionNumber: turn.stepNumber,
+      userMessageIds: [],
+      firstIndex: fullMessageIndex,
+      lastIndex: fullMessageIndex,
+    };
+    group.userMessageIds.push(matchedMessage.id);
+    lastMessageByWorkflowId.set(turn.workflowId, matchedMessage.id);
+    group.firstIndex = Math.min(group.firstIndex, fullMessageIndex);
+    group.lastIndex = Math.max(group.lastIndex, fullMessageIndex);
+    groups.set(groupKey, group);
 
     const activities: AgentToolActivity[] = [];
     const activityByCallId = new Map<string, number>();
@@ -336,10 +378,130 @@ function buildWorkflowMessageMapping(
     messageSearchStart = messageIndex + 1;
   }
 
+  const threadMarkers = new Map<string, ChatThreadMarker>();
+  for (const group of groups.values()) {
+    const firstUserId = group.userMessageIds[0];
+    const finalIndex = messages[group.lastIndex + 1]?.role === 'assistant'
+      ? group.lastIndex + 1
+      : group.lastIndex;
+    for (let index = group.firstIndex; index <= finalIndex; index += 1) {
+      const message = messages[index];
+      if (!message) continue;
+      const isFirst = index === group.firstIndex;
+      const isLast = index === finalIndex;
+      const position = isFirst && isLast ? 'single' : isFirst ? 'start' : isLast ? 'end' : 'middle';
+      threadMarkers.set(message.id, {
+        type: group.type,
+        sectionNumber: group.sectionNumber,
+        position,
+        label: message.id === firstUserId,
+        canResume: false,
+      });
+    }
+  }
+
+  const resumableMessageId = resumableWorkflowId ? lastMessageByWorkflowId.get(resumableWorkflowId) : undefined;
+  const resumableMarker = resumableMessageId ? threadMarkers.get(resumableMessageId) : undefined;
+  if (resumableMessageId && resumableMarker) {
+    threadMarkers.set(resumableMessageId, { ...resumableMarker, canResume: true });
+  }
+
   return {
     activitiesByMessage,
-    messageIds: workflowMessageIds,
+    threadMarkers,
   };
+}
+
+function buildFocusMessageMapping(
+  turns: FocusChatTurn[],
+  messages: ChatMessage[],
+  resumableFocusId: string | null,
+): Map<string, ChatThreadMarker> {
+  const userMessageIndexes = messages
+    .map((message, index) => message.role === 'user' ? index : -1)
+    .filter((index) => index >= 0);
+  const userMessages = userMessageIndexes.map((index) => messages[index]);
+  const groups = new Map<string, ThreadMessageGroup>();
+  const lastMessageByFocusId = new Map<string, string>();
+  let messageSearchStart = 0;
+
+  for (const turn of turns) {
+    const matchingIndexes = userMessages
+      .map((message, index) => ({ message, index }))
+      .filter(({ message, index }) =>
+        index >= messageSearchStart && message.content.trim() === turn.message.trim(),
+      )
+      .map(({ index }) => index);
+    const turnTime = Date.parse(turn.time);
+    const fallbackIndexes = userMessages
+      .map((_message, index) => index)
+      .filter((index) => index >= messageSearchStart && Number.isFinite(Date.parse(userMessages[index].createdAt)));
+    const candidates = matchingIndexes.length > 0
+      ? matchingIndexes
+      : Number.isFinite(turnTime) ? fallbackIndexes : [];
+    if (candidates.length === 0) continue;
+
+    const messageIndex = Number.isFinite(turnTime)
+      ? candidates.reduce((closest, candidate) => {
+          const closestDistance = Math.abs(Date.parse(userMessages[closest].createdAt) - turnTime);
+          const candidateDistance = Math.abs(Date.parse(userMessages[candidate].createdAt) - turnTime);
+          return candidateDistance < closestDistance ? candidate : closest;
+        }, candidates[0])
+      : candidates[0];
+    if (
+      matchingIndexes.length === 0 && Number.isFinite(turnTime) &&
+      Math.abs(Date.parse(userMessages[messageIndex].createdAt) - turnTime) > 5 * 60 * 1000
+    ) continue;
+
+    const message = userMessages[messageIndex];
+    const messageId = message.id;
+    const fullMessageIndex = userMessageIndexes[messageIndex];
+    const groupKey = `${turn.focusId}:${turn.sectionNumber}`;
+    const group = groups.get(groupKey) ?? {
+      type: 'focus',
+      id: turn.focusId,
+      sectionNumber: turn.sectionNumber,
+      userMessageIds: [],
+      firstIndex: fullMessageIndex,
+      lastIndex: fullMessageIndex,
+    };
+    group.userMessageIds.push(messageId);
+    lastMessageByFocusId.set(turn.focusId, messageId);
+    group.firstIndex = Math.min(group.firstIndex, fullMessageIndex);
+    group.lastIndex = Math.max(group.lastIndex, fullMessageIndex);
+    groups.set(groupKey, group);
+    messageSearchStart = messageIndex + 1;
+  }
+
+  const threadMarkers = new Map<string, ChatThreadMarker>();
+  for (const group of groups.values()) {
+    const firstUserId = group.userMessageIds[0];
+    const finalIndex = messages[group.lastIndex + 1]?.role === 'assistant'
+      ? group.lastIndex + 1
+      : group.lastIndex;
+    for (let index = group.firstIndex; index <= finalIndex; index += 1) {
+      const message = messages[index];
+      if (!message) continue;
+      const isFirst = index === group.firstIndex;
+      const isLast = index === finalIndex;
+      const position = isFirst && isLast ? 'single' : isFirst ? 'start' : isLast ? 'end' : 'middle';
+      threadMarkers.set(message.id, {
+        type: group.type,
+        sectionNumber: group.sectionNumber,
+        position,
+        label: message.id === firstUserId,
+        canResume: false,
+      });
+    }
+  }
+
+  const resumableMessageId = resumableFocusId ? lastMessageByFocusId.get(resumableFocusId) : undefined;
+  const resumableMarker = resumableMessageId ? threadMarkers.get(resumableMessageId) : undefined;
+  if (resumableMessageId && resumableMarker) {
+    threadMarkers.set(resumableMessageId, { ...resumableMarker, canResume: true });
+  }
+
+  return threadMarkers;
 }
 
 function getProjectAgentFailureDetails(
@@ -409,6 +571,11 @@ export function ChatBox({
   const [isPreparingChat, setIsPreparingChat] = useState(false);
 
   const [draftMessage, setDraftMessage] = useState('');
+  const [resumableWorkflow, setResumableWorkflow] = useState<StepWorkflowOverview | null>(null);
+  const [resumableFocus, setResumableFocus] = useState<FocusOverview | null>(null);
+  const [focusChatTurns, setFocusChatTurns] = useState<FocusChatTurn[]>([]);
+  const [resumingType, setResumingType] = useState<'step' | 'focus' | null>(null);
+  const [savedWorkRefreshKey, setSavedWorkRefreshKey] = useState(0);
 
   /*
    * Busy state of THIS chat. The run store lives outside React, so a
@@ -420,6 +587,74 @@ export function ChatBox({
 
   const isLoading = isChatBusy || isPreparingChat;
   const extensionInteraction = useExtensionInteraction(chatId);
+
+  useEffect(() => {
+    const handleSavedWorkChanged = (event: Event): void => {
+      const detail = (event as CustomEvent<{ chatId?: string }>).detail;
+      if (detail?.chatId === chatId) {
+        setSavedWorkRefreshKey((current) => current + 1);
+      }
+    };
+    window.addEventListener('mocu_saved_work_changed', handleSavedWorkChanged);
+    return () => window.removeEventListener('mocu_saved_work_changed', handleSavedWorkChanged);
+  }, [chatId]);
+
+  useEffect(() => {
+    if (!chatId) {
+      setResumableWorkflow(null);
+      setResumableFocus(null);
+      setFocusChatTurns([]);
+      return;
+    }
+
+    let cancelled = false;
+    void Promise.all([
+      getStepWorkflowOverview(chatId),
+      getFocusOverview(chatId),
+      getFocusChatTurns(chatId),
+    ]).then(([workflow, focus, focusTurns]) => {
+      if (cancelled) return;
+      setResumableWorkflow(workflow && workflow.status !== 'active' ? workflow : null);
+      setResumableFocus(focus && focus.status !== 'active' ? focus : null);
+      setFocusChatTurns(focusTurns);
+    }).catch(() => {
+      if (!cancelled) {
+        setResumableWorkflow(null);
+        setResumableFocus(null);
+        setFocusChatTurns([]);
+      }
+    });
+
+    return () => { cancelled = true; };
+  }, [chatId, messages.length, savedWorkRefreshKey]);
+
+  const handleResumeWorkflow = async (): Promise<void> => {
+    if (!chatId || !resumableWorkflow || resumingType) return;
+    setResumingType('step');
+    try {
+      await resumeStepByStepWorkflow(chatId, resumableWorkflow.id);
+      setResumableWorkflow(null);
+      onAppendMessage(chatId, 'assistant', 'Step-by-Step is ready to continue from your saved progress. Send a message to pick up where you left off.');
+    } catch (error) {
+      window.alert(error instanceof Error ? error.message : 'Could not resume this workflow.');
+    } finally {
+      setResumingType(null);
+    }
+  };
+
+  const handleResumeFocus = async (): Promise<void> => {
+    if (!chatId || !resumableFocus || resumingType) return;
+    setResumingType('focus');
+    try {
+      await resumeFocusSession(chatId, resumableFocus.id);
+      setResumableFocus(null);
+      onAppendMessage(chatId, 'assistant', 'Focus is ready to continue from your saved progress. Send a message to pick up where you left off.');
+    } catch (error) {
+      window.alert(error instanceof Error ? error.message : 'Could not resume this Focus session.');
+    } finally {
+      setResumingType(null);
+    }
+  };
 
   const handleExtensionAction = async (actionId: string): Promise<void> => {
     if (!chatId) {
@@ -1168,33 +1403,23 @@ export function ChatBox({
     () => buildWorkflowMessageMapping(
       stepWorkflowLogEntries,
       displayMessages,
+      resumableWorkflow?.id ?? null,
     ),
-    [stepWorkflowLogEntries, displayMessages],
+    [stepWorkflowLogEntries, displayMessages, resumableWorkflow?.id],
   );
-
-  const stepWorkflowMessageIds = useMemo(() => {
-    const messageIds = new Set(stepWorkflowMessageMapping.messageIds);
-
-    displayMessages.forEach((message, assistantIndex) => {
-      if (
-        message.role !== 'assistant' ||
-        !toolActivity.getForMessage(message.id).some(
-          (activity) => activity.tool === 'start_step_by_step_workflow',
-        )
-      ) {
-        return;
-      }
-
-      for (let index = assistantIndex - 1; index >= 0; index -= 1) {
-        if (displayMessages[index].role === 'user') {
-          messageIds.add(displayMessages[index].id);
-          break;
-        }
-      }
-    });
-
-    return messageIds;
-  }, [displayMessages, stepWorkflowMessageMapping, toolActivity.getForMessage]);
+  const focusMessageMapping = useMemo(
+    () => buildFocusMessageMapping(
+      focusChatTurns,
+      displayMessages,
+      resumableFocus?.id ?? null,
+    ),
+    [focusChatTurns, displayMessages, resumableFocus?.id],
+  );
+  const chatThreadMarkers = useMemo(() => {
+    const markers = new Map(stepWorkflowMessageMapping.threadMarkers);
+    focusMessageMapping.forEach((marker, messageId) => markers.set(messageId, marker));
+    return markers;
+  }, [stepWorkflowMessageMapping.threadMarkers, focusMessageMapping]);
 
   /*
    * Workflow logs remain the fallback for older conversations, but live
@@ -1255,61 +1480,57 @@ export function ChatBox({
           aria-live="polite"
         >
           <div className="chat-box-messages-inner">
-            {displayMessages.map(
-              (message, messageIndex) =>
-                message.role === 'user' ? (
-                  <Fragment key={message.id}>
-                    <EditableUserMessage
-                      message={message}
-                      resourceNames={mentionResourceNames}
-                      isStepWorkflow={stepWorkflowMessageIds.has(message.id)}
-                      onEdit={handleEditMessage}
-                    />
-                    <ToolActivityFeed
-                      activities={(
-                        stepWorkflowMessageMapping.activitiesByMessage.get(message.id) ?? []
-                      ).filter((activity) => !renderedToolActivityIds.has(activity.id))}
-                    />
-                  </Fragment>
-                ) : (
-                  <Fragment
-                    key={message.id}
-                  >
-                    {/*
-                      * Tool boxes of this turn: shown below the user's
-                      * message and above this response, and they stay
-                      * there after the answer arrives.
-                      */}
-                    <ToolActivityFeed
-                      activities={toolActivity.getForMessage(
-                        message.id,
-                      )}
-                    />
+            {displayMessages.map((message, messageIndex) => {
+              const thread = chatThreadMarkers.get(message.id);
+              const rowClass = thread
+                ? `chat-thread-row chat-thread-row--${thread.type} chat-thread-row--${thread.position}`
+                : 'chat-thread-row';
+              const sectionLabel = thread?.type === 'focus'
+                ? `Focus · Section ${thread.sectionNumber}`
+                : `Step-by-Step · Step ${thread?.sectionNumber}`;
 
-                    <AssistantMessage
-                      content={
-                        message.content
-                      }
-                      footer={
-                        messageIndex ===
-                        lastAssistantIndex ? (
-                          memoryFooter
-                        ) : undefined
-                      }
-                      failureDetails={
-                        getProjectAgentFailureDetails(message.content)
-                      }
-                      onRegenerate={
-                        message.content.includes(
-                          PROJECT_AGENT_PARTIAL_PROGRESS_MARKER,
-                        )
+              return (
+                <div className={rowClass} key={message.id}>
+                  {thread?.label ? <span className="chat-thread-label">{sectionLabel}</span> : null}
+                  {message.role === 'user' ? (
+                    <>
+                      <EditableUserMessage
+                        message={message}
+                        resourceNames={mentionResourceNames}
+                        onEdit={handleEditMessage}
+                      />
+                      <ToolActivityFeed
+                        activities={(
+                          stepWorkflowMessageMapping.activitiesByMessage.get(message.id) ?? []
+                        ).filter((activity) => !renderedToolActivityIds.has(activity.id))}
+                      />
+                    </>
+                  ) : (
+                    <>
+                      <ToolActivityFeed activities={toolActivity.getForMessage(message.id)} />
+                      <AssistantMessage
+                        content={message.content}
+                        footer={messageIndex === lastAssistantIndex ? memoryFooter : undefined}
+                        failureDetails={getProjectAgentFailureDetails(message.content)}
+                        onRegenerate={message.content.includes(PROJECT_AGENT_PARTIAL_PROGRESS_MARKER)
                           ? () => retryFromAssistantMessage(messageIndex)
-                          : undefined
-                      }
-                    />
-                  </Fragment>
-                ),
-            )}
+                          : undefined}
+                      />
+                    </>
+                  )}
+                  {thread?.canResume ? (
+                    <button
+                      type="button"
+                      className="chat-thread-resume"
+                      disabled={resumingType !== null}
+                      onClick={() => void (thread.type === 'focus' ? handleResumeFocus() : handleResumeWorkflow())}
+                    >
+                      {resumingType === thread.type ? 'Resuming…' : thread.type === 'focus' ? 'Resume Focus' : 'Resume Step-by-Step'}
+                    </button>
+                  ) : null}
+                </div>
+              );
+            })}
 
             {/*
               * Live tool boxes of the request that is currently
