@@ -7,6 +7,7 @@ import { dispatchAgentToolActivity } from "../../../chat/services/toolActivity";
 import type { FocusMemory, FocusState, FocusToolLike, FocusTurnContext, FocusTurnResult } from "./types";
 import { emptyFocusMemory } from "./types";
 import { FocusStore } from "./focusStore";
+import { saveSpecialistSectionMemoryInBackground } from "../agent/specialist-memory";
 
 const FocusMemorySchema = z.object({
   summary: z.string(),
@@ -331,6 +332,19 @@ export class FocusExecutor {
     state.memories[String(sectionNumber)] = memory;
     await this.store.saveMemory(state.id, sectionNumber, memory);
     await this.store.append(state.id, sectionNumber, "summary", memory);
+
+    saveSpecialistSectionMemoryInBackground({
+      sessionType: "focus",
+      sessionId: state.id,
+      sectionNumber,
+      goal: state.goal,
+      summary: memory.summary,
+      decisions: memory.decisions,
+      artifacts: memory.artifacts,
+      openItems: memory.openItems,
+      projectPath: state.projectPath,
+      chatId: state.chatId,
+    });
 
     if (action === "end") {
       state.status = "completed";

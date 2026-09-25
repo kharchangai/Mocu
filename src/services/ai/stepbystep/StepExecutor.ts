@@ -17,6 +17,7 @@ import {
 import { buildStepPrompt } from "./buildStepPrompt";
 import type { WorkflowStore } from "./workflowStore";
 import { dispatchAgentToolActivity } from "../../../chat/services/toolActivity";
+import { saveSpecialistSectionMemoryInBackground } from "../agent/specialist-memory";
 
 import {
   emptyMemory,
@@ -252,9 +253,8 @@ export class StepExecutor {
 
       if (state.status !== "active") return;
 
-      state.status = "cancelled";
+      await this.finalizeStep(state, "exit");
       await this.store.save(state);
-      await this.store.setChatWorkflow(state.chatId, null);
     } finally {
       this.busy.delete(workflowId);
     }
@@ -815,6 +815,19 @@ export class StepExecutor {
     await this.store.saveStepMemory(state.id, stepNumber, memory);
 
     await this.store.append(state.id, stepNumber, "summary", memory);
+
+    saveSpecialistSectionMemoryInBackground({
+      sessionType: "step-by-step",
+      sessionId: state.id,
+      sectionNumber: stepNumber,
+      goal: `${state.plan.final_goal} — ${state.plan.steps[stepNumber - 1]?.title ?? "Step"}: ${state.plan.steps[stepNumber - 1]?.goal ?? ""}`,
+      summary: memory.outcome,
+      decisions: memory.decisions,
+      artifacts: memory.artifacts,
+      openItems: memory.openItems,
+      projectPath: state.projectPath,
+      chatId: state.chatId,
+    });
 
     if (action === "exit") {
       state.status = "cancelled";

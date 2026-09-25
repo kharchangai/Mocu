@@ -12,6 +12,9 @@ import type {
   RunnableConfig,
 } from "@langchain/core/runnables";
 
+import { tool } from "@langchain/core/tools";
+import { z } from "zod";
+
 import {
   isAbortError,
   throwIfAborted,
@@ -37,6 +40,8 @@ import {
   runStepWorkflowTurn,
   createStartStepByStepWorkflowTool,
   recordStepWorkflowStartReply,
+  getStepWorkflowStepHistory,
+  getStepWorkflowLogEntry,
 } from "./stepbystep/workflowManager";
 
 import {
@@ -46,6 +51,8 @@ import {
   parseFocusStartGoal,
   runFocusTurn,
   startFocusFromRequest,
+  getFocusSectionHistory,
+  getFocusHistoryEntry,
 } from "./focus/focusManager";
 
 import {
@@ -654,6 +661,7 @@ const buildProjectAgentSystemPrompt = (
     "",
     "AVAILABLE TOOLS",
     "The tools below are callable in this session. Each one is described by its own tool schema; the sections above describe the selected skills, extensions, MCP servers, and specialist agents in more detail.",
+    "SPECIALIST HISTORY TOOL: Use read_specialist_section_history when the user asks for exact details from a past Focus section or step-by-step step (for example, what was said, which tool ran, or what its result was). Get the session ID and section/step number from retrieved memory; first read previews, then fetch a specific entry if needed. Skip the tool when the saved summary already answers the question. Never guess IDs or claim unread history as fact.",
     ...(toolNameList.length > 0
       ? toolNameList.map((name) => `- ${name}`)
       : ["(no tools are available in this session)"]),
@@ -1164,6 +1172,75 @@ const getSelectedMcpServerIds = (
   );
 };
 
+const SPECIALIST_HISTORY_ENTRY_CHARS = 2_500;
+
+function createReadSpecialistSectionHistoryTool(chatId: string) {
+  return tool(async ({ sessionType, sessionId, sectionNumber, offset, limit, entryId, entryOffset, entryLength }) => {
+    try {
+      if (entryId) {
+        const result = sessionType === "focus"
+          ? await getFocusHistoryEntry(
+              chatId,
+              sessionId,
+              sectionNumber,
+              entryId,
+              entryOffset,
+              entryLength,
+            )
+          : await getStepWorkflowLogEntry(
+              chatId,
+              entryId,
+              entryOffset,
+              entryLength,
+              sessionId,
+            );
+
+        return result.text
+          ? JSON.stringify({ sessionId, sectionNumber, entryId, ...result })
+          : `No history entry ${entryId} was found in this chat.`;
+      }
+
+      const entries = sessionType === "focus"
+        ? await getFocusSectionHistory(chatId, sessionId, sectionNumber)
+        : await getStepWorkflowStepHistory(chatId, sessionId, sectionNumber);
+      const page = entries.slice(offset, offset + limit);
+
+      return JSON.stringify({
+        sessionType,
+        sessionId,
+        sectionNumber,
+        entries: page.map((entry) => {
+          const serialized = JSON.stringify(entry.data ?? null) ?? "null";
+          return {
+            id: entry.id,
+            time: entry.time,
+            kind: entry.kind,
+            preview: serialized.slice(0, SPECIALIST_HISTORY_ENTRY_CHARS),
+            truncated: serialized.length > SPECIALIST_HISTORY_ENTRY_CHARS,
+          };
+        }),
+        nextOffset: offset + page.length < entries.length ? offset + page.length : null,
+      }, null, 2);
+    } catch (error) {
+      console.error("[Project Agent] Failed to read specialist section history:", error);
+      return `Could not read that specialist session section: ${error instanceof Error ? error.message : String(error)}`;
+    }
+  }, {
+    name: "read_specialist_section_history",
+    description: "Use when a user asks for exact details from a past Focus section or step-by-step step that its saved summary does not contain—for example, the original message, a tool call, or its result. Supply the session ID and section/step number from memory. Returns paginated history previews; pass entryId to read one exact entry in bounded slices. Only reads sessions owned by this chat.",
+    schema: z.object({
+      sessionType: z.enum(["focus", "step-by-step"]).describe("Type of specialist session."),
+      sessionId: z.string().min(1).describe("Focus ID or step-by-step workflow ID from the saved memory."),
+      sectionNumber: z.number().int().positive().describe("Focus section number or workflow step number."),
+      offset: z.number().int().nonnegative().default(0).describe("Preview pagination offset."),
+      limit: z.number().int().positive().max(20).default(10).describe("Number of history previews to return."),
+      entryId: z.string().optional().describe("Optional exact history entry ID to read instead of listing previews."),
+      entryOffset: z.number().int().nonnegative().default(0).describe("Character offset for an exact entry read."),
+      entryLength: z.number().int().positive().max(20000).default(6000).describe("Maximum characters for an exact entry read."),
+    }),
+  });
+}
+
 /*
  * Executes Mocu without sending the complete chat history to the model.
  */
@@ -1463,6 +1540,7 @@ export const callProjectAgent =
       projectPath: normalizedProjectPath,
       config: runnableConfig,
     });
+    const readSpecialistHistoryTool = createReadSpecialistSectionHistoryTool(projectChatId);
 
     /*
      * Expose extension commands as callable tools so the agent can run
@@ -1557,6 +1635,7 @@ export const callProjectAgent =
         createAgentTool,
         startStepWorkflowTool,
         startFocusTool,
+        readSpecialistHistoryTool,
         ...docTools,
         ...extensionTools.tools,
         ...mcpTools.tools,
@@ -1586,6 +1665,11 @@ export const callProjectAgent =
       description: startFocusTool.description,
       execute: async (args) => startFocusTool.invoke(args, runnableConfig),
     });
+    toolExecutor.registerTool({
+      name: readSpecialistHistoryTool.name,
+      description: readSpecialistHistoryTool.description,
+      execute: async (args) => readSpecialistHistoryTool.invoke(args as never, runnableConfig),
+    });
 
     extensionTools.registerAll(
       toolExecutor,
@@ -1610,6 +1694,7 @@ export const callProjectAgent =
       createAgentTool.name,
       startStepWorkflowTool.name,
       startFocusTool.name,
+      readSpecialistHistoryTool.name,
       ...docTools.map((docTool) => docTool.name),
       ...extensionTools.entries.map((entry) => entry.name),
       ...mcpTools.tools.map((mcpTool) => mcpTool.name),

@@ -653,8 +653,12 @@ export async function getStepWorkflowLogEntry(
   logId: string,
   offset = 0,
   length = 6000,
+  requestedWorkflowId?: string,
 ): Promise<{ text: string; nextOffset: number | null }> {
-  const workflowIds = await store.getChatWorkflowIds(chatId);
+  const chatWorkflowIds = await store.getChatWorkflowIds(chatId);
+  const workflowIds = requestedWorkflowId
+    ? chatWorkflowIds.filter((workflowId) => workflowId === requestedWorkflowId)
+    : chatWorkflowIds;
 
   for (const workflowId of workflowIds) {
     try {

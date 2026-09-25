@@ -232,6 +232,27 @@ export async function getFocusSectionHistory(chatId: string, focusId: string, se
   return store.readSectionHistory(focusId, sectionNumber);
 }
 
+export async function getFocusHistoryEntry(
+  chatId: string,
+  focusId: string,
+  sectionNumber: number,
+  entryId: string,
+  offset = 0,
+  length = 6000,
+): Promise<{ text: string; nextOffset: number | null }> {
+  const entries = await getFocusSectionHistory(chatId, focusId, sectionNumber);
+  const entry = entries.find((item) => item.id === entryId);
+  if (!entry) return { text: "", nextOffset: null };
+
+  const text = JSON.stringify(entry.data, null, 2) ?? "null";
+  const start = Math.max(0, offset);
+  const size = Math.min(Math.max(length, 1), 20000);
+  return {
+    text: text.slice(start, start + size),
+    nextOffset: start + size < text.length ? start + size : null,
+  };
+}
+
 /** User turns from saved Focus sessions, used to annotate their chat messages. */
 export async function getFocusChatTurns(chatId: string): Promise<FocusChatTurn[]> {
   const ids = await store.getChatSessionIds(chatId);
