@@ -30,6 +30,9 @@ export function StepWorkflowPanel({
   const [expanded, setExpanded] = useState(
     () => localStorage.getItem(EXPANDED_KEY) !== '0',
   );
+  const [confirmCancel, setConfirmCancel] = useState(false);
+  const [isCancelling, setIsCancelling] = useState(false);
+  const [cancelError, setCancelError] = useState<string | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -71,24 +74,25 @@ export function StepWorkflowPanel({
   }, []);
 
   const handleCancel = useCallback(async () => {
-    if (!chatId || !overview || overview.status !== 'active') {
+    if (!chatId || !overview || overview.status !== 'active' || isCancelling) {
       return;
     }
 
-    if (!window.confirm('Cancel this step-by-step workflow?')) {
-      return;
-    }
-
+    setIsCancelling(true);
+    setCancelError(null);
     try {
       await cancelStepWorkflow(chatId);
       setOverview((current) => current ? { ...current, status: 'cancelled' } : current);
+      setConfirmCancel(false);
       window.dispatchEvent(new CustomEvent('mocu_saved_work_changed', { detail: { chatId } }));
-    } catch {
-      // Cancellation failures are logged by the manager.
+    } catch (error) {
+      setCancelError(error instanceof Error ? error.message : 'Could not end the workflow.');
+    } finally {
+      setIsCancelling(false);
     }
-  }, [chatId, overview]);
+  }, [chatId, overview, isCancelling]);
 
-  if (!overview) {
+  if (!overview || overview.status !== 'active') {
     return null;
   }
 
@@ -217,15 +221,38 @@ export function StepWorkflowPanel({
                   ? 'Workflow completed'
                   : 'Workflow cancelled'}
             </span>
-            {overview.status === 'active' ? (
+            {confirmCancel ? (
+              <div className="step-workflow-panel__confirm">
+                {cancelError ? <span role="alert">{cancelError}</span> : null}
+                <button
+                  type="button"
+                  className="step-workflow-panel__cancel"
+                  disabled={isCancelling}
+                  onClick={() => {
+                    setConfirmCancel(false);
+                    setCancelError(null);
+                  }}
+                >
+                  Keep working
+                </button>
+                <button
+                  type="button"
+                  className="step-workflow-panel__cancel step-workflow-panel__cancel--danger"
+                  disabled={isCancelling}
+                  onClick={() => void handleCancel()}
+                >
+                  {isCancelling ? 'Ending…' : 'Confirm end'}
+                </button>
+              </div>
+            ) : (
               <button
                 type="button"
                 className="step-workflow-panel__cancel"
-                onClick={() => void handleCancel()}
+                onClick={() => setConfirmCancel(true)}
               >
                 End
               </button>
-            ) : null}
+            )}
           </div>
         </div>
       ) : null}

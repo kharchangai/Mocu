@@ -17,6 +17,9 @@ interface FocusPanelProps {
 export function FocusPanel({ chatId, refreshKey, onActiveChange }: FocusPanelProps) {
   const [overview, setOverview] = useState<FocusOverview | null>(null);
   const [expanded, setExpanded] = useState(true);
+  const [confirmEnd, setConfirmEnd] = useState(false);
+  const [isEnding, setIsEnding] = useState(false);
+  const [endError, setEndError] = useState<string | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -43,18 +46,22 @@ export function FocusPanel({ chatId, refreshKey, onActiveChange }: FocusPanelPro
   }, [overview, onActiveChange]);
 
   const endFocus = useCallback(async () => {
-    if (!chatId || !overview || overview.status !== 'active') return;
-    if (!window.confirm('End Focus and return to normal chat?')) return;
+    if (!chatId || !overview || overview.status !== 'active' || isEnding) return;
+    setIsEnding(true);
+    setEndError(null);
     try {
       await cancelFocusSession(chatId);
       setOverview((current) => current ? { ...current, status: 'completed' } : current);
+      setConfirmEnd(false);
       window.dispatchEvent(new CustomEvent('mocu_saved_work_changed', { detail: { chatId } }));
-    } catch {
-      // Errors are surfaced by the session manager when the current turn is busy.
+    } catch (error) {
+      setEndError(error instanceof Error ? error.message : 'Could not end Focus.');
+    } finally {
+      setIsEnding(false);
     }
-  }, [chatId, overview]);
+  }, [chatId, overview, isEnding]);
 
-  if (!overview) return null;
+  if (!overview || overview.status !== 'active') return null;
   return (
     <section className={`focus-panel${expanded ? ' focus-panel--expanded' : ''}`} aria-label="Focus session">
       <button className="focus-panel__header" type="button" onClick={() => setExpanded((value) => !value)}>
@@ -95,9 +102,34 @@ export function FocusPanel({ chatId, refreshKey, onActiveChange }: FocusPanelPro
               ))}
             </ol>
           </div>
-          {overview.status === 'active' ? (
-            <button className="focus-panel__end" type="button" onClick={() => void endFocus()}>End Focus</button>
-          ) : <span className="focus-panel__ended">You are back in normal chat.</span>}
+          {confirmEnd ? (
+            <div className="focus-panel__confirm">
+              {endError ? <span role="alert">{endError}</span> : null}
+              <button
+                className="focus-panel__end"
+                type="button"
+                disabled={isEnding}
+                onClick={() => {
+                  setConfirmEnd(false);
+                  setEndError(null);
+                }}
+              >
+                Keep Focus
+              </button>
+              <button
+                className="focus-panel__end focus-panel__end--danger"
+                type="button"
+                disabled={isEnding}
+                onClick={() => void endFocus()}
+              >
+                {isEnding ? 'Ending…' : 'Confirm end'}
+              </button>
+            </div>
+          ) : (
+            <button className="focus-panel__end" type="button" onClick={() => setConfirmEnd(true)}>
+              End Focus
+            </button>
+          )}
         </div>
       ) : null}
     </section>

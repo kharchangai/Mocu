@@ -256,7 +256,32 @@
     border-color 0.12s ease;
 }
 
-.step-workflow-panel__cancel:hover {
+.step-workflow-panel__cancel:hover:not(:disabled) {
   border-color: #d1d5db;
   background: #f9fafb;
+}
+
+.step-workflow-panel__cancel:disabled {
+  cursor: wait;
+  opacity: 0.6;
+}
+
+.step-workflow-panel__cancel--danger {
+  border-color: #e7c9c2;
+  color: #8b3f32;
+}
+
+.step-workflow-panel__confirm {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 6px;
+}
+
+.step-workflow-panel__confirm [role='alert'] {
+  flex: 1 0 100%;
+  color: #a23c32;
+  font-size: 10px;
+  text-align: right;
 }

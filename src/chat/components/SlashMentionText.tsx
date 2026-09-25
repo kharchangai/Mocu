@@ -1,6 +1,7 @@
 import type { ReactNode } from 'react';
 
 type MentionCommand = 'skill' | 'extension' | 'agent' | 'mcp';
+type MentionCommandType = MentionCommand | 'focus' | 'step' | 'error';
 
 export type MentionResourceNames = Partial<
   Record<MentionCommand, string[]>
@@ -43,7 +44,7 @@ export function SlashMentionText({
     }
 
     const command = match[1].toLowerCase();
-    const commandType: MentionCommand | 'error' =
+    const commandType: MentionCommandType =
       command === 'skill'
         ? 'skill'
         : command === 'extension'
@@ -52,7 +53,11 @@ export function SlashMentionText({
             ? 'agent'
             : command === 'mcp'
               ? 'mcp'
-              : 'error';
+              : command === 'focus'
+                ? 'focus'
+                : command === 'step'
+                  ? 'step'
+                  : 'error';
 
     const commandText = `/${match[1]}`;
     const commandEnd = matchStart + commandText.length;
@@ -66,7 +71,12 @@ export function SlashMentionText({
     let name: string | undefined;
     let nameWhitespace = '';
 
-    if (commandType !== 'error' && whitespace) {
+    if (
+      commandType !== 'error' &&
+      commandType !== 'focus' &&
+      commandType !== 'step' &&
+      whitespace
+    ) {
       const candidates = [...(resourceNames[commandType] ?? [])]
         .filter((resourceName) => resourceName.trim().length > 0)
         .sort((first, second) => second.length - first.length);

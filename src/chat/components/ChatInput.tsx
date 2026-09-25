@@ -71,6 +71,12 @@ import type {
 import { readDir } from '@tauri-apps/plugin-fs';
 import { join } from '@tauri-apps/api/path';
 import { FileMentionMenu, type ProjectFileEntry } from './FileMentionMenu';
+import {
+  findActiveFileMention,
+  splitFileMentionPath,
+  searchProjectFilesRecursively,
+  type ActiveFileMention,
+} from './fileMentionAutocomplete';
 import { resolveFileMentions, type SelectedFileReference } from './fileMentionReferences';
 import { getTextDirection } from './textDirection';
 import './ChatInput.css';
@@ -115,34 +121,6 @@ export type ChatInputProps = {
 };
 
 type CommandMenuMode = 'commands' | 'skills' | 'extensions' | 'agents' | 'mcp';
-
-type ActiveFileMention = {
-  start: number;
-  end: number;
-  query: string;
-};
-
-const findActiveFileMention = (
-  value: string,
-  caretPosition: number,
-): ActiveFileMention | null => {
-  const textBeforeCaret = value.slice(0, caretPosition);
-  const match = textBeforeCaret.match(/(^|[\s([{])@([^\s]*)$/);
-
-  if (!match) {
-    return null;
-  }
-
-  const markerOffset = match[0].lastIndexOf('@');
-  const start = textBeforeCaret.length - match[0].length + markerOffset;
-  let end = caretPosition;
-
-  while (end < value.length && !/\s/.test(value[end])) {
-    end += 1;
-  }
-
-  return { start, end, query: match[2] ?? '' };
-};
 
 /*
  * Keys of a resource selection that identify the same resource. The
@@ -548,8 +526,11 @@ export function ChatInput({
    * "/skill" or "/extension", the menu switches to the matching list
    * for the query after the command.
    */
+  const isDirectSlashCommand =
+    activeCommand?.command === 'focus' ||
+    activeCommand?.command === 'step';
   const commandMenuMode: CommandMenuMode | null =
-    activeCommand === null
+    activeCommand === null || isDirectSlashCommand
       ? null
       : activeCommand.command === 'skill'
         ? 'skills'
@@ -568,9 +549,14 @@ export function ChatInput({
       activeCommand?.command === 'mcp'
       ? activeCommand.query
       : '') ?? '';
+  const activeCommandNameQuery =
+    commandMenuMode === 'commands' ? activeCommand?.command ?? '' : '';
+  const filteredCommands = COMMANDS.filter((command) =>
+    command.command.startsWith(activeCommandNameQuery.toLowerCase()),
+  );
 
   const isCommandMenuOpen =
-    activeCommand !== null && !isLoading;
+    commandMenuMode !== null && !isLoading;
 
   const filteredSkills = useMemo(() => {
     if (commandMenuMode !== 'skills') {
@@ -613,8 +599,21 @@ export function ChatInput({
     return filterAgents(availableAgents, activeCommandQuery);
   }, [commandMenuMode, availableAgents, activeCommandQuery]);
 
+  const parsedFileMentionPath = splitFileMentionPath(
+    activeFileMention?.query ?? '',
+  );
+  const activeFileMentionDirectory = [
+    fileMentionDirectory,
+    parsedFileMentionPath.directoryPath,
+  ]
+    .filter(Boolean)
+    .join('/');
+  const fileMentionSearchQuery = parsedFileMentionPath.nameQuery.trim();
+  const isDeepFileSearch =
+    fileMentionSearchQuery.length > 0 &&
+    parsedFileMentionPath.directoryPath.length === 0;
   const filteredProjectEntries = useMemo(() => {
-    const query = activeFileMention?.query.trim().toLocaleLowerCase() ?? '';
+    const query = fileMentionSearchQuery.toLocaleLowerCase();
 
     if (!query) {
       return projectEntries;
@@ -623,7 +622,7 @@ export function ChatInput({
     return projectEntries.filter((entry) =>
       entry.name.toLocaleLowerCase().includes(query),
     );
-  }, [projectEntries, activeFileMention?.query]);
+  }, [projectEntries, fileMentionSearchQuery]);
 
   const isFileMentionMenuOpen = activeFileMention !== null && !isLoading;
 
@@ -809,7 +808,34 @@ export function ChatInput({
 
     const loadProjectEntries = async () => {
       try {
-        const directoryParts = fileMentionDirectory
+        if (isDeepFileSearch) {
+          const readRelativeDirectory = async (relativeDirectory: string) => {
+            const directoryParts = relativeDirectory
+              .split('/')
+              .filter(Boolean);
+            const directory = directoryParts.length > 0
+              ? await join(normalizedProjectPath, ...directoryParts)
+              : normalizedProjectPath;
+            const entries = await readDir(directory);
+            return entries.map((entry) => ({
+              name: entry.name,
+              isDirectory: Boolean(entry.isDirectory),
+              isFile: Boolean(entry.isFile),
+            }));
+          };
+          const matches = await searchProjectFilesRecursively(
+            readRelativeDirectory,
+            fileMentionSearchQuery,
+            fileMentionDirectory,
+            () => cancelled,
+          );
+          if (!cancelled) {
+            setProjectEntries(matches);
+          }
+          return;
+        }
+
+        const directoryParts = activeFileMentionDirectory
           .split('/')
           .filter(Boolean);
         const directory = directoryParts.length > 0
@@ -820,8 +846,8 @@ export function ChatInput({
           .filter((entry) => entry.isDirectory || entry.isFile)
           .map((entry) => ({
             name: entry.name,
-            relativePath: fileMentionDirectory
-              ? `${fileMentionDirectory}/${entry.name}`
+            relativePath: activeFileMentionDirectory
+              ? `${activeFileMentionDirectory}/${entry.name}`
               : entry.name,
             isDirectory: Boolean(entry.isDirectory),
           }))
@@ -849,14 +875,21 @@ export function ChatInput({
       }
     };
 
-    void loadProjectEntries();
+    const timeout = window.setTimeout(
+      () => void loadProjectEntries(),
+      isDeepFileSearch ? 180 : 0,
+    );
 
     return () => {
       cancelled = true;
+      window.clearTimeout(timeout);
     };
   }, [
     activeFileMention !== null,
+    activeFileMentionDirectory,
     fileMentionDirectory,
+    fileMentionSearchQuery,
+    isDeepFileSearch,
     normalizedProjectPath,
   ]);
 
@@ -906,7 +939,7 @@ export function ChatInput({
             ? filteredAgents.length
             : commandMenuMode === 'mcp'
               ? filteredMcpServers.length
-              : COMMANDS.length;
+              : filteredCommands.length;
 
     if (
       selectedItemIndex >= menuItemCount &&
@@ -919,6 +952,7 @@ export function ChatInput({
     filteredExtensions.length,
     filteredAgents.length,
     filteredMcpServers.length,
+    filteredCommands.length,
     selectedItemIndex,
     commandMenuMode,
     isCommandMenuOpen,
@@ -1057,7 +1091,7 @@ export function ChatInput({
   };
 
   const handleFileDirectoryBack = () => {
-    const directoryParts = fileMentionDirectory.split('/').filter(Boolean);
+    const directoryParts = activeFileMentionDirectory.split('/').filter(Boolean);
     directoryParts.pop();
     handleFileDirectoryChange(directoryParts.join('/'));
   };
@@ -1125,7 +1159,9 @@ export function ChatInput({
       (command !== 'skill' &&
         command !== 'extension' &&
         command !== 'agent' &&
-        command !== 'mcp')
+        command !== 'mcp' &&
+        command !== 'focus' &&
+        command !== 'step')
     ) {
       return;
     }
@@ -1508,7 +1544,7 @@ export function ChatInput({
 
       if (event.key === 'ArrowLeft') {
         event.preventDefault();
-        if (fileMentionDirectory) {
+        if (activeFileMentionDirectory) {
           handleFileDirectoryBack();
         }
         return;
@@ -1540,7 +1576,7 @@ export function ChatInput({
               ? filteredAgents.length
               : commandMenuMode === 'mcp'
                 ? filteredMcpServers.length
-                : COMMANDS.length;
+                : filteredCommands.length;
 
       if (event.key === 'ArrowDown') {
         event.preventDefault();
@@ -1606,7 +1642,7 @@ export function ChatInput({
           // Use the same command definition that renders the menu. This
           // prevents keyboard selection from drifting away from the item
           // the user sees (the old index map swapped MCP and Agent).
-          const commandItem = COMMANDS[selectedItemIndex]?.command;
+          const commandItem = filteredCommands[selectedItemIndex]?.command;
 
           if (commandItem) {
             handleSelectCommand(commandItem);
@@ -1829,12 +1865,13 @@ export function ChatInput({
                   .filter(Boolean)
                   .pop() ?? 'Project'
               }
-              directoryPath={fileMentionDirectory}
+              directoryPath={activeFileMentionDirectory}
               entries={filteredProjectEntries}
               selectedIndex={selectedItemIndex}
               isLoading={isLoadingProjectEntries}
               error={projectEntriesError}
               hasProject={normalizedProjectPath !== null}
+              isDeepSearch={isDeepFileSearch}
               onSelect={handleProjectEntrySelect}
               onOpenDirectory={handleFileDirectoryChange}
               onGoBack={handleFileDirectoryBack}
@@ -1845,7 +1882,12 @@ export function ChatInput({
           {isCommandMenuOpen && (
             <CommandMenu
               mode={commandMenuMode ?? 'commands'}
-              commandQuery={activeCommandQuery}
+              commandQuery={
+                commandMenuMode === 'commands'
+                  ? activeCommandNameQuery
+                  : activeCommandQuery
+              }
+              commands={filteredCommands}
               skills={filteredSkills}
               extensions={filteredExtensions}
               agents={filteredAgents}

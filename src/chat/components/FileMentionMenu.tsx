@@ -22,6 +22,7 @@ type FileMentionMenuProps = {
   isLoading: boolean;
   error: string | null;
   hasProject: boolean;
+  isDeepSearch?: boolean;
   onSelect: (entry: ProjectFileEntry) => void;
   onOpenDirectory: (relativePath: string) => void;
   onGoBack: () => void;
@@ -36,6 +37,7 @@ export function FileMentionMenu({
   isLoading,
   error,
   hasProject,
+  isDeepSearch = false,
   onSelect,
   onOpenDirectory,
   onGoBack,
@@ -59,7 +61,7 @@ export function FileMentionMenu({
       <div className="file-mention-header">
         <div className="file-mention-heading">
           <span className="file-mention-heading-icon"><HardDrive size={14} /></span>
-          <span>Project files</span>
+          <span>{isDeepSearch ? 'Search project files' : 'Project files'}</span>
         </div>
         <span className="command-menu-hint">↑↓ Select · → Open folder · Enter Add · Esc Close</span>
       </div>
@@ -142,7 +144,12 @@ export function FileMentionMenu({
                   <span className={`file-mention-item-icon${entry.isDirectory ? ' file-mention-item-icon--folder' : ''}`}>
                     {entry.isDirectory ? <Folder size={16} /> : <File size={16} />}
                   </span>
-                  <span className="file-mention-item-name">{entry.name}</span>
+                  <span className="file-mention-item-information">
+                    <span className="file-mention-item-name">{entry.name}</span>
+                    {isDeepSearch && entry.relativePath !== entry.name && (
+                      <span className="file-mention-item-path">{entry.relativePath}</span>
+                    )}
+                  </span>
                   <span className="file-mention-item-type">
                     {entry.isDirectory ? 'Folder' : 'File'}
                   </span>

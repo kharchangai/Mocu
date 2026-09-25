@@ -1,8 +1,5 @@
 import { AIMessage, type BaseMessage } from "@langchain/core/messages";
-import { tool, type StructuredToolInterface } from "@langchain/core/tools";
 import type { RunnableConfig } from "@langchain/core/runnables";
-import { z } from "zod";
-
 import { getAsyncLLM, getMainAgentLlm, getSelectedChatModel } from "../llm";
 import { desktopVisionTool } from "../tools/desktop-vision-tool";
 import { terminalExecutionTool } from "../tools/terminal_execution_tool";
@@ -15,8 +12,6 @@ import { FocusExecutor } from "./FocusExecutor";
 import { FocusStore } from "./focusStore";
 export { parseFocusStartGoal } from "./focusCommand";
 import type { FocusLogEntry, FocusMemory, FocusState, FocusToolLike, FocusTurnResult } from "./types";
-
-export const FOCUS_START_REPLY_PREFIX = "__MOCU_FOCUS_STARTED__:";
 
 const store = new FocusStore();
 const executor = new FocusExecutor(store, {
@@ -152,40 +147,6 @@ export async function startFocusFromRequest(input: {
 export async function runFocusTurn(chatId: string, userMessage: string, config: RunnableConfig, options: { projectPath?: string } = {}): Promise<BaseMessage> {
   const result = await handleFocusMessage(chatId, userMessage, config, options);
   return new AIMessage({ content: result.reply, additional_kwargs: { mocuFocus: true } });
-}
-
-/** LLM-callable entry point used by the project agent for less literal requests. */
-export function createStartFocusTool(options: {
-  chatId: string;
-  userMessage: string;
-  projectPath?: string;
-  config: RunnableConfig;
-}): StructuredToolInterface {
-  return tool(async ({ goal }) => {
-    if (await hasActiveFocusSession(options.chatId)) {
-      return "A Focus session is already active in this chat. Continue its current goal, or ask the user to end Focus before starting a new session.";
-    }
-    try {
-      const response = await startFocusFromRequest({
-        chatId: options.chatId,
-        userMessage: options.userMessage,
-        goal,
-        config: options.config,
-        projectPath: options.projectPath,
-      });
-      const reply = typeof response.content === "string" ? response.content : "";
-      return `${FOCUS_START_REPLY_PREFIX}${reply}`;
-    } catch (error) {
-      console.error("[Focus] The project agent could not start Focus:", error);
-      return `Focus could not start: ${error instanceof Error ? error.message : String(error)}`;
-    }
-  }, {
-    name: "start_focus_session",
-    description: "Start an isolated Focus session when the user explicitly asks to focus on or work on a goal using Focus. Pass a concise, faithful description of their goal, not a plan. Focus immediately handles the user's original request and then owns future turns until the user advances sections or ends Focus. Do not call for ordinary requests that merely require concentration.",
-    schema: z.object({
-      goal: z.string().min(1).max(4000).describe("The user's requested Focus goal; do not expand it into a plan."),
-    }),
-  });
 }
 
 export interface FocusChatTurn {

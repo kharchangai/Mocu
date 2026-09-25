@@ -12,9 +12,12 @@ import type { AvailableMcpServer } from './mcpTypes';
  */
 type CommandMenuMode = 'commands' | 'skills' | 'extensions' | 'agents' | 'mcp';
 
+export type SlashCommand = (typeof COMMANDS)[number];
+
 type CommandMenuProps = {
   mode: CommandMenuMode;
   commandQuery: string;
+  commands: SlashCommand[];
   skills: AvailableSkill[];
   extensions: AvailableExtension[];
   agents: AvailableAgent[];
@@ -51,11 +54,22 @@ export const COMMANDS = [
     name: '/mcp',
     description: 'Use tools from a connected MCP server in this request',
   },
+  {
+    command: 'focus',
+    name: '/focus',
+    description: 'Focus on a goal, inferred from this conversation if omitted',
+  },
+  {
+    command: 'step',
+    name: '/step',
+    description: 'Plan a task, inferred from this conversation if omitted',
+  },
 ] as const;
 
 export function CommandMenu({
   mode,
   commandQuery,
+  commands,
   skills,
   extensions,
   agents,
@@ -105,7 +119,11 @@ export function CommandMenu({
 
       <div className="command-menu-content">
         {isCommandsMode ? (
-          COMMANDS.map((commandItem, index) => (
+          commands.length === 0 ? (
+            <div className="command-menu-status">
+              {commandQuery ? 'No matching commands' : 'No commands available'}
+            </div>
+          ) : commands.map((commandItem, index) => (
             <button
               key={commandItem.command}
               type="button"

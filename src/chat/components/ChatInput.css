@@ -187,6 +187,13 @@
   border-bottom-color: #10b981;
 }
 
+.slash-mention--focus,
+.slash-mention--step {
+  color: #8a4b18;
+  background: rgba(255, 237, 213, 0.68);
+  border-bottom-color: #f59e0b;
+}
+
 .slash-mention--error {
   color: #dc2626;
   background: rgba(254, 226, 226, 0.72);
@@ -955,12 +962,28 @@
   border-color: #f4e4bd;
 }
 
-.file-mention-item-name {
+.file-mention-item-information {
+  display: flex;
   min-width: 0;
   flex: 1;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.file-mention-item-name {
+  min-width: 0;
   overflow: hidden;
   font-size: 11px;
   font-weight: 570;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.file-mention-item-path {
+  overflow: hidden;
+  color: #8b95a3;
+  font-size: 9px;
+  line-height: 1.2;
   text-overflow: ellipsis;
   white-space: nowrap;
 }

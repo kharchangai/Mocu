@@ -44,4 +44,8 @@
 .focus-panel__artifacts { display: grid; gap: 2px; margin: 1px 0 0; padding-left: 14px; color: var(--text-secondary, #777269); font-size: 9px; line-height: 1.4; overflow-wrap: anywhere; }
 .focus-panel__ended { margin: 0; color: var(--text-secondary, #858078); font-size: 10px; }
 .focus-panel__end { justify-self: start; padding: 6px 10px; color: #80574b; background: transparent; border: 1px solid #e6d9d2; border-radius: 7px; font-size: 10px; cursor: pointer; }
-.focus-panel__end:hover { background: #fbf4f0; }
+.focus-panel__end:hover:not(:disabled) { background: #fbf4f0; }
+.focus-panel__end:disabled { cursor: wait; opacity: .6; }
+.focus-panel__end--danger { color: #9d3d31; border-color: #e4c6bf; }
+.focus-panel__confirm { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 6px; }
+.focus-panel__confirm [role='alert'] { flex: 1 0 100%; color: #a23c32; font-size: 10px; text-align: right; }

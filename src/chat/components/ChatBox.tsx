@@ -28,6 +28,7 @@ import {
 import { callChatAgent } from '../../services/ai/chat-agent';
 import {
   callProjectAgent,
+  inferSpecialistGoalFromHistory,
   PROJECT_AGENT_PARTIAL_PROGRESS_MARKER,
   ProjectAgentModelError,
 } from '../../services/ai/project-agent';
@@ -57,7 +58,10 @@ import {
 import {
   getStepWorkflowLogs,
   getStepWorkflowOverview,
+  hasActiveStepWorkflow,
+  recordStepWorkflowStartReply,
   resumeStepByStepWorkflow,
+  startStepByStepWorkflow,
   type StepWorkflowLogPage,
   type StepWorkflowOverview,
 } from '../../services/ai/stepbystep/workflowManager';
@@ -67,6 +71,7 @@ import {
   hasActiveFocusSession,
   parseFocusStartGoal,
   resumeFocusSession,
+  startFocusFromRequest,
   type FocusChatTurn,
   type FocusOverview,
 } from '../../services/ai/focus/focusManager';
@@ -79,6 +84,7 @@ import {
 import { useMentionResources } from './useMentionResources';
 import type { MentionResourceNames } from './SlashMentionText';
 import { migrateNewChatResourceSelection } from '../services/chatResourceToggles';
+import { parseSpecialistSlashCommand } from '../services/specialistSlashCommands';
 
 import {
   loadShortTermMemory,
@@ -996,7 +1002,10 @@ export function ChatBox({
 
     try {
       /* Focus requests and active Focus turns do not load global project memory. */
+      const requestedSpecialistCommand =
+        parseSpecialistSlashCommand(normalizedText);
       const isFocusTurn =
+        requestedSpecialistCommand?.command === 'focus' ||
         parseFocusStartGoal(normalizedText) !== null ||
         Boolean(chatId && await hasActiveFocusSession(chatId));
 
@@ -1218,8 +1227,72 @@ export function ChatBox({
        * Use the project agent only when the user has selected a project
        * folder. Otherwise, use the regular chat agent.
        */
-      const agentResult =
-        hasSelectedProject
+      const specialistCommand =
+        parseSpecialistSlashCommand(normalizedText);
+      let agentResult;
+
+      if (specialistCommand) {
+        const explicitTask = resolveFileMentions(
+          specialistCommand.task,
+          options?.fileReferences ?? [],
+        ).trim();
+
+        if (
+          await hasActiveFocusSession(requestChatId) ||
+          await hasActiveStepWorkflow(requestChatId)
+        ) {
+          agentResult = {
+            messages: [
+              new AIMessage(
+                'A Focus or Step-by-Step session is already active in this chat. Continue it or end it before starting another.',
+              ),
+            ],
+          };
+        } else {
+          const task = explicitTask || await inferSpecialistGoalFromHistory(
+            currentHistory,
+            options?.selectedModel?.trim() || '',
+          );
+
+          if (!task) {
+            agentResult = {
+              messages: [
+                new AIMessage(
+                  'I could not identify one clear goal from this conversation. Please clarify the task, or include it directly after /focus or /step.',
+                ),
+              ],
+            };
+          } else if (specialistCommand.command === 'focus') {
+            const focusResponse = await startFocusFromRequest({
+              chatId: requestChatId,
+              userMessage: task,
+              goal: task,
+              config: agentConfig,
+              projectPath: effectiveProjectPath || undefined,
+            });
+            agentResult = { messages: [focusResponse] };
+          } else {
+            const plan = await startStepByStepWorkflow({
+              chatId: requestChatId,
+              userMessage: task,
+              taskDescription: task,
+              selectedModel: options?.selectedModel?.trim() || undefined,
+              projectPath: effectiveProjectPath || undefined,
+            });
+            const reply = [
+              `Step-by-Step started with ${plan.steps.length} steps.`,
+              `Final goal: ${plan.final_goal}`,
+              ...plan.steps.map(
+                (step, index) => `${index + 1}. ${step.title} — ${step.goal}`,
+              ),
+              'Send a message when you are ready to work on step 1.',
+            ].join('\n\n');
+            await recordStepWorkflowStartReply(requestChatId, reply);
+            agentResult = { messages: [new AIMessage(reply)] };
+          }
+        }
+      } else {
+        agentResult = hasSelectedProject
           ? await callProjectAgent(
               agentState,
               effectiveProjectPath,
@@ -1229,6 +1302,7 @@ export function ChatBox({
               agentState,
               agentConfig,
             );
+      }
 
       if (controller.signal.aborted) {
         return;

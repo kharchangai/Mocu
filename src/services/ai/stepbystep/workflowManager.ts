@@ -1,8 +1,6 @@
-import { tool, type StructuredToolInterface } from "@langchain/core/tools";
+import type { StructuredToolInterface } from "@langchain/core/tools";
 import type { RunnableConfig } from "@langchain/core/runnables";
 import { AIMessage, type BaseMessage } from "@langchain/core/messages";
-import { z } from "zod";
-
 import { createStepPlan, type StepPlan } from "./createStepPlan";
 import { StepExecutor } from "./StepExecutor";
 import { WorkflowStore } from "./workflowStore";
@@ -357,88 +355,6 @@ export async function handleStepWorkflowMessage(
       config: config as unknown as Record<string, unknown>,
       tools,
       selectedModel: selectedModel || undefined,
-    },
-  );
-}
-
-/*
- * Main-agent tool -----------------------------------------------------------
- */
-
-const startWorkflowArgsSchema = z.object({
-  task_description: z
-    .string()
-    .min(1)
-    .describe(
-      "Your latest response that describes the task the user wants to work through step by step.",
-    ),
-});
-
-/**
- * Creates the tool exposed to the MAIN agent for one chat request.
- *
- * When the user asks to work through a task step by step, the main agent
- * calls this tool with its latest response describing the task. LangChain
- * tool callbacks do not receive the request config, so the chat id and the
- * latest user message are bound at creation time (per request).
- */
-export function createStartStepByStepWorkflowTool(options: {
-  chatId: string;
-  userMessage: string;
-  selectedModel?: string;
-  projectPath?: string;
-}): StructuredToolInterface {
-  return tool(
-    async ({ task_description }) => {
-      const chatId = options.chatId;
-
-      if (await hasActiveStepWorkflow(chatId)) {
-        return [
-          "A step-by-step workflow is already active in this chat.",
-          "Tell the user to continue with the current workflow or to exit it first.",
-        ].join(" ");
-      }
-
-      const userMessage = options.userMessage.trim();
-
-      if (!userMessage) {
-        return "The user message could not be determined; ask the user to repeat the request.";
-      }
-
-      try {
-        const plan = await startStepByStepWorkflow({
-          chatId,
-          userMessage,
-          taskDescription: task_description,
-          selectedModel: options.selectedModel,
-          projectPath: options.projectPath,
-        });
-
-        const firstStep = plan.steps[0];
-
-        return [
-          `The step-by-step workflow was started with ${plan.steps.length} steps.`,
-          `Final goal: ${plan.final_goal}`,
-          `Step 1 (${firstStep.title}): ${firstStep.goal}`,
-          "Tell the user you created the plan, list the steps briefly, and say you will now start with step 1. Future messages of this chat are handled by the step-by-step workflow.",
-        ].join(" ");
-      } catch (error) {
-        console.error(
-          "[Step Workflow] Failed to start the workflow:",
-          error,
-        );
-
-        return "Failed to create the step-by-step plan. Ask the user to try again.";
-      }
-    },
-    {
-      name: "start_step_by_step_workflow",
-      description: [
-        "Start an interactive step-by-step workflow from the current task.",
-        "Call this tool when the user asks to work through a task together, step by step.",
-        "Pass your latest response that describes the task; a plan with ordered steps is generated and a dedicated execution agent takes over.",
-      ].join(" "),
-      schema: startWorkflowArgsSchema,
     },
   );
 }
