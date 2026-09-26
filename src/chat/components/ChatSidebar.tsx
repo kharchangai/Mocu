@@ -10,12 +10,11 @@ import {
 } from 'lucide-react';
 import { createPortal } from 'react-dom';
 
-import { confirm } from '@tauri-apps/plugin-dialog';
-
 import type { RecentChat } from '../types/chat';
 import type { ProjectWorkspace } from '../services/projectWorkspaces';
 import { listAvailableAgents, type AvailableAgent } from '../agent/agent-loader';
 import { useRunningChatIds } from '../services/chatRuns';
+import { ChatDeleteDialog } from './ChatDeleteDialog';
 
 export type ChatSidebarItemId =
   | 'home'
@@ -44,7 +43,7 @@ type ChatSidebarProps = {
   onDeleteProject: (path: string, deleteFolder: boolean) => Promise<void>;
   onToggleChats: () => void;
   onToggleProjects: () => void;
-  onDeleteChat?: (chatId: string) => void;
+  onDeleteChat?: (chatId: string) => void | Promise<void>;
   onRenameChat: (chatId: string, title: string) => void;
 };
 
@@ -534,29 +533,40 @@ export function ChatSidebar({
   }, []);
 
   /*
-   * window.confirm is not supported inside the Tauri webview, so the
-   * dialog plugin's native confirm is used instead.
+   * Deleting a chat opens the custom confirmation dialog instead of
+   * the native Tauri confirm box, so destructive actions share the
+   * same visual language as the project removal dialog.
    */
-  const handleDeleteChat = async (
-    chatId: string,
-    chatTitle: string,
-  ) => {
-    if (!onDeleteChat) {
-      return;
-    }
+  const [chatToDelete, setChatToDelete] = useState<{
+    id: string;
+    title: string;
+    isActive: boolean;
+  } | null>(null);
 
-    const shouldDelete = await confirm(
-      `Delete "${chatTitle}"?`,
-      {
-        title: 'Delete chat',
-        kind: 'warning',
-      },
-    );
+  const handleDeleteChat = useCallback(
+    (chatId: string, chatTitle: string) => {
+      if (!onDeleteChat) {
+        return;
+      }
 
-    if (shouldDelete) {
-      onDeleteChat(chatId);
-    }
-  };
+      setChatToDelete({
+        id: chatId,
+        title: chatTitle,
+        isActive: chatId === activeChatId,
+      });
+    },
+    [activeChatId, onDeleteChat],
+  );
+
+  const cancelChatDeletion = useCallback(() => {
+    setChatToDelete(null);
+  }, []);
+
+  const confirmChatDeletion = useCallback(async () => {
+    if (!chatToDelete) return;
+    await onDeleteChat?.(chatToDelete.id);
+    setChatToDelete(null);
+  }, [chatToDelete, onDeleteChat]);
 
   /*
    * The active section between Chats and Projects follows the current
@@ -951,6 +961,15 @@ export function ChatSidebar({
           }
         />
       </div>
+
+      {chatToDelete ? (
+        <ChatDeleteDialog
+          chatTitle={chatToDelete.title}
+          isActive={chatToDelete.isActive}
+          onCancel={cancelChatDeletion}
+          onConfirm={confirmChatDeletion}
+        />
+      ) : null}
     </aside>
   );
 }

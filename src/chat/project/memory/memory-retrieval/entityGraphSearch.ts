@@ -832,7 +832,8 @@ function createNotFoundMatch(
  * and edge into the same project database file, so the search always
  * reads the project data and never the global database in AppConfig.
  *
- * Empty or null project paths keep the currently active database.
+ * Empty or null project paths select the global (application-wide)
+ * memory database.
  */
 async function pointGraphDatabaseAtProject(
   projectPath: string | null | undefined,
@@ -840,17 +841,13 @@ async function pointGraphDatabaseAtProject(
   const normalizedProjectPath =
     projectPath?.trim() ?? "";
 
-  if (!normalizedProjectPath) {
-    return;
-  }
-
   const databasePath =
     await useWindowGraphDatabase(
-      normalizedProjectPath,
+      normalizedProjectPath || null,
     );
 
   logGraphSearch(
-    `searchGraphEntities: searching the graph database of the selected project folder: ${databasePath}`,
+    `searchGraphEntities: searching the graph database of ${normalizedProjectPath ? "the selected project folder" : "the global application storage"}: ${databasePath}`,
   );
 }
 
@@ -863,7 +860,8 @@ async function pointGraphDatabaseAtProject(
  * The stored Turn embeddings live inside the Window records, so they
  * must be read from the same project the graph data belongs to.
  *
- * Empty or null project paths keep the currently active database.
+ * Empty or null project paths select the global (application-wide)
+ * memory database.
  */
 async function pointWindowRecordsAtProject(
   projectPath: string | null | undefined,
@@ -871,17 +869,13 @@ async function pointWindowRecordsAtProject(
   const normalizedProjectPath =
     projectPath?.trim() ?? "";
 
-  if (!normalizedProjectPath) {
-    return;
-  }
-
   const databasePath =
     await databaseManager.useProjectDatabase(
-      normalizedProjectPath,
+      normalizedProjectPath || null,
     );
 
   logGraphSearch(
-    `searchGraphEntities: reading stored Turn embeddings from the Window records of the selected project folder: ${databasePath}`,
+    `searchGraphEntities: reading stored Turn embeddings from the Window records of ${normalizedProjectPath ? "the selected project folder" : "the global application storage"}: ${databasePath}`,
   );
 }
 

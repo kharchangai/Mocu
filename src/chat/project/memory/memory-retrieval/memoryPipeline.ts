@@ -223,7 +223,8 @@ export function formatGraphResultAsMemory(
  * @param projectPath The active project ROOT folder. The storage
  *   layer appends ".mocu/storage/memoryx.db" and
  *   ".mocu/storage/memory-graph.db" itself, so this must NOT include
- *   the .mocu/storage part.
+ *   the .mocu/storage part. An empty string selects the global
+ *   (application-wide) user memory instead of a project database.
  * @returns The pipeline result: `memoryContext` (ready-to-inject
  *   memory text, empty when nothing was found), plus the extracted
  *   `entities` and the raw `graphResult`.
@@ -244,11 +245,11 @@ export async function runMemoryPipeline(
     );
   }
 
-  if (!normalizedProjectPath) {
-    throw new Error(
-      "The project folder path cannot be empty.",
-    );
-  }
+  /*
+   * An empty project path selects the global (application-wide) user
+   * memory. The entity store and graph index resolve the empty path to
+   * the global storage location instead of a project folder.
+   */
 
   // Step 1: bind the entity store + graph index to the project.
   const entityDatabasePath =

@@ -29,11 +29,10 @@ import {
 } from "../../chat/services/toolActivity";
 
 import {
-  getLongTermMemoryContextForAgent,
-  getShortMemoryContextForAgent,
-  processMessageMemoryInBackground,
-  saveShortMemoryInBackground,
-} from "./agent/memory-manager";
+  getPreviousConversationTurn,
+  retrieveUserMemoryPrompt,
+  saveUserMemoryInBackground,
+} from "./agent/user-memory";
 
 import {
   buildChatAgentSystemPrompt,
@@ -115,15 +114,6 @@ import {
 import {
   fileManagerTool,
 } from "./tools/filesystem/file-manager-tool";
-
-import {
-  runPersonalMemoryGate,
-  type PersonalMemoryGateInput,
-} from "./tools/personalMemory/personalMemoryGate";
-
-import {
-  generateMainAgentPolicyPrompt,
-} from "./tools/personalMemory/generateMainAgentPrompt";
 
 import {
   buildDocsContextPrompt,
@@ -309,15 +299,6 @@ const invokeChatModel = async <T>(
 type ToolArgs =
   Record<string, unknown>;
 
-type StoredMemoryTurn = {
-  userMessage: string;
-  assistantMessage: string;
-};
-
-type PersonalMemoryCycleState = {
-  pendingTurn: StoredMemoryTurn | null;
-};
-
 type TerminalTool = {
   name?: string;
 
@@ -333,11 +314,6 @@ type ChatToolExecutionResult = {
   toolMessage: ToolMessage;
   summary: string;
 };
-
-const personalMemoryCycles = new Map<
-  string,
-  PersonalMemoryCycleState
->();
 
 const getStringArg = (
   args: ToolArgs,
@@ -657,224 +633,6 @@ const getSelectedMcpServerIds = (
       typeof item === "string" &&
       item.trim().length > 0,
   );
-};
-
-const getConversationId = (
-  config: RunnableConfig,
-): string => {
-  const threadId =
-    config.configurable?.thread_id;
-
-  if (
-    typeof threadId === "string" &&
-    threadId.trim()
-  ) {
-    return threadId.trim();
-  }
-
-  if (
-    typeof threadId === "number"
-  ) {
-    return String(
-      threadId,
-    );
-  }
-
-  return "chat-default";
-};
-
-const getPersonalMemoryCycle = (
-  conversationId: string,
-): PersonalMemoryCycleState => {
-  const existingCycle =
-    personalMemoryCycles.get(
-      conversationId,
-    );
-
-  if (existingCycle) {
-    return existingCycle;
-  }
-
-  const newCycle:
-    PersonalMemoryCycleState = {
-      pendingTurn: null,
-    };
-
-  personalMemoryCycles.set(
-    conversationId,
-    newCycle,
-  );
-
-  return newCycle;
-};
-
-const runPersonalMemoryGateForCurrentMessage = (
-  currentUserMessage: string,
-  conversationId: string,
-): boolean => {
-  const normalizedCurrentUserMessage =
-    currentUserMessage.trim();
-
-  if (
-    !normalizedCurrentUserMessage
-  ) {
-    return false;
-  }
-
-  const cycle =
-    getPersonalMemoryCycle(
-      conversationId,
-    );
-
-  const previousTurn =
-    cycle.pendingTurn;
-
-  if (!previousTurn) {
-    return false;
-  }
-
-  cycle.pendingTurn =
-    null;
-
-  const gateInput:
-    PersonalMemoryGateInput = {
-      userMessage:
-        previousTurn.userMessage,
-
-      assistantMessage:
-        previousTurn.assistantMessage,
-
-      nextUserMessage:
-        normalizedCurrentUserMessage,
-    };
-
-  void runPersonalMemoryGate(
-    gateInput,
-  )
-    .then(
-      (
-        result,
-      ) => {
-        console.log(
-          "[Chat Personal Memory Gate] Background result:",
-          result,
-        );
-      },
-    )
-    .catch(
-      (
-        error: unknown,
-      ) => {
-        console.error(
-          "[Chat Personal Memory Gate] Background task failed:",
-          error,
-        );
-      },
-    );
-
-  return true;
-};
-
-const startNewPersonalMemoryCycle = (
-  conversationId: string,
-  userMessage: string,
-  assistantMessage: string,
-): void => {
-  const normalizedUserMessage =
-    userMessage.trim();
-
-  const normalizedAssistantMessage =
-    assistantMessage.trim();
-
-  if (
-    !normalizedUserMessage
-  ) {
-    return;
-  }
-
-  const cycle =
-    getPersonalMemoryCycle(
-      conversationId,
-    );
-
-  cycle.pendingTurn = {
-    userMessage:
-      normalizedUserMessage,
-
-    assistantMessage:
-      normalizedAssistantMessage,
-  };
-};
-
-export const clearChatPersonalMemoryCycle = (
-  conversationId: string,
-): void => {
-  personalMemoryCycles.delete(
-    conversationId,
-  );
-};
-
-const getPolicyPromptText = (
-  value: unknown,
-): string => {
-  if (
-    typeof value === "string"
-  ) {
-    return value.trim();
-  }
-
-  if (
-    value &&
-    typeof value === "object" &&
-    "prompt" in value &&
-    typeof value.prompt === "string"
-  ) {
-    return value.prompt.trim();
-  }
-
-  if (
-    value &&
-    typeof value === "object" &&
-    "policyPrompt" in value &&
-    typeof value.policyPrompt ===
-      "string"
-  ) {
-    return value.policyPrompt.trim();
-  }
-
-  return "";
-};
-
-const generatePersonalPolicyPrompt = async (
-  userText: string,
-  signal?: AbortSignal,
-): Promise<string> => {
-  if (
-    !userText.trim()
-  ) {
-    return "";
-  }
-
-  try {
-    const generatedPolicy =
-      await generateMainAgentPolicyPrompt(
-        userText,
-        { abortSignal: signal },
-      );
-
-    return getPolicyPromptText(
-      generatedPolicy,
-    );
-  } catch (
-    error: unknown
-  ) {
-    console.error(
-      "[Chat Agent Policy] Failed to generate personal policy prompt:",
-      error,
-    );
-
-    return "";
-  }
 };
 
 const getCurrentDateTime =
@@ -1507,54 +1265,30 @@ export const callChatAgent =
         userText,
       );
 
-    const conversationId =
-      getConversationId(
-        runnableConfig,
+    /*
+     * Retrieve the global user memory for the current message. This is
+     * the same memory system the project agent uses, but it is stored in
+     * the global application storage (never in a project file). Retrieval
+     * failures and timeouts never block the agent.
+     */
+    const previousTurn =
+      getPreviousConversationTurn(
+        state.messages,
       );
 
-    const currentMessageCompletesMemoryCycle =
-      runPersonalMemoryGateForCurrentMessage(
-        userText,
-        conversationId,
-      );
-
-    const [
-      personalPolicyPrompt,
-      shortMemoryContext,
-      longTermMemoryContext,
-    ] = await Promise.all([
-      waitForOptionalContext(
+    const relatedMemoryPrompt =
+      await waitForOptionalContext(
         (contextSignal) =>
-          generatePersonalPolicyPrompt(
+          retrieveUserMemoryPrompt(
             userText,
+            previousTurn,
             contextSignal,
           ),
         "",
-        "personal policy",
-        signal,
-      ),
-      waitForOptionalContext(
-        (contextSignal) =>
-          getShortMemoryContextForAgent(
-            userText,
-            contextSignal,
-          ),
-        "",
-        "short-term memory",
-        signal,
-      ),
-      waitForOptionalContext(
-        (contextSignal) =>
-          getLongTermMemoryContextForAgent(
-            userText,
-            contextSignal,
-          ),
-        "",
-        "long-term memory",
+        "user memory",
         signal,
         LONG_TERM_MEMORY_TIMEOUT_MS,
-      ),
-    ]);
+      );
 
     throwIfAborted(
       signal,
@@ -1701,13 +1435,10 @@ export const callChatAgent =
 
     const baseSystemPrompt =
       buildChatAgentSystemPrompt({
-        shortMemoryContext,
-        longTermMemoryContext,
+        relatedMemoryPrompt,
 
         currentDateTime:
           getCurrentDateTime(),
-
-        personalPolicyPrompt,
       });
 
     const skillEnabledSystemPrompt =
@@ -2012,21 +1743,15 @@ export const callChatAgent =
     response.content =
       finalAssistantContent;
 
-    if (!currentMessageCompletesMemoryCycle) {
-      startNewPersonalMemoryCycle(
-        conversationId,
-        userText,
-        finalAssistantContent,
-      );
-    }
-
-    processMessageMemoryInBackground(userText, signal);
-
-    const completedMessages: BaseMessage[] = [
-      ...chatMessages,
-      response,
-    ];
-    saveShortMemoryInBackground(completedMessages);
+    /*
+     * Save this completed turn into the global user memory in the
+     * background (never in a project file).
+     */
+    saveUserMemoryInBackground(
+      userText,
+      finalAssistantContent,
+      getChatIdFromConfig(runnableConfig),
+    );
 
     return {
       messages: [

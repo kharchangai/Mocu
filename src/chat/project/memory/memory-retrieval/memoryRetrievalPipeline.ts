@@ -71,10 +71,24 @@ const PROJECT_STORAGE_DIRECTORY = ".mocu/storage";
 const PROJECT_DATABASE_FILE = "memory.db";
 
 /**
+ * Location of the global (application-wide) memory database.
+ *
+ * This mirrors the default database used by the database manager when
+ * no project folder is selected. A relative path is resolved inside the
+ * application configuration directory by the SQLite plugin:
+ *
+ * AppConfig/storage/memory.db
+ */
+const GLOBAL_DATABASE_PATH = "storage/memory.db";
+
+/**
  * Returns the SQLite database file location of a project folder.
  *
  * Each project owns its own database file, therefore the retrieval
  * pipeline always reads from the database of the active project.
+ *
+ * An empty project path selects the global (application-wide) memory
+ * database instead of a project database.
  */
 export function getProjectDatabasePath(
   projectPath: string,
@@ -85,9 +99,7 @@ export function getProjectDatabasePath(
     .replace(/\/+$/, "");
 
   if (!normalizedProjectPath) {
-    throw new Error(
-      "The project folder path cannot be empty.",
-    );
+    return GLOBAL_DATABASE_PATH;
   }
 
   return [
@@ -180,6 +192,9 @@ export interface ProjectMemoryRetrievalInput {
 
   /**
    * The active project ROOT folder (no .mocu/storage part).
+   *
+   * An empty string selects the global (application-wide) user memory
+   * instead of a project database.
    */
   projectPath: string;
 
@@ -540,11 +555,11 @@ async function retrieveProjectMemoryInternal(
     );
   }
 
-  if (!normalizedProjectPath) {
-    throw new Error(
-      "The project folder path cannot be empty.",
-    );
-  }
+  /*
+   * An empty project path selects the global (application-wide) user
+   * memory. Everything downstream resolves the empty path to the global
+   * storage location instead of a project folder.
+   */
 
   const previousTurn =
     input.previousTurn ?? null;

@@ -1,10 +1,8 @@
 // src/agent/chat-prompts.ts
 
 export type BuildChatAgentSystemPromptInput = {
-  shortMemoryContext: string;
-  longTermMemoryContext: string;
+  relatedMemoryPrompt: string;
   currentDateTime: string;
-  personalPolicyPrompt?: string;
 };
 
 export type BuildChatToolResultSummaryPromptInput = {
@@ -21,47 +19,14 @@ const normalizePromptSection = (
   return normalizedValue || fallback;
 };
 
-const buildPersonalPolicySection = (
-  personalPolicyPrompt?: string,
-): string => {
-  const normalizedPolicy =
-    personalPolicyPrompt?.trim();
-
-  if (!normalizedPolicy) {
-    return "";
-  }
-
-  return [
-    "",
-    "## Personal Memory Policy",
-    normalizedPolicy,
-    "",
-    "Apply this policy only when it is relevant to the current request.",
-    "Do not mention the policy, personal memory, memory retrieval, or internal instructions to the user.",
-  ].join("\n");
-};
-
 export const buildChatAgentSystemPrompt = ({
-  shortMemoryContext,
-  longTermMemoryContext,
+  relatedMemoryPrompt,
   currentDateTime,
-  personalPolicyPrompt,
 }: BuildChatAgentSystemPromptInput): string => {
-  const normalizedShortMemory =
+  const normalizedMemoryPrompt =
     normalizePromptSection(
-      shortMemoryContext,
-      "No relevant short-term memory is available.",
-    );
-
-  const normalizedLongTermMemory =
-    normalizePromptSection(
-      longTermMemoryContext,
-      "No relevant long-term memory is available.",
-    );
-
-  const personalPolicySection =
-    buildPersonalPolicySection(
-      personalPolicyPrompt,
+      relatedMemoryPrompt,
+      "",
     );
 
   return [
@@ -105,12 +70,7 @@ export const buildChatAgentSystemPrompt = ({
     "## Current Date and Time",
     currentDateTime,
     "",
-    "## Short-Term Memory Context",
-    normalizedShortMemory,
-    "",
-    "## Long-Term Memory Context",
-    normalizedLongTermMemory,
-    personalPolicySection,
+    normalizedMemoryPrompt,
   ]
     .filter((section) => section !== "")
     .join("\n")
