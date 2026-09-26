@@ -18,6 +18,7 @@ import { buildStepPrompt } from "./buildStepPrompt";
 import type { WorkflowStore } from "./workflowStore";
 import { dispatchAgentToolActivity } from "../../../chat/services/toolActivity";
 import { saveSpecialistSectionMemoryInBackground } from "../agent/specialist-memory";
+import { withShortDescription } from "../agent/tool-summaries";
 
 import {
   emptyMemory,
@@ -37,30 +38,6 @@ const MemorySchema = z.object({
   artifacts: z.array(z.string()),
   openItems: z.array(z.string()),
 });
-
-const SHORT_TOOL_DESCRIPTIONS: Record<string, string> = {
-  desktop_vision_action: "Inspect the user's screen when requested.",
-  terminal_executor: "Run a PowerShell command in the selected project.",
-  perplexity_search: "Search the web for current information.",
-  load_skill: "Load instructions for a selected skill.",
-  delete_knowledge_doc: "Delete a knowledge document when explicitly requested.",
-  list_knowledge_docs: "List saved knowledge documents.",
-  read_step_logs: "Read workflow log summaries.",
-  read_log_entry: "Read a specific workflow log entry.",
-  read_step_memory: "Read a workflow step and its saved summary.",
-  move_to_next_step: "Advance only when the user explicitly asks.",
-  update_plan: "Update the plan only when the user explicitly asks.",
-  finish_workflow: "End the workflow when the user explicitly asks.",
-};
-
-function shortToolDescription(name: string): string {
-  const knownDescription = SHORT_TOOL_DESCRIPTIONS[name];
-  if (knownDescription) return knownDescription;
-  if (name.startsWith("extension_")) return "Run a selected extension command.";
-  if (name.startsWith("mcp_")) return "Call a selected MCP tool.";
-  if (name.startsWith("agent_")) return "Delegate to a selected specialist agent.";
-  return `Run the ${name} operation.`;
-}
 
 function asRecord(value: unknown): Record<string, unknown> {
   return value && typeof value === "object" && !Array.isArray(value)
@@ -108,18 +85,6 @@ function buildMessagesFromStepHistory(entries: LogEntry[]): BaseMessage[] {
   }
 
   return messages;
-}
-
-function withShortDescription<T extends StructuredToolLike>(item: T): T {
-  return new Proxy(item, {
-    get(target, property, receiver) {
-      if (property === "description") {
-        return shortToolDescription(target.name);
-      }
-
-      return Reflect.get(target, property, receiver);
-    },
-  });
 }
 
 function errorMessage(error: unknown): string {

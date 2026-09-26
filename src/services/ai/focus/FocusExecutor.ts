@@ -8,6 +8,7 @@ import type { FocusMemory, FocusState, FocusToolLike, FocusTurnContext, FocusTur
 import { emptyFocusMemory } from "./types";
 import { FocusStore } from "./focusStore";
 import { saveSpecialistSectionMemoryInBackground } from "../agent/specialist-memory";
+import { withShortDescription } from "../agent/tool-summaries";
 
 const FocusMemorySchema = z.object({
   summary: z.string(),
@@ -225,9 +226,12 @@ export class FocusExecutor {
     const focusTools = this.createFocusTools(state, controls);
     const allTools = [...turn.tools, ...focusTools];
     const toolMap = new Map(allTools.map((item) => [item.name, item]));
-    const descriptions = allTools.map((item) => `- ${item.name}: ${item.description}`).join("\n");
+    /* Compact summaries keep the prompt small; argument details stay in each
+     * tool's bound schema and key behavior lives in the summaries. */
+    const llmTools = allTools.map(withShortDescription);
+    const descriptions = llmTools.map((item) => `- ${item.name}: ${item.description}`).join("\n");
     const llm = await this.options.buildTurnLlm(turn.selectedModel);
-    const llmWithTools = allTools.length ? llm.bindTools(allTools) : llm;
+    const llmWithTools = llmTools.length ? llm.bindTools(llmTools) : llm;
     const messages: BaseMessage[] = [
       new SystemMessage(focusPrompt(state, descriptions)),
       ...historyMessages(previousHistory),

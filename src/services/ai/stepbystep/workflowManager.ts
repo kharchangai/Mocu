@@ -21,10 +21,20 @@ import { terminalExecutionTool } from "../tools/terminal_execution_tool";
 import { perplexitySearchTool } from "../tools/perplexity_search_tool";
 import { skillLoaderTool } from "../tools/skill_loader_tool";
 import { desktopVisionTool } from "../tools/desktop-vision-tool";
+import { scheduleTool } from "../../../schedule/schedule-tool";
 import {
-  deleteDocTool,
-  listDocsTool,
-} from "../tools/docs_tools";
+  textToSpeechTool,
+  speechControlTool,
+} from "../tools/text_to_speech_tool";
+import { createAgentTool } from "../tools/create_agent_tool";
+import {
+  readFileTool,
+  writeFileTool,
+  editFileTool,
+  findFileTool,
+} from "../tools/filesystem";
+import { docTools } from "../tools/docs_tools";
+import { notesTools } from "../tools/notes_tools";
 
 import {
   loadExtensionAgentTools,
@@ -77,10 +87,10 @@ function getConfigReferences(
 /**
  * Builds the tool runtime for the execution agent.
  *
- * The workflow agent gets the task-focused tools available for the current
- * request (terminal, screen, web, skills, extensions, MCP, and knowledge-doc
- * lookup/removal) plus its own workflow tools. Scheduling, agent creation,
- * and knowledge-doc creation/updating stay out of step-by-step turns.
+ * The workflow agent gets the same task tools as the main project agent
+ * (file tools, terminal, screen, web, skills, scheduling, speech, agent
+ * creation, knowledge docs, notes, extensions, MCP, specialists) plus its
+ * own workflow tools. Compact tool summaries keep the prompt small.
  */
 async function buildMainAgentToolRuntime(
   config: RunnableConfig,
@@ -93,8 +103,16 @@ async function buildMainAgentToolRuntime(
     }),
     perplexitySearchTool,
     skillLoaderTool,
-    deleteDocTool,
-    listDocsTool,
+    scheduleTool,
+    textToSpeechTool,
+    speechControlTool,
+    createAgentTool,
+    readFileTool,
+    writeFileTool,
+    editFileTool,
+    findFileTool,
+    ...docTools,
+    ...notesTools,
   ];
 
   const selectedExtensionIds = getConfigReferences(

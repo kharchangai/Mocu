@@ -5,8 +5,15 @@ import { desktopVisionTool } from "../tools/desktop-vision-tool";
 import { terminalExecutionTool } from "../tools/terminal_execution_tool";
 import { perplexitySearchTool } from "../tools/perplexity_search_tool";
 import { skillLoaderTool } from "../tools/skill_loader_tool";
+import { scheduleTool } from "../../../schedule/schedule-tool";
+import { textToSpeechTool, speechControlTool } from "../tools/text_to_speech_tool";
+import { createAgentTool } from "../tools/create_agent_tool";
+import { readFileTool, writeFileTool, editFileTool, findFileTool } from "../tools/filesystem";
+import { docTools } from "../tools/docs_tools";
+import { notesTools } from "../tools/notes_tools";
 import { loadExtensionAgentTools } from "../../../extensions/services/extension-agent-tools";
 import { loadMcpAgentTools } from "../../../mcp/tool-adapter";
+import { loadAgentTools } from "../../../chat/agent/agent-tools";
 
 import { FocusExecutor } from "./FocusExecutor";
 import { FocusStore } from "./focusStore";
@@ -25,12 +32,23 @@ function references(config: RunnableConfig | undefined, key: string): string[] {
   return Array.isArray(value) ? value.filter((item): item is string => typeof item === "string" && item.trim().length > 0) : [];
 }
 
+/** Same task tools as the main project agent, plus the Focus control tools. */
 async function buildTaskTools(config: RunnableConfig, projectPath?: string): Promise<FocusToolLike[]> {
   const tools: FocusToolLike[] = [
     desktopVisionTool as FocusToolLike,
     terminalExecutionTool(projectPath ? { projectPath } : {}) as FocusToolLike,
     perplexitySearchTool as FocusToolLike,
     skillLoaderTool as FocusToolLike,
+    scheduleTool as FocusToolLike,
+    textToSpeechTool as FocusToolLike,
+    speechControlTool as FocusToolLike,
+    createAgentTool as FocusToolLike,
+    readFileTool as FocusToolLike,
+    writeFileTool as FocusToolLike,
+    editFileTool as FocusToolLike,
+    findFileTool as FocusToolLike,
+    ...(docTools as unknown as FocusToolLike[]),
+    ...(notesTools as unknown as FocusToolLike[]),
   ];
   const extensionIds = references(config, "selectedExtensions");
   try {
@@ -45,6 +63,13 @@ async function buildTaskTools(config: RunnableConfig, projectPath?: string): Pro
     tools.push(...mcp.tools as FocusToolLike[]);
   } catch (error) {
     console.warn("[Focus] Could not load selected MCP tools:", error);
+  }
+  const agentNames = references(config, "selectedAgent");
+  try {
+    const agents = await loadAgentTools(agentNames, "", config);
+    tools.push(...agents.tools as FocusToolLike[]);
+  } catch (error) {
+    console.warn("[Focus] Could not load selected agent tools:", error);
   }
   return tools;
 }
