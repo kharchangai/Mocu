@@ -14,7 +14,7 @@
 // live tool boxes of a running request; the view simply resubscribes
 // when the user comes back.
 
-import { useCallback, useMemo, useSyncExternalStore } from 'react';
+import { useCallback, useEffect, useMemo, useState, useSyncExternalStore } from 'react';
 
 import type { AgentToolActivity } from '../services/toolActivity';
 import { resolveActivityChatId } from '../services/toolActivity';
@@ -223,17 +223,28 @@ function subscribeToCommitted(
  */
 export function useToolActivity(chatId: string | null) {
   /*
-   * Memoized so React only re-subscribes when the displayed chat
+   * A first message can create its chat inside handleSendMessage, while
+   * this hook was initialized with a null chat id. Track the request id
+   * explicitly so its live activities are still observed immediately.
+   */
+  const [activityChatId, setActivityChatId] = useState(chatId);
+
+  useEffect(() => {
+    setActivityChatId(chatId);
+  }, [chatId]);
+
+  /*
+   * Memoized so React only re-subscribes when the displayed/request chat
    * changes, not on every render.
    */
   const subscribePending = useMemo(
-    () => subscribeToPending(chatId),
-    [chatId],
+    () => subscribeToPending(activityChatId),
+    [activityChatId],
   );
 
   const pendingActivities = useSyncExternalStore(
     subscribePending,
-    () => getPendingToolActivities(chatId),
+    () => getPendingToolActivities(activityChatId),
   );
 
   /*
@@ -255,13 +266,12 @@ export function useToolActivity(chatId: string | null) {
   return {
     pendingActivities,
     beginRequest: useCallback((requestChatId: string) => {
+      setActivityChatId(requestChatId);
       beginToolActivityRequest(requestChatId);
     }, []),
-    commit: useCallback((messageId: string) => {
-      if (chatId) {
-        commitToolActivities(chatId, messageId);
-      }
-    }, [chatId]),
+    commit: useCallback((requestChatId: string, messageId: string) => {
+      commitToolActivities(requestChatId, messageId);
+    }, []),
     getForMessage,
   };
 }

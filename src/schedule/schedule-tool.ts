@@ -248,11 +248,9 @@ export const scheduleTool = tool(
   {
     name: 'schedule_action',
     description:
-      'Create, list, update, or delete schedules: reminders ("remind me to X at TIME on DATE"), calendar plans, and automatic agent runs ("every day at 12:00 run my news analyzer agent and analyze the news for me"). ' +
-      'kind=reminder makes Mocu tell the user something at the time; kind=agent automatically runs a saved agent (agentName) with agentInput at the time. ' +
-      'Use recurrence daily/weekly/monthly for repeating schedules. ' +
-      'STRICT RULE: never invent a date or time. If the user did not provide an exact date and time, ask for them first, then create the schedule. ' +
-      'Time format is local "YYYY-MM-DDTHH:mm" in 24-hour notation.',
+      'Create, list, update, or delete schedules: reminders ("remind me to X at TIME on DATE"), calendar plans, and automatic agent runs (kind=agent runs a saved agentName with agentInput; kind=reminder makes Mocu tell the user something at the time). ' +
+      'Use recurrence daily/weekly/monthly for repeating schedules. Times are local "YYYY-MM-DDTHH:mm" in 24-hour notation. ' +
+      'STRICT RULE: never invent a date or time - ask the user for them first.',
     schema: scheduleActionSchema,
   },
 );

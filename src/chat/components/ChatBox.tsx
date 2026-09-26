@@ -1351,6 +1351,7 @@ export function ChatBox({
        * message, so they remain visible above it.
        */
       toolActivity.commit(
+        requestChatId,
         assistantMessage.id,
       );
 
@@ -1418,6 +1419,7 @@ export function ChatBox({
        * the error message so the user can inspect them.
        */
       toolActivity.commit(
+        requestChatId,
         errorMessage.id,
       );
     } finally {
