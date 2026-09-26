@@ -108,10 +108,20 @@ import {
 import {
   docTools,
   createDocTool,
+  readDocTool,
   updateDocTool,
   deleteDocTool,
   listDocsTool,
 } from "./tools/docs_tools";
+
+import {
+  notesTools,
+  saveNoteTool,
+  readNoteTool,
+  updateNoteTool,
+  deleteNoteTool,
+  listNotesTool,
+} from "./tools/notes_tools";
 
 /*
  * Pi-style file tools: read_file / write_file / edit_file / find_file.
@@ -131,6 +141,10 @@ import {
 import {
   buildDocsContextPrompt,
 } from "../../chat/docs";
+
+import {
+  buildNotesContextPrompt,
+} from "../../chat/notes";
 
 import {
   hasActiveFocusSession,
@@ -932,7 +946,9 @@ const createToolExecutor = (
   });
 
   /*
-   * Knowledge doc tools: create / update / delete / list.
+   * Knowledge doc tools: create / read / update / delete / list.
+   * The prompt only carries a short hint that related docs exist; the
+   * agent reads a doc's full content with read_knowledge_doc.
    */
   toolExecutor.registerTool({
     name:
@@ -1037,6 +1053,33 @@ const createToolExecutor = (
 
   toolExecutor.registerTool({
     name:
+      readDocTool.name,
+
+    description:
+      readDocTool.description,
+
+    execute: async (
+      args,
+    ) => {
+      const toolArgs =
+        args as ToolArgs;
+
+      return readDocTool.invoke(
+        {
+          fileName:
+            requireStringArg(
+              toolArgs,
+              "fileName",
+              readDocTool.name,
+            ),
+        },
+        config,
+      );
+    },
+  });
+
+  toolExecutor.registerTool({
+    name:
       listDocsTool.name,
 
     description:
@@ -1045,6 +1088,151 @@ const createToolExecutor = (
     execute: async (
       _args,
     ) => listDocsTool.invoke(
+      {},
+      config,
+    ),
+  });
+
+  /*
+   * Knowledge note tools: save / read / update / delete / list.
+   * Notes are saved exactly as the user said them (no LLM rewriting).
+   */
+  toolExecutor.registerTool({
+    name:
+      saveNoteTool.name,
+
+    description:
+      saveNoteTool.description,
+
+    execute: async (
+      args,
+    ) => {
+      const toolArgs =
+        args as ToolArgs;
+
+      return saveNoteTool.invoke(
+        {
+          text:
+            requireStringArg(
+              toolArgs,
+              "text",
+              saveNoteTool.name,
+            ),
+
+          title:
+            getStringArg(
+              toolArgs,
+              "title",
+            ) || undefined,
+        },
+        config,
+      );
+    },
+  });
+
+  toolExecutor.registerTool({
+    name:
+      readNoteTool.name,
+
+    description:
+      readNoteTool.description,
+
+    execute: async (
+      args,
+    ) => {
+      const toolArgs =
+        args as ToolArgs;
+
+      return readNoteTool.invoke(
+        {
+          fileName:
+            requireStringArg(
+              toolArgs,
+              "fileName",
+              readNoteTool.name,
+            ),
+        },
+        config,
+      );
+    },
+  });
+
+  toolExecutor.registerTool({
+    name:
+      updateNoteTool.name,
+
+    description:
+      updateNoteTool.description,
+
+    execute: async (
+      args,
+    ) => {
+      const toolArgs =
+        args as ToolArgs;
+
+      return updateNoteTool.invoke(
+        {
+          fileName:
+            requireStringArg(
+              toolArgs,
+              "fileName",
+              updateNoteTool.name,
+            ),
+
+          title:
+            getStringArg(
+              toolArgs,
+              "title",
+            ) || undefined,
+
+          text:
+            getStringArg(
+              toolArgs,
+              "text",
+            ) || undefined,
+        },
+        config,
+      );
+    },
+  });
+
+  toolExecutor.registerTool({
+    name:
+      deleteNoteTool.name,
+
+    description:
+      deleteNoteTool.description,
+
+    execute: async (
+      args,
+    ) => {
+      const toolArgs =
+        args as ToolArgs;
+
+      return deleteNoteTool.invoke(
+        {
+          fileName:
+            requireStringArg(
+              toolArgs,
+              "fileName",
+              deleteNoteTool.name,
+            ),
+        },
+        config,
+      );
+    },
+  });
+
+  toolExecutor.registerTool({
+    name:
+      listNotesTool.name,
+
+    description:
+      listNotesTool.description,
+
+    execute: async (
+      _args,
+    ) => listNotesTool.invoke(
       {},
       config,
     ),
@@ -1471,6 +1659,7 @@ export const callChatAgent =
         editFileTool,
         findFileTool,
         ...docTools,
+        ...notesTools,
         ...extensionTools.tools,
         ...mcpTools.tools,
         ...agentTools.tools,
@@ -1532,21 +1721,29 @@ export const callChatAgent =
     );
 
     /*
-     * Search the user's saved knowledge docs for this message and build the
-     * context block for the system prompt. Failures never block the agent.
+     * Search the user's saved docs and notes for this message and inject
+     * one-line hints into the system prompt. Failures never block the agent.
      */
     let docsContextPrompt = "";
 
     try {
       docsContextPrompt = await waitForOptionalContext(
-        () => buildDocsContextPrompt(userText),
+        async () =>
+          (
+            await Promise.all([
+              buildDocsContextPrompt(userText),
+              buildNotesContextPrompt(userText),
+            ])
+          )
+            .filter((hint) => hint.trim())
+            .join("\n"),
         "",
-        "docs context",
+        "docs/notes context",
         signal,
       );
     } catch (error: unknown) {
       console.warn(
-        "[Chat Agent] Docs context search failed:",
+        "[Chat Agent] Docs/notes context search failed:",
         error,
       );
     }

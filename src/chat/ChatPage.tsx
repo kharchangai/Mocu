@@ -28,6 +28,10 @@ import {
   DocsPage,
 } from './components/docs/DocsPage';
 
+import {
+  NotesPage,
+} from './components/notes/NotesPage';
+
 import { SchedulePage } from '../schedule/components/SchedulePage';
 import {
   SCHEDULE_AGENT_COMPLETE_EVENT,
@@ -100,6 +104,7 @@ const CHAT_PAGE_ITEMS: readonly ChatSidebarItemId[] = [
   'skills',
   'schedule',
   'docs',
+  'notes',
   'extensions',
   'mcp',
   'agents',
@@ -348,6 +353,11 @@ function ChatPage() {
               !chat.projectPath ||
               chat.projectPath.trim() === '',
           )
+          .sort(
+            (firstChat, secondChat) =>
+              new Date(secondChat.updatedAt).getTime() -
+              new Date(firstChat.updatedAt).getTime(),
+          )
           .map((chat) => ({
             id: chat.id,
             title: chat.title,
@@ -577,6 +587,14 @@ function ChatPage() {
             return;
           }
 
+          case 'notes': {
+            setActiveItem('notes');
+            setIsChatsOpen(false);
+            setIsProjectsOpen(false);
+
+            return;
+          }
+
           case 'extensions': {
             setActiveItem('extensions');
             setIsChatsOpen(false);
@@ -766,8 +784,10 @@ function ChatPage() {
       case 'home':
         return (
           <ProjectLanding
+            chats={regularChats}
             projects={projectWorkspaces}
             onStartChat={handleStartNormalChat}
+            onSelectChat={handleSelectRecentChat}
             onOpenProject={handleOpenProject}
             onCreateProject={handleCreateProject}
           />
@@ -786,6 +806,9 @@ function ChatPage() {
 
       case 'docs':
         return <DocsPage />;
+
+      case 'notes':
+        return <NotesPage />;
 
       case 'extensions':
         return (

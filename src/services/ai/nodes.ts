@@ -51,6 +51,19 @@ import {
 } from "./tools/text_to_speech_tool";
 
 import {
+  notesTools,
+  saveNoteTool,
+  readNoteTool,
+  updateNoteTool,
+  deleteNoteTool,
+  listNotesTool,
+} from "./tools/notes_tools";
+
+import {
+  buildNotesContextPrompt,
+} from "../../chat/notes";
+
+import {
   getChatIdFromConfig,
 } from "../../chat/services/toolActivity";
 
@@ -166,6 +179,79 @@ const createToolExecutor = (
     },
   });
 
+  /*
+   * Knowledge note tools: save / read / update / delete / list.
+   * Notes are saved exactly as the user said them (no LLM rewriting).
+   */
+  toolExecutor.registerTool({
+    name: saveNoteTool.name,
+    description: saveNoteTool.description,
+    execute: async (args) => {
+      const toolArgs = args as ToolArgs;
+
+      return saveNoteTool.invoke(
+        {
+          text: getStringArg(toolArgs, "text"),
+          title: getStringArg(toolArgs, "title") || undefined,
+        },
+        config,
+      );
+    },
+  });
+
+  toolExecutor.registerTool({
+    name: readNoteTool.name,
+    description: readNoteTool.description,
+    execute: async (args) => {
+      const toolArgs = args as ToolArgs;
+
+      return readNoteTool.invoke(
+        {
+          fileName: getStringArg(toolArgs, "fileName"),
+        },
+        config,
+      );
+    },
+  });
+
+  toolExecutor.registerTool({
+    name: updateNoteTool.name,
+    description: updateNoteTool.description,
+    execute: async (args) => {
+      const toolArgs = args as ToolArgs;
+
+      return updateNoteTool.invoke(
+        {
+          fileName: getStringArg(toolArgs, "fileName"),
+          title: getStringArg(toolArgs, "title") || undefined,
+          text: getStringArg(toolArgs, "text") || undefined,
+        },
+        config,
+      );
+    },
+  });
+
+  toolExecutor.registerTool({
+    name: deleteNoteTool.name,
+    description: deleteNoteTool.description,
+    execute: async (args) => {
+      const toolArgs = args as ToolArgs;
+
+      return deleteNoteTool.invoke(
+        {
+          fileName: getStringArg(toolArgs, "fileName"),
+        },
+        config,
+      );
+    },
+  });
+
+  toolExecutor.registerTool({
+    name: listNotesTool.name,
+    description: listNotesTool.description,
+    execute: async () => listNotesTool.invoke({}, config),
+  });
+
   return toolExecutor;
 };
 
@@ -232,6 +318,7 @@ export const callMainAgent = async (
     perplexitySearchTool,
     textToSpeechTool,
     speechControlTool,
+    ...notesTools,
   ]);
 
   const toolExecutor = createToolExecutor(
@@ -251,11 +338,30 @@ export const callMainAgent = async (
     },
   );
 
-  const systemPrompt =
+  /*
+   * One-line hint when a saved note relates to this message. Failures
+   * never block the agent.
+   */
+  let notesContextPrompt = "";
+
+  try {
+    notesContextPrompt = await buildNotesContextPrompt(userText);
+  } catch (error: unknown) {
+    console.warn(
+      "[Main Agent] Notes context search failed:",
+      error,
+    );
+  }
+
+  const systemPrompt = [
     buildMainAgentSystemPrompt({
       relatedMemoryPrompt,
       currentDateTime,
-    });
+    }),
+    notesContextPrompt,
+  ]
+    .filter((part) => part.trim())
+    .join("\n\n");
 
   let messagesToRun: BaseMessage[] = [
     new SystemMessage(systemPrompt),

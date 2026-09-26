@@ -24,6 +24,7 @@ export type ChatSidebarItemId =
   | 'skills'
   | 'schedule'
   | 'docs'
+  | 'notes'
   | 'extensions'
   | 'mcp'
   | 'agents'
@@ -846,6 +847,28 @@ export function ChatSidebar({
               <path d="M6 3h9l4 4v14H6z" />
               <path d="M15 3v4h4" />
               <path d="M9 12h7M9 16h7M9 8h2" />
+            </svg>
+          }
+        />
+
+        <NavButton
+          label="Notes"
+          active={activeItem === 'notes'}
+          onClick={() => onSelect('notes')}
+          icon={
+            <svg
+              viewBox="0 0 24 24"
+              width="16"
+              height="16"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="1.8"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              aria-hidden="true"
+            >
+              <path d="M5 3h14a2 2 0 0 1 2 2v9l-7 7H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2Z" />
+              <path d="M21 14h-5a2 2 0 0 0-2 2v5" />
             </svg>
           }
         />

@@ -12,11 +12,14 @@ import {
 } from 'lucide-react';
 
 import type { ProjectWorkspace } from '../services/projectWorkspaces';
+import type { RecentChat } from '../types/chat';
 import './ProjectLanding.css';
 
 type ProjectLandingProps = {
+  chats: RecentChat[];
   projects: ProjectWorkspace[];
   onStartChat: () => void;
+  onSelectChat: (chatId: string) => void;
   onOpenProject: (path: string) => void | Promise<void>;
   onCreateProject: (
     name: string,
@@ -26,8 +29,10 @@ type ProjectLandingProps = {
 };
 
 export function ProjectLanding({
+  chats,
   projects,
   onStartChat,
+  onSelectChat,
   onOpenProject,
   onCreateProject,
 }: ProjectLandingProps) {
@@ -150,6 +155,42 @@ export function ProjectLanding({
             </span>
             <span className="landing-choice-arrow"><ArrowRight size={18} /></span>
           </button>
+        </div>
+
+        <div className="project-landing-library chat-landing-library">
+          <div className="project-library-heading">
+            <div>
+              <span className="project-section-eyebrow">RECENT CONVERSATIONS</span>
+              <h2>Your chats <span>{chats.length}</span></h2>
+            </div>
+          </div>
+
+          {chats.length ? (
+            <div className="chat-library-grid">
+              {chats.map((chat) => (
+                <button
+                  className="chat-library-card"
+                  type="button"
+                  key={chat.id}
+                  onClick={() => onSelectChat(chat.id)}
+                  title={chat.title}
+                >
+                  <span className="chat-card-icon"><MessageCircle size={18} /></span>
+                  <span className="chat-card-content">
+                    <strong>{chat.title}</strong>
+                    <span>Continue this conversation</span>
+                  </span>
+                  <ArrowUpRight className="project-card-arrow" size={17} />
+                </button>
+              ))}
+            </div>
+          ) : (
+            <div className="chat-library-empty">
+              <span className="chat-card-icon"><MessageCircle size={17} /></span>
+              <span><strong>No chats yet</strong><small>Start a chat and it will show up here.</small></span>
+              <button type="button" onClick={onStartChat}>Start a chat</button>
+            </div>
+          )}
         </div>
 
         <div className="project-landing-library">

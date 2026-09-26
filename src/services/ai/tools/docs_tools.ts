@@ -6,24 +6,71 @@ import {
   updateDocFields,
   deleteDoc,
   listDocs,
+  readDoc,
 } from "../../../chat/docs";
 
 /**
  * Knowledge doc tools.
  *
  * Lets the agents manage the user's saved searchable knowledge documents
- * (the global docs folder: BaseDirectory.AppData/docs). The created docs
- * power BM25 + Jev section retrieval, which runs automatically before the
- * agent answers, so saving good docs directly improves future answers.
+ * (the global docs folder: BaseDirectory.AppData/docs). Before the agent
+ * answers, the saved docs are BM25-searched and only a short HINT (file
+ * name / name / description / keywords) is injected into the prompt. When
+ * the agent needs the actual content, it calls read_knowledge_doc to read
+ * the complete document.
  */
 
 const DOC_TOOL_RESULT_LIMIT = 2_000;
+const DOC_READ_RESULT_LIMIT = 20_000;
 
-function truncateResult(text: string): string {
-  return text.length > DOC_TOOL_RESULT_LIMIT
-    ? `${text.slice(0, DOC_TOOL_RESULT_LIMIT).trimEnd()}…`
+function truncateResult(
+  text: string,
+  limit = DOC_TOOL_RESULT_LIMIT,
+): string {
+  return text.length > limit
+    ? `${text.slice(0, limit).trimEnd()}…`
     : text;
 }
+
+export const readDocTool = tool(
+  async ({ fileName }) => {
+    console.log(`[Docs Tool] Reading knowledge doc: "${fileName}".`);
+
+    try {
+      const doc = await readDoc(fileName);
+
+      if (!doc) {
+        return `Error: No knowledge document named "${fileName}" exists. Call list_knowledge_docs to see the available documents.`;
+      }
+
+      return truncateResult(
+        [
+          `Knowledge document "${doc.file}":`,
+          `Name: ${doc.name}`,
+          `Description: ${doc.description}`,
+          "",
+          doc.body,
+        ].join("\n"),
+        DOC_READ_RESULT_LIMIT,
+      );
+    } catch (error) {
+      console.error("[Docs Tool] Failed to read doc:", error);
+
+      return `Error: The document could not be read. Details: ${error}`;
+    }
+  },
+  {
+    name: "read_knowledge_doc",
+    description:
+      "Reads a saved knowledge document completely (full content) by its file name. " +
+      "Use when a doc hint appears in the prompt and you need to know what the doc says before answering.",
+    schema: z.object({
+      fileName: z
+        .string()
+        .describe("Exact file name of the doc, e.g. 'my-idea.md' (from the doc hint or list_knowledge_docs)"),
+    }),
+  },
+);
 
 export const createDocTool = tool(
   async ({ text }) => {
@@ -181,6 +228,7 @@ export const listDocsTool = tool(
 
 export const docTools = [
   createDocTool,
+  readDocTool,
   updateDocTool,
   deleteDocTool,
   listDocsTool,
