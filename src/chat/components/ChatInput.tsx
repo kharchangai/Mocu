@@ -79,6 +79,7 @@ import {
 } from './fileMentionAutocomplete';
 import { resolveFileMentions, type SelectedFileReference } from './fileMentionReferences';
 import { getTextDirection } from './textDirection';
+import { useSpeechRecorder, joinVoiceText } from './useSpeechRecorder';
 import './ChatInput.css';
 
 export type SendOptions = {
@@ -1137,6 +1138,64 @@ export function ChatInput({
     updateActiveCommand(nextValue, caretPosition);
   };
 
+  /*
+   * Voice input. While recording, the transcript streams into the
+   * composer (rolling transcription from the Settings STT model) and
+   * the exact text replaces it when recording stops.
+   */
+  const voiceBaseValueRef = useRef('');
+
+  const speech = useSpeechRecorder({
+    onPartialText: (spokenText) => {
+      onValueChange(joinVoiceText(voiceBaseValueRef.current, spokenText));
+    },
+    onFinalText: (spokenText) => {
+      onValueChange(joinVoiceText(voiceBaseValueRef.current, spokenText));
+    },
+  });
+
+  const formatVoiceElapsed = (totalMs: number) => {
+    const totalSeconds = Math.floor(totalMs / 1000);
+    const minutes = Math.floor(totalSeconds / 60);
+    const seconds = totalSeconds % 60;
+
+    return `${minutes}:${seconds.toString().padStart(2, '0')}`;
+  };
+
+  const handleVoiceButtonClick = () => {
+    if (speech.isRecording) {
+      speech.stop();
+      return;
+    }
+
+    voiceBaseValueRef.current = safeValue;
+    void speech.start();
+  };
+
+  const handleVoiceCancel = () => {
+    onValueChange(voiceBaseValueRef.current);
+    speech.cancel();
+  };
+
+  // Escape discards the recording and restores the previous text.
+  useEffect(() => {
+    if (!speech.isRecording) {
+      return;
+    }
+
+    const handleVoiceEscape = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') {
+        event.preventDefault();
+        handleVoiceCancel();
+      }
+    };
+
+    window.addEventListener('keydown', handleVoiceEscape);
+
+    return () => window.removeEventListener('keydown', handleVoiceEscape);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [speech.isRecording]);
+
   const handleTextareaSelection = (
     event: React.SyntheticEvent<HTMLTextAreaElement>,
   ) => {
@@ -1927,6 +1986,7 @@ export function ChatInput({
             <textarea
             ref={textareaRef}
             value={safeValue}
+            readOnly={speech.isRecording}
             onChange={handleMessageChange}
             onKeyDown={handleKeyDown}
             onClick={handleTextareaSelection}
@@ -2290,13 +2350,75 @@ export function ChatInput({
               )}
             </div>
 
+            {speech.isRecording ? (
+              <div
+                className="voice-recorder-inline"
+                role="status"
+                aria-live="polite"
+                aria-label="Recording voice input"
+              >
+                <span className="voice-recorder-dot" aria-hidden="true" />
+
+                <div className="voice-recorder-wave" aria-hidden="true">
+                  {speech.levels.map((level, index) => (
+                    <span
+                      key={index}
+                      style={{
+                        height: `${Math.max(10, Math.round(level * 100))}%`,
+                      }}
+                    />
+                  ))}
+                </div>
+
+                <span className="voice-recorder-timer">
+                  {formatVoiceElapsed(speech.elapsedMs)}
+                </span>
+
+                {speech.isTranscribing ? (
+                  <RefreshCw
+                    size={12}
+                    className="voice-recorder-spinner"
+                    aria-label="Transcribing"
+                  />
+                ) : null}
+
+                {speech.error ? (
+                  <span className="voice-recorder-error">{speech.error}</span>
+                ) : null}
+
+                <button
+                  type="button"
+                  className="voice-recorder-cancel"
+                  onClick={handleVoiceCancel}
+                  aria-label="Cancel voice input"
+                  title="Cancel (Esc)"
+                >
+                  <X size={14} />
+                </button>
+              </div>
+            ) : null}
+
             <div className="chat-composer-right-actions">
               <button
                 type="button"
-                className="composer-icon-button"
-                aria-label="Voice input"
+                className={`composer-icon-button${
+                  speech.isRecording
+                    ? ' composer-icon-button--recording'
+                    : ''
+                }`}
+                onClick={handleVoiceButtonClick}
+                aria-label={
+                  speech.isRecording
+                    ? 'Stop recording'
+                    : 'Voice input (speech to text)'
+                }
+                title={speech.isRecording ? 'Stop recording' : 'Voice input'}
               >
-                <Mic size={17} />
+                {speech.isRecording ? (
+                  <Square size={15} fill="currentColor" />
+                ) : (
+                  <Mic size={17} />
+                )}
               </button>
 
               {isLoading && !(interactionInputEnabled && safeValue.trim()) ? (

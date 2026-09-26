@@ -50,15 +50,12 @@ interface MocuProps {
  * Space required for StatusBubble above Mocu.
  *
  * CUBE_SIZE:
- * The fixed physical size of Mocu.
+ * The fixed design size of Mocu. The face is always drawn at this size
+ * and then scaled down as a whole by CUBE_SCALE, so every proportion
+ * (eyes, mouth, glow, status bubble) stays exact.
  *
  * Since MocuTranscript can display up to four lines, this needs enough
  * room for the transcript card, its 12px top margin, and safe spacing.
- *
- * Required Tauri window height:
- * 100 + 150 + 170 = 420px
- *
- * Set the Tauri window height to at least 420 or 430 pixels.
  */
 const TOP_SPACE = 0;
 
@@ -67,6 +64,18 @@ const TOP_SPACE = 0;
  * the click-through toggle (see useMocuClickThrough).
  */
 export const CUBE_SIZE = 150;
+
+/*
+ * How large Mocu appears on screen. 0.8 shrinks the 150px design to
+ * a 120px avatar. Tweak this single value to make Mocu smaller/bigger.
+ */
+export const CUBE_SCALE = 0.8;
+
+/*
+ * The actual on-screen footprint of the cube. Exported so App.tsx can
+ * compute the click-through rectangle at the rendered (scaled) size.
+ */
+export const CUBE_DISPLAY_SIZE = CUBE_SIZE * CUBE_SCALE;
 
 export const Mocu: React.FC<MocuProps> = ({
   state = 'idle',
@@ -309,7 +318,7 @@ export const Mocu: React.FC<MocuProps> = ({
     <div
       className="relative w-full overflow-visible"
       style={{
-        height: TOP_SPACE + CUBE_SIZE,
+        height: TOP_SPACE + CUBE_DISPLAY_SIZE,
       }}
     >
       {/*
@@ -321,17 +330,34 @@ export const Mocu: React.FC<MocuProps> = ({
         className="absolute left-1/2 -translate-x-1/2"
         style={{
           top: TOP_SPACE,
-          width: CUBE_SIZE,
-          height: CUBE_SIZE,
+          width: CUBE_DISPLAY_SIZE,
+          height: CUBE_DISPLAY_SIZE,
         }}
       >
+        {/*
+         * Cube + status bubble are drawn at the 150px design size and
+         * scaled down as one block, so the face stays proportional.
+         * The transcript below is rendered outside this block so its
+         * text keeps its normal readable size.
+         */}
+        <div
+          className="absolute left-0 top-0"
+          style={{
+            width: CUBE_SIZE,
+            height: CUBE_SIZE,
+            transform: `scale(${CUBE_SCALE})`,
+            transformOrigin: 'top left',
+          }}
+        >
         <StatusBubble state={state} />
 
         <motion.div
           onClick={handleMocuClick}
           data-tauri-drag-region
-          className="absolute left-0 top-0 z-20 flex h-[150px] w-[150px] cursor-pointer items-center justify-center overflow-hidden rounded-[12px] bg-[#050505] transition-transform active:scale-95"
+          className="absolute left-0 top-0 z-20 flex cursor-pointer items-center justify-center overflow-hidden rounded-[12px] bg-[#050505] transition-transform active:scale-95"
           style={{
+            width: CUBE_SIZE,
+            height: CUBE_SIZE,
             boxShadow: `
               inset 0 2px 10px rgba(255, 255, 255, 0.15),
               inset 0 -10px 20px rgba(0, 0, 0, 0.8)
@@ -351,6 +377,7 @@ export const Mocu: React.FC<MocuProps> = ({
           <div className="pointer-events-none absolute left-3 top-0 h-[40px] w-[110px] rounded-b-[24px] rounded-t-[12px] bg-gradient-to-b from-white/10 to-transparent" />
 
           <div className="pointer-events-none z-30 flex translate-y-1 flex-col items-center gap-4">
+            {/* eyes + mouth (design size, scaled with the cube) */}
             <div className="flex w-full justify-center gap-6">
               <motion.div
                 className="h-[20px] w-[18px] rounded-[4px] bg-white shadow-[0_0_12px_rgba(255,255,255,0.5)]"
@@ -375,6 +402,7 @@ export const Mocu: React.FC<MocuProps> = ({
             />
           </div>
         </motion.div>
+        </div>
 
         <div className="absolute left-1/2 top-full z-40 mt-3 w-[230px] -translate-x-1/2">
           <MocuTranscript

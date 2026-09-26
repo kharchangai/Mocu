@@ -9,7 +9,7 @@ import {
 } from './schedule/scheduler';
 
 import { Mocu, MocuState } from './components/Mocu';
-import { CUBE_SIZE } from './components/Mocu';
+import { CUBE_DISPLAY_SIZE } from './components/Mocu';
 import ChatPage from './chat/ChatPage';
 import { TranscriptSpeaker } from './components/MocuTranscript';
 
@@ -39,7 +39,7 @@ type MocuInterruptEvent = {
 };
 
 const MAIN_WINDOW_WIDTH = 250;
-const MAIN_WINDOW_BASE_HEIGHT = 320;
+const MAIN_WINDOW_BASE_HEIGHT = 280;
 const TRANSCRIPT_EXTRA_HEIGHT = 170;
 
 function getCurrentRouteHash(): string {
@@ -103,9 +103,9 @@ function App() {
     width: MAIN_WINDOW_WIDTH,
     baseHeight: MAIN_WINDOW_BASE_HEIGHT,
     transcriptExtraHeight: TRANSCRIPT_EXTRA_HEIGHT,
-    cubeLeft: (MAIN_WINDOW_WIDTH - CUBE_SIZE) / 2,
-    cubeTop: (MAIN_WINDOW_BASE_HEIGHT - CUBE_SIZE) / 2,
-    cubeSize: CUBE_SIZE,
+    cubeLeft: (MAIN_WINDOW_WIDTH - CUBE_DISPLAY_SIZE) / 2,
+    cubeTop: (MAIN_WINDOW_BASE_HEIGHT - CUBE_DISPLAY_SIZE) / 2,
+    cubeSize: CUBE_DISPLAY_SIZE,
     transcriptVisible: transcriptText.trim().length > 0,
     disabled: !isMocuWindow,
   });

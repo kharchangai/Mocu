@@ -1084,3 +1084,109 @@
   }
 
 }
+
+/* Voice recorder: a minimal inline row in the composer footer. */
+.voice-recorder-inline {
+  display: flex;
+  flex: 1;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  min-width: 0;
+  padding: 0 8px;
+}
+
+.voice-recorder-dot {
+  width: 9px;
+  height: 9px;
+  flex: none;
+  background: #ef4444;
+  border-radius: 999px;
+  animation: voice-recorder-pulse 1.2s ease-in-out infinite;
+}
+
+@keyframes voice-recorder-pulse {
+  0%,
+  100% {
+    box-shadow: 0 0 0 0 rgba(239, 68, 68, 0.45);
+  }
+
+  50% {
+    box-shadow: 0 0 0 6px rgba(239, 68, 68, 0);
+  }
+}
+
+.voice-recorder-timer {
+  flex: none;
+  color: #6b7280;
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+}
+
+.voice-recorder-wave {
+  display: flex;
+  flex: none;
+  align-items: center;
+  justify-content: center;
+  gap: 3px;
+  width: min(220px, 30vw);
+  min-width: 90px;
+  height: 26px;
+  overflow: hidden;
+}
+
+.voice-recorder-wave span {
+  width: 3px;
+  min-height: 3px;
+  background: linear-gradient(180deg, #34d399, #2f8f5b);
+  border-radius: 999px;
+  transition: height 80ms ease-out;
+}
+
+.voice-recorder-spinner {
+  flex: none;
+  color: #2f8f5b;
+  animation: voice-recorder-spin 1s linear infinite;
+}
+
+@keyframes voice-recorder-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.voice-recorder-error {
+  flex: none;
+  max-width: 220px;
+  overflow: hidden;
+  color: #dc2626;
+  font-size: 11px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Bare ghost button for discarding the recording. */
+.voice-recorder-cancel {
+  display: grid;
+  width: 24px;
+  height: 24px;
+  flex: none;
+  padding: 0;
+  color: #9ca3af;
+  background: transparent;
+  border: 0;
+  border-radius: 7px;
+  place-items: center;
+  cursor: pointer;
+}
+
+.voice-recorder-cancel:hover {
+  color: #6b7280;
+  background: #f3f4f6;
+}
+
+/* Marks the mic button while it is capturing audio (click again to stop). */
+.composer-icon-button--recording {
+  color: #111827;
+  background: #f3f4f6;
+}

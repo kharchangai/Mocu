@@ -92,6 +92,12 @@ import {
 } from "./tools/perplexity_search_tool";
 
 import {
+  textToSpeechTool,
+  speechControlTool,
+  type SpeakTextInput,
+} from "./tools/text_to_speech_tool";
+
+import {
   skillLoaderTool,
 } from "./tools/skill_loader_tool";
 
@@ -774,6 +780,42 @@ const createToolExecutor = (
 
   toolExecutor.registerTool({
     name:
+      "text_to_speech",
+
+    description:
+      "Speaks text out loud using the TTS model configured in Settings.",
+
+    execute: async (
+      args,
+    ) => {
+      return textToSpeechTool.invoke(
+        args as SpeakTextInput,
+        config,
+      );
+    },
+  });
+
+  toolExecutor.registerTool({
+    name:
+      "speech_control",
+
+    description:
+      "Stops current speech playback or shows the configured speech setup.",
+
+    execute: async (
+      args,
+    ) => {
+      return speechControlTool.invoke(
+        args as {
+          action: "stop" | "status";
+        },
+        config,
+      );
+    },
+  });
+
+  toolExecutor.registerTool({
+    name:
       "create_agent",
 
     description:
@@ -1400,6 +1442,8 @@ export const callChatAgent =
         desktopVisionTool,
         terminalTool,
         perplexitySearchTool,
+        textToSpeechTool,
+        speechControlTool,
         skillLoaderTool,
         createAgentTool,
         fileManagerTool,

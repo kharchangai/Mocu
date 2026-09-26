@@ -44,6 +44,11 @@ import {
 import { desktopVisionTool } from "./tools/desktop-vision-tool";
 import { terminalExecutionTool } from "./tools/terminal_execution_tool";
 import { perplexitySearchTool } from "./tools/perplexity_search_tool";
+import {
+  textToSpeechTool,
+  speechControlTool,
+  type SpeakTextInput,
+} from "./tools/text_to_speech_tool";
 
 import {
   getChatIdFromConfig,
@@ -139,6 +144,28 @@ const createToolExecutor = (
     },
   });
 
+  toolExecutor.registerTool({
+    name: "text_to_speech",
+    description: "Speaks text out loud using the TTS model configured in Settings.",
+    execute: async (args) => {
+      return textToSpeechTool.invoke(
+        args as SpeakTextInput,
+        config,
+      );
+    },
+  });
+
+  toolExecutor.registerTool({
+    name: "speech_control",
+    description: "Stops current speech playback or shows the configured speech setup.",
+    execute: async (args) => {
+      return speechControlTool.invoke(
+        args as { action: "stop" | "status" },
+        config,
+      );
+    },
+  });
+
   return toolExecutor;
 };
 
@@ -203,6 +230,8 @@ export const callMainAgent = async (
     desktopVisionTool,
     terminalTool,
     perplexitySearchTool,
+    textToSpeechTool,
+    speechControlTool,
   ]);
 
   const toolExecutor = createToolExecutor(

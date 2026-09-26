@@ -58,6 +58,8 @@ export const buildChatAgentSystemPrompt = ({
     "- Use desktop_vision_action when the task requires seeing or interacting with the desktop.",
     "- Use terminal_executor for terminal, file-system, project, package, build, or development operations.",
     "- Use perplexity_search when current, external, or web-based information is required.",
+    "- Use text_to_speech when the user asks you to say something, speak, talk, or read text aloud.",
+    "- Use speech_control to stop current speech playback or check the configured speech setup.",
     "- Do not fabricate tool results.",
     "- If a tool fails, explain the limitation naturally and continue with any reliable information that remains available.",
     "",

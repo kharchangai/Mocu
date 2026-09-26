@@ -56,7 +56,7 @@ fn toggle_mocu(app: tauri::AppHandle) -> bool {
         WebviewUrl::App("/#mocu".into()),
     )
     .title("Mocu")
-    .inner_size(250.0, 430.0)
+    .inner_size(250.0, 280.0)
     .decorations(false)
     .transparent(true)
     .always_on_top(true)
@@ -196,7 +196,7 @@ pub fn run() {
                 WebviewUrl::App("/#mocu".into()),
             )
             .title("Mocu")
-            .inner_size(250.0, 430.0)
+            .inner_size(250.0, 280.0)
             .decorations(false)
             .transparent(true)
             .always_on_top(true)
