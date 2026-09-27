@@ -73,8 +73,18 @@ import {
 
 import {
   finishToolActivities,
+  getLiveAgentAnswer,
+  getPendingToolActivities,
   useToolActivity,
 } from '../hooks/useToolActivity';
+
+import {
+  buildCancelledRunMessage,
+  parseCancelledRunMessage,
+  type CancelledRunData,
+} from '../services/cancelledRun';
+
+import { CancelledRunCard } from './CancelledRunCard';
 import {
   clearMemorySaveStatus,
   useMemorySaveStatus,
@@ -133,6 +143,7 @@ type EnsureChatResult = {
   chatId: string;
   wasCreated: boolean;
 };
+
 
 /*
  * The folder payload ChatInput attaches to a send. ChatBox uses it to
@@ -1162,6 +1173,35 @@ export function ChatBox({
       ),
     ];
 
+    let cancelledRunRecorded = false;
+    const recordCancelledRun = (): void => {
+      if (cancelledRunRecorded) {
+        return;
+      }
+      cancelledRunRecorded = true;
+
+      const cancellationMessage = buildCancelledRunMessage({
+        userPrompt: normalizedText,
+        partialAnswer: getLiveAgentAnswer(requestChatId),
+        activities: getPendingToolActivities(requestChatId),
+      });
+      const langChainMessage = new AIMessage(cancellationMessage);
+      messagesRef.current = [...nextMessages, langChainMessage];
+
+      const assistantMessage = onAppendMessage(
+        requestChatId,
+        'assistant',
+        cancellationMessage,
+      );
+
+      /*
+       * Persist this interrupted turn's tool trace with the cancellation
+       * message. Do not save it to short-term memory: it is not a completed
+       * user/assistant exchange.
+       */
+      toolActivity.commit(requestChatId, assistantMessage.id, true);
+    };
+
     try {
       const agentState = {
         messages: nextMessages,
@@ -1237,6 +1277,7 @@ export function ChatBox({
           );
 
       if (controller.signal.aborted) {
+        recordCancelledRun();
         return;
       }
 
@@ -1316,6 +1357,7 @@ export function ChatBox({
         controller.signal.aborted ||
         isAbortError(error)
       ) {
+        recordCancelledRun();
         return;
       }
 
@@ -1483,6 +1525,41 @@ export function ChatBox({
     }
   };
 
+  /*
+   * Checkpoints written when a run was cancelled. Parsed once per message
+   * list instead of on every render, then used to swap the plain assistant
+   * bubble for the compact cancelled-run card.
+   */
+  const cancelledRunByIndex = useMemo(() => {
+    const byIndex = new Map<number, CancelledRunData>();
+
+    displayMessages.forEach((message, index) => {
+      if (message.role !== 'assistant') {
+        return;
+      }
+
+      const data = parseCancelledRunMessage(message.content);
+      if (data) {
+        byIndex.set(index, data);
+      }
+    });
+
+    return byIndex;
+  }, [displayMessages]);
+
+  /*
+   * Resends the user message that started a cancelled run. The cancelled
+   * checkpoint stays in the history, so the agent resumes with the work it
+   * had already done.
+   */
+  const continueFromUserMessage = (userIndex: number): void => {
+    const target = displayMessages[userIndex];
+
+    if (target?.role === 'user') {
+      void handleSendMessage(target.content);
+    }
+  };
+
   return (
     <section
       className="chat-box"
@@ -1496,6 +1573,17 @@ export function ChatBox({
           <div className="chat-box-messages-inner">
             {displayMessages.map((message, messageIndex) => {
               const thread = chatThreadMarkers.get(message.id);
+              const cancelledRun = cancelledRunByIndex.get(messageIndex);
+              /*
+               * The refresh button belongs to a run that is still waiting to
+               * be resumed: it shows while the cancellation checkpoint is the
+               * last thing in the conversation and disappears as soon as the
+               * agent has answered again.
+               */
+              const cancelledRunFollows =
+                message.role === 'user' &&
+                messageIndex + 1 === displayMessages.length - 1 &&
+                cancelledRunByIndex.has(messageIndex + 1);
               const rowClass = thread
                 ? `chat-thread-row chat-thread-row--${thread.type} chat-thread-row--${thread.position}`
                 : 'chat-thread-row';
@@ -1513,6 +1601,33 @@ export function ChatBox({
                         resourceNames={mentionResourceNames}
                         onEdit={handleEditMessage}
                       />
+                      {cancelledRunFollows ? (
+                        <div className="user-message-continue-row">
+                          <button
+                            type="button"
+                            className="user-message-continue"
+                            onClick={() => continueFromUserMessage(messageIndex)}
+                            disabled={isLoading}
+                            title="Continue this task from where it stopped"
+                          >
+                            <svg
+                              viewBox="0 0 24 24"
+                              width="13"
+                              height="13"
+                              fill="none"
+                              stroke="currentColor"
+                              strokeWidth="1.8"
+                              strokeLinecap="round"
+                              strokeLinejoin="round"
+                              aria-hidden="true"
+                            >
+                              <path d="M20 11a8 8 0 1 0-2.34 5.66" />
+                              <path d="M20 4v7h-7" />
+                            </svg>
+                            <span>Continue task</span>
+                          </button>
+                        </div>
+                      ) : null}
                       <ToolActivityFeed
                         activities={(
                           stepWorkflowMessageMapping.activitiesByMessage.get(message.id) ?? []
@@ -1522,14 +1637,25 @@ export function ChatBox({
                   ) : (
                     <>
                       <ToolActivityFeed activities={toolActivity.getForMessage(message.id)} />
-                      <AssistantMessage
-                        content={message.content}
-                        footer={messageIndex === lastAssistantIndex ? memoryFooter : undefined}
-                        failureDetails={getProjectAgentFailureDetails(message.content)}
-                        onRegenerate={message.content.includes(PROJECT_AGENT_PARTIAL_PROGRESS_MARKER)
-                          ? () => retryFromAssistantMessage(messageIndex)
-                          : undefined}
-                      />
+                      {cancelledRun ? (
+                        <CancelledRunCard
+                          data={cancelledRun}
+                          toolCount={toolActivity
+                            .getForMessage(message.id)
+                            .filter(
+                              (activity) => (activity.kind ?? 'tool') === 'tool',
+                            ).length}
+                        />
+                      ) : (
+                        <AssistantMessage
+                          content={message.content}
+                          footer={messageIndex === lastAssistantIndex ? memoryFooter : undefined}
+                          failureDetails={getProjectAgentFailureDetails(message.content)}
+                          onRegenerate={message.content.includes(PROJECT_AGENT_PARTIAL_PROGRESS_MARKER)
+                            ? () => retryFromAssistantMessage(messageIndex)
+                            : undefined}
+                        />
+                      )}
                     </>
                   )}
                   {thread?.canResume ? (

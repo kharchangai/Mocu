@@ -234,6 +234,8 @@ const TraceToolImpl = ({
             <span className="trace-tool__spinner" />
           ) : activity.status === 'error' ? (
             '✕'
+          ) : activity.status === 'cancelled' ? (
+            '–'
           ) : (
             '✓'
           )}

@@ -46,7 +46,8 @@ function isAgentToolActivity(value: unknown): value is AgentToolActivity {
     typeof activity.tool === 'string' &&
     (activity.status === 'running' ||
       activity.status === 'done' ||
-      activity.status === 'error') &&
+      activity.status === 'error' ||
+      activity.status === 'cancelled') &&
     (activity.args === undefined ||
       (typeof activity.args === 'object' &&
         activity.args !== null))

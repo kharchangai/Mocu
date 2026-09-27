@@ -185,6 +185,10 @@
   color: #171717;
 }
 
+.trace-tool__status--cancelled {
+  color: #888;
+}
+
 .trace-tool__spinner {
   width: 9px;
   height: 9px;

@@ -106,10 +106,11 @@ function upsertActivity(
  */
 function finalizeActivities(
   activities: AgentToolActivity[],
+  runningStatus: 'done' | 'cancelled' = 'done',
 ): AgentToolActivity[] {
   return activities.map((activity) =>
     activity.status === 'running'
-      ? { ...activity, status: 'done' as const }
+      ? { ...activity, status: runningStatus }
       : activity,
   );
 }
@@ -209,9 +210,11 @@ export function beginToolActivityRequest(chatId: string): void {
 export function commitToolActivities(
   chatId: string,
   messageId: string,
+  cancelled = false,
 ): void {
   const activities = finalizeActivities(
     pendingByChat.get(chatId) ?? [],
+    cancelled ? 'cancelled' : 'done',
   );
 
   /*
@@ -274,6 +277,14 @@ export function getPendingToolActivities(
   }
 
   return pendingByChat.get(chatId) ?? EMPTY_ACTIVITIES;
+}
+
+export function getLiveAgentAnswer(chatId: string | null): string {
+  if (!chatId) {
+    return '';
+  }
+
+  return answerByChat.get(chatId) ?? '';
 }
 
 export function getCommittedToolActivitiesForMessage(
@@ -387,8 +398,12 @@ export function useToolActivity(chatId: string | null) {
       setActivityChatId(requestChatId);
       beginToolActivityRequest(requestChatId);
     }, []),
-    commit: useCallback((requestChatId: string, messageId: string) => {
-      commitToolActivities(requestChatId, messageId);
+    commit: useCallback((
+      requestChatId: string,
+      messageId: string,
+      cancelled = false,
+    ) => {
+      commitToolActivities(requestChatId, messageId, cancelled);
     }, []),
     getForMessage,
   };

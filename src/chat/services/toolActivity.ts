@@ -19,7 +19,8 @@
 export type AgentToolActivityStatus =
   | 'running'
   | 'done'
-  | 'error';
+  | 'error'
+  | 'cancelled';
 
 /*
  * What a trace entry is:
