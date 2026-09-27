@@ -186,7 +186,15 @@ import {
 
 export { inferSpecialistGoalFromHistory } from "./specialistCommands";
 
-const MAX_TOOL_STEPS = 5;
+/*
+ * The agent has NO job/step limit: it keeps using tools for as many steps
+ * as the user's request needs and only answers when the work is complete.
+ * The single safety guard below is runaway-loop protection: if the model
+ * repeats the exact same tool calls (same name + same arguments) over and
+ * over without making progress, it is stopped after this many identical
+ * rounds in a row. Normal long jobs are never cut off.
+ */
+const MAX_IDENTICAL_TOOL_ROUNDS = 8;
 const MAX_LLM_RETRIES = 3;
 const LLM_RETRY_DELAY_MS = 500;
 const MAX_PARTIAL_PROGRESS_CHARS = 20_000;
@@ -641,6 +649,13 @@ const buildProjectAgentSystemPrompt = (
 ): string => {
   const promptParts: string[] = [
     "You are Mocu, a helpful AI assistant.",
+    "",
+    "TASK COMPLETION RULES",
+    "- Finish the user's request completely in this run. There is no step limit: keep calling tools for as many steps as the job needs.",
+    "- Never stop after a few steps and promise to continue later. Read, write, edit, run commands, and verify results until the job is actually done.",
+    "- If a tool call fails or returns an error, fix the problem and keep going; do not abandon the task.",
+    "- Reply without more tool calls only when the whole request is complete or genuinely needs no tool work.",
+    "- In your final answer, report what was done and verified, and state honestly if anything remains.",
     "",
     "PROJECT PATH",
     projectPath,
@@ -1427,9 +1442,10 @@ const buildProjectToolLimitPrompt = (
   userRequest: string,
 ): string => {
   return [
-    "Tool limit reached.",
-    "Answer using the available results.",
-    "Mention anything incomplete or unverified.",
+    "The tool loop was stopped because the same tool call kept repeating without progress.",
+    "Finish the request now using the results gathered so far.",
+    "Give a completion report: what is fully done and verified, what is partially done, and exactly what remains.",
+    "Never claim work is complete unless it actually is.",
     "",
     "REQUEST",
     userRequest,
@@ -2200,11 +2216,23 @@ export const callProjectAgent =
     let stepCount =
       0;
 
+    let lastToolRoundSignature:
+      | string
+      | null = null;
+
+    let identicalToolRounds =
+      0;
+
+    let stoppedForStall =
+      false;
+
+    /*
+     * Run until the model stops requesting tools, i.e. until the job is
+     * done. No step cap.
+     */
     while (
       response.tool_calls
-        ?.length &&
-      stepCount <
-        MAX_TOOL_STEPS
+        ?.length
     ) {
       throwIfAborted(
         signal,
@@ -2212,6 +2240,42 @@ export const callProjectAgent =
 
       const currentStepNumber =
         stepCount + 1;
+
+      /*
+       * Runaway protection only: identical tool rounds (same tool names
+       * and arguments) repeated without any progress.
+       */
+      const toolRoundSignature =
+        JSON.stringify(
+          response.tool_calls.map(
+            (toolCall) => [
+              toolCall.name,
+              toolCall.args ?? {},
+            ],
+          ),
+        );
+
+      if (
+        toolRoundSignature ===
+        lastToolRoundSignature
+      ) {
+        identicalToolRounds +=
+          1;
+      } else {
+        lastToolRoundSignature =
+          toolRoundSignature;
+        identicalToolRounds =
+          1;
+      }
+
+      if (
+        identicalToolRounds >
+        MAX_IDENTICAL_TOOL_ROUNDS
+      ) {
+        stoppedForStall =
+          true;
+        break;
+      }
 
       console.log(
         `[Project Agent] Tool call detected at step ${currentStepNumber}:`,
@@ -2274,6 +2338,30 @@ export const callProjectAgent =
               ),
           });
 
+        /*
+         * Nudge the model away from repeating the same call forever:
+         * from the third identical round in a row, every tool result
+         * carries an explicit warning.
+         */
+        if (
+          identicalToolRounds >=
+          3
+        ) {
+          toolMessage.content =
+            [
+              typeof toolMessage.content ===
+              "string"
+                ? toolMessage.content
+                : JSON.stringify(
+                    toolMessage.content,
+                  ),
+              "",
+              "WARNING: You are repeating the exact same tool call with the same arguments. Stop repeating. Use a different approach, or if the work is already complete, give your final answer now.",
+            ].join(
+              "\n",
+            );
+        }
+
         toolMessages.push(
           toolMessage,
         );
@@ -2333,8 +2421,7 @@ export const callProjectAgent =
     if (
       response.tool_calls
         ?.length &&
-      stepCount >=
-        MAX_TOOL_STEPS
+      stoppedForStall
     ) {
       const toolLimitPrompt =
         buildProjectToolLimitPrompt(

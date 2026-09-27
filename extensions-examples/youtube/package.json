@@ -1,0 +1,16 @@
+{
+  "name": "mocu-youtube-transcript",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Mocu extension that retrieves timestamped YouTube subtitles with yt-dlp.",
+  "scripts": {
+    "test": "node --test"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "dependencies": {
+    "@mocu/extension-sdk": "file:./vendor/extension-sdk"
+  }
+}
