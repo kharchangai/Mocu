@@ -1,34 +1,51 @@
 /* src/chat/components/ToolActivityFeed.css */
 
 /* =========================================================
-   Tool activity feed (collapsible tool boxes in chat)
-   Minimal, compact style: tiny status icon, small text.
+   Agent trace: thinking lines + tool rows.
+   Simple, modern, black & white. One line per entry; the
+   arrow opens the full tool log on demand.
    ========================================================= */
 
 .tool-activity-feed {
   display: flex;
   flex-direction: column;
-  gap: 5px;
+  gap: 1px;
   width: min(100%, 640px);
-  padding: 2px 0 8px;
+  padding: 4px 0 12px;
 }
 
-.tool-activity-card {
-  overflow: hidden;
-  border: 1px solid #e5e7eb;
-  border-radius: 9px;
-  background: #fbfcfd;
+/* ---------------- Thinking / note text ---------------- */
+
+.trace-text {
+  display: flex;
+  flex-direction: column;
+  padding: 0 0 1px;
 }
 
-/* ---------------- Header (always visible) ---------------- */
+/* Live streaming state: mark + growing text side by side. */
+.trace-text--running {
+  flex-direction: row;
+  align-items: flex-start;
+  gap: 8px;
+  padding: 3px 6px;
+}
 
-.tool-activity-card__header {
+.trace-text__mark {
+  flex-shrink: 0;
+  color: #c4c4c4;
+  font-size: 10.5px;
+  line-height: 1.7;
+}
+
+/* Finished state: one quiet preview line, click to read it all. */
+.trace-text__row {
   display: flex;
   align-items: center;
-  gap: 7px;
+  gap: 8px;
   width: 100%;
-  padding: 5px 9px;
+  padding: 4px 6px;
   border: none;
+  border-radius: 6px;
   background: transparent;
   cursor: pointer;
   text-align: left;
@@ -36,102 +53,202 @@
   transition: background-color 0.15s ease;
 }
 
-.tool-activity-card__header:hover {
-  background: #f3f4f6;
+.trace-text__row:hover {
+  background: #f5f5f5;
 }
 
-.tool-activity-card__header:focus-visible {
-  outline: 1.5px solid #64748b;
-  outline-offset: -1.5px;
+.trace-text__row:focus-visible {
+  outline: 1px solid #171717;
+  outline-offset: -1px;
 }
 
-/* Tiny status icon: spinner while running, check/cross when done */
-.tool-activity-card__status {
+.trace-text__preview {
+  flex: 1;
+  overflow: hidden;
+  color: #a3a3a3;
+  font-size: 12px;
+  line-height: 1.5;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  text-align: left;
+}
+
+.trace-text--thought .trace-text__preview {
+  font-style: italic;
+}
+
+.trace-text--note .trace-text__preview {
+  color: #737373;
+}
+
+.trace-text__chevron {
+  flex-shrink: 0;
+  margin-left: auto;
+  color: #c4c4c4;
+  font-size: 13px;
+  line-height: 1;
+  transition:
+    transform 0.18s ease,
+    color 0.15s ease;
+}
+
+.trace-text__chevron--open {
+  color: #171717;
+  transform: rotate(90deg);
+}
+
+.trace-text__content {
+  min-width: 0;
+  margin: 0;
+  color: #6b6b6b;
+  font-size: 12.5px;
+  line-height: 1.6;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.trace-text__content--full {
+  padding: 1px 10px 8px 28px;
+}
+
+/*
+ * Thinking: dim gray italic (like pi), clearly different from the
+ * agent's response, which keeps the regular dark text.
+ */
+.trace-text--thought .trace-text__content {
+  color: #a3a3a3;
+  font-style: italic;
+}
+
+/* Blinking caret while the model streams this line. */
+.trace-text--running
+  .trace-text__content::after {
+  content: "▍";
+  margin-left: 1px;
+  color: #8a8a8a;
+  animation: trace-caret 1.05s steps(2) infinite;
+}
+
+/* A ↳ row that is still growing while the model writes. */
+.trace-text--note-streaming
+  .trace-text__preview::after {
+  content: "▍";
+  margin-left: 2px;
+  color: #a3a3a3;
+  animation: trace-caret 1.05s steps(2) infinite;
+}
+
+@keyframes trace-caret {
+  50% {
+    opacity: 0;
+  }
+}
+
+/* ---------------- Tool row ---------------- */
+
+.trace-tool__row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 4px 6px;
+  border: none;
+  border-radius: 6px;
+  background: transparent;
+  cursor: pointer;
+  text-align: left;
+  font-family: inherit;
+  transition: background-color 0.15s ease;
+}
+
+.trace-tool__row:hover {
+  background: #f5f5f5;
+}
+
+.trace-tool__row:focus-visible {
+  outline: 1px solid #171717;
+  outline-offset: -1px;
+}
+
+.trace-tool__status {
   display: flex;
   align-items: center;
   justify-content: center;
   flex-shrink: 0;
   width: 14px;
-  height: 14px;
-  color: var(--tool-accent, #475569);
-  background: transparent;
+  color: #171717;
+  font-size: 9.5px;
+  line-height: 1;
 }
 
-.tool-activity-card__spinner {
-  width: 10px;
-  height: 10px;
-  border: 1.5px solid rgb(71 85 105 / 22%);
-  border-top-color: var(--tool-accent, #475569);
+.trace-tool__status--error {
+  color: #171717;
+}
+
+.trace-tool__spinner {
+  width: 9px;
+  height: 9px;
+  border: 1.5px solid #d4d4d4;
+  border-top-color: #171717;
   border-radius: 50%;
-  animation: tool-activity-spin 0.8s linear infinite;
+  animation: trace-spin 0.8s linear infinite;
 }
 
-@keyframes tool-activity-spin {
+@keyframes trace-spin {
   to {
     transform: rotate(360deg);
   }
 }
 
-.tool-activity-card__status--done {
-  color: #4d8f5a;
-}
-
-.tool-activity-card__status--error {
-  color: #c04c3d;
-}
-
-.tool-activity-card__label {
+.trace-tool__label {
   flex-shrink: 0;
-  color: #374151;
-  font-size: 11.5px;
+  color: #171717;
+  font-size: 12.5px;
   font-weight: 500;
-  line-height: 1.3;
+  line-height: 1.35;
   white-space: nowrap;
 }
 
-.tool-activity-card__preview {
+.trace-tool__preview {
   flex: 1;
   overflow: hidden;
-  color: #9ca3af;
+  color: #a3a3a3;
+  font-family: "JetBrains Mono", ui-monospace,
+    Consolas, "Courier New", monospace;
   font-size: 11px;
-  line-height: 1.3;
+  line-height: 1.35;
   text-overflow: ellipsis;
   white-space: nowrap;
   direction: ltr;
 }
 
-/* Rotating arrow (plain, no box) */
-.tool-activity-card__chevron {
-  display: flex;
-  align-items: center;
-  justify-content: center;
+.trace-tool__chevron {
   flex-shrink: 0;
-  width: 14px;
-  height: 14px;
   margin-left: auto;
-  color: #9b978e;
+  color: #a3a3a3;
+  font-size: 13px;
+  line-height: 1;
   transition:
-    transform 0.2s ease,
+    transform 0.18s ease,
     color 0.15s ease;
 }
 
-.tool-activity-card__chevron--open {
-  color: #475569;
+.trace-tool__chevron--open {
+  color: #171717;
   transform: rotate(90deg);
 }
 
-/* ---------------- Expandable body ---------------- */
+/* ---------------- Expanded tool log ---------------- */
 
-.tool-activity-card__body {
+.trace-tool__details {
   display: flex;
   flex-direction: column;
-  gap: 4px;
-  padding: 7px 9px 9px;
-  border-top: 1px solid #e5e7eb;
-  animation: tool-activity-expand 0.18s ease;
+  gap: 5px;
+  padding: 2px 6px 10px 28px;
+  animation: trace-reveal 0.18s ease;
 }
 
-@keyframes tool-activity-expand {
+@keyframes trace-reveal {
   from {
     opacity: 0;
     transform: translateY(-3px);
@@ -143,28 +260,34 @@
   }
 }
 
-.tool-activity-card__section-title {
-  color: #9ca3af;
-  font-size: 9px;
-  font-weight: 700;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
+.trace-tool__meta {
+  color: #a3a3a3;
+  font-family: "JetBrains Mono", ui-monospace,
+    Consolas, "Courier New", monospace;
+  font-size: 10.5px;
+  line-height: 1.4;
 }
 
-.tool-activity-card__code {
-  max-height: 180px;
+.trace-tool__pre {
+  max-height: 220px;
   margin: 0;
-  padding: 7px 9px;
+  padding: 8px 10px;
   overflow: auto;
-  border-radius: 6px;
-  color: #374151;
-  background: #f3f4f6;
-  font-family: "JetBrains Mono", Consolas, "Courier New", monospace;
+  border: 1px solid #ececec;
+  border-radius: 8px;
+  color: #404040;
+  background: #fafafa;
+  font-family: "JetBrains Mono", ui-monospace,
+    Consolas, "Courier New", monospace;
   font-size: 11px;
-  line-height: 1.5;
+  line-height: 1.55;
   white-space: pre-wrap;
   word-break: break-word;
-  direction: ltr;
   text-align: left;
+  direction: ltr;
   box-sizing: border-box;
+}
+
+.trace-tool__pre--output {
+  background: #f5f5f5;
 }

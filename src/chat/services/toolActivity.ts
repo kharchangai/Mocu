@@ -21,6 +21,19 @@ export type AgentToolActivityStatus =
   | 'done'
   | 'error';
 
+/*
+ * What a trace entry is:
+ *   - 'tool'    a tool call (the classic collapsible row)
+ *   - 'thought' the model's reasoning, streamed live while it works
+ *   - 'note'    text the model wrote before running tools (kept in the
+ *               trace so the interleaving think -> tool -> answer stays
+ *               visible in order)
+ */
+export type AgentToolActivityKind =
+  | 'tool'
+  | 'thought'
+  | 'note';
+
 export type AgentToolActivity = {
   /*
    * Unique per tool call (the LangChain tool_call_id), so follow-up
@@ -29,6 +42,19 @@ export type AgentToolActivity = {
   id: string;
 
   tool: string;
+
+  /*
+   * Defaults to 'tool' so every activity recorded before this field
+   * existed keeps rendering as a tool row.
+   */
+  kind?: AgentToolActivityKind;
+
+  /*
+   * Thought / note text. Always the FULL text accumulated so far (never
+   * a delta), so follow-up events replace the previous text wholesale
+   * and the persisted copy is never partial.
+   */
+  text?: string;
 
   /*
    * Omitted on progress updates so the original input recorded by the
@@ -145,6 +171,36 @@ export const dispatchAgentToolActivity = (
  * in `configurable` next to the LangGraph thread id, so every agent node
  * can scope its activity events to one conversation.
  */
+/*
+ * Live answer channel.
+ *
+ * While a model call streams, its text is dispatched here so the chat
+ * can show the answer growing in place (instead of revealing it only
+ * after the whole turn). The full accumulated text is sent each time,
+ * scoped to the chat the run belongs to.
+ */
+export type AgentAnswerDelta = {
+  chatId?: string;
+  text: string;
+};
+
+export const dispatchAgentAnswerDelta = (
+  delta: AgentAnswerDelta,
+): void => {
+  if (typeof window === 'undefined') {
+    return;
+  }
+
+  window.dispatchEvent(
+    new CustomEvent<AgentAnswerDelta>(
+      'mocu_agent_answer',
+      {
+        detail: delta,
+      },
+    ),
+  );
+};
+
 export const getChatIdFromConfig = (
   config?: {
     configurable?: Record<string, unknown>;

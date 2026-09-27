@@ -70,12 +70,37 @@ export function isReplacementRange(edit: LineEdit): boolean {
 }
 
 /**
- * Splits replacement text into lines. An empty replacement becomes an
- * empty array so it deletes lines; every other value keeps its newlines
- * verbatim (e.g. "x\n" replaces with one text line plus one empty line).
+ * Splits replacement text into lines.
+ *
+ * - "" (empty text) becomes an empty array, so it deletes the range.
+ * - A trailing newline is treated as a line terminator, NOT as an extra
+ *   blank line: "x\n" replaces with one line "x", and a lone "\n" blanks
+ *   exactly one line. ("x\n\n" therefore replaces with "x" plus a blank.)
  */
 export function replacementLines(text: string): string[] {
-  return text === "" ? [] : splitLines(text);
+  if (text === "") {
+    return [];
+  }
+
+  const lines = normalizeContent(text).split("\n");
+
+  if (lines.length > 1 && lines[lines.length - 1] === "") {
+    lines.pop();
+  }
+
+  return lines;
+}
+
+/**
+ * Net line-count change of one edit: inserted lines minus removed lines
+ * (0 for a pure insertion).
+ */
+export function editLineDelta(edit: LineEdit): number {
+  const removed = isReplacementRange(edit)
+    ? edit.endLine - edit.startLine + 1
+    : 0;
+
+  return replacementLines(edit.text).length - removed;
 }
 
 /**

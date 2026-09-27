@@ -26,6 +26,7 @@ const MAX_STORED_MESSAGES = 40;
 const MAX_RESULT_LENGTH = 6000;
 const MAX_INPUT_JSON_LENGTH = 2000;
 const MAX_STREAM_LOG_LENGTH = 20_000;
+const MAX_TEXT_LENGTH = 8000;
 
 function clampText(value: string, maxLength: number): string {
   return value.length > maxLength
@@ -93,9 +94,17 @@ export function loadToolActivities(): Record<
       }
 
       const validActivities =
-        messageActivities.filter(
-          isAgentToolActivity,
-        );
+        messageActivities
+          .filter(isAgentToolActivity)
+          /*
+           * Entries persisted while still running (app closed mid-turn)
+           * must not render as eternal spinners after a restart.
+           */
+          .map((activity) =>
+            activity.status === 'running'
+              ? { ...activity, status: 'done' as const }
+              : activity,
+          );
 
       if (validActivities.length > 0) {
         activitiesByMessage[messageId] =
@@ -145,6 +154,13 @@ export function saveToolActivities(
         messageActivities.map(
           (activity) => ({
             ...activity,
+
+            text: activity.text
+              ? clampText(
+                  activity.text,
+                  MAX_TEXT_LENGTH,
+                )
+              : activity.text,
 
             result: activity.result
               ? clampText(

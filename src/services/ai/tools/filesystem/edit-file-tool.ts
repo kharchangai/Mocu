@@ -8,6 +8,7 @@
  *   - replace line 7:          { startLine: 7,  endLine: 7,  text: "new text" }
  *   - replace lines 10-14:     { startLine: 10, endLine: 14, text: "..." }
  *   - delete lines 3-5:        { startLine: 3,  endLine: 5,  text: "" }
+ *   - blank line 7:            { startLine: 7,  endLine: 7,  text: "\n" }
  *   - insert before line 20:   { startLine: 20, endLine: 19, text: "..." }
  *
  * All line numbers refer to the file as returned by read_file (1-based,
@@ -19,8 +20,11 @@ import { z } from "zod";
 
 import {
   applyLineEdits,
+  editLineDelta,
   formatNumberedLines,
+  isReplacementRange,
   joinLines,
+  replacementLines,
   splitLines,
   type LineEdit,
 } from "./line-utils";
@@ -59,7 +63,8 @@ export const lineEditInputSchema = z.object({
     .string()
     .describe(
       "Replacement text for the range. Use '' to delete the lines. " +
-        "Use '\\n' for new lines.",
+        "Use '\\n' for new lines; a trailing newline is a line terminator, " +
+        "not an extra blank line (a lone '\\n' blanks exactly one line).",
     ),
 });
 
@@ -85,16 +90,24 @@ export type LineEditInput = z.infer<typeof lineEditInputSchema>;
 
 /**
  * Builds the before/after context preview for one applied edit.
+ *
+ * `deltaBefore` is the net line-count change caused by edits that sit
+ * ABOVE this one (smaller line numbers). It shifts the "after" window so
+ * the preview always shows the region of the edited file where this
+ * edit's change actually landed — without it, edits earlier in the call
+ * would slide the "after" content and show unrelated lines.
+ * Exported for tests.
  */
-function formatEditPreview(
+export function formatEditPreview(
   before: string[],
   after: string[],
   edit: LineEdit,
+  deltaBefore = 0,
 ): string {
-  const wasInsertion = edit.endLine < edit.startLine;
+  const wasInsertion = !isReplacementRange(edit);
   const removedCount = wasInsertion ? 0 : edit.endLine - edit.startLine + 1;
-  const insertedCount =
-    edit.text === "" ? 0 : splitLines(edit.text).length;
+  const insertedCount = replacementLines(edit.text).length;
+  const delta = insertedCount - removedCount;
 
   const beforeStart = Math.max(0, edit.startLine - 1 - CONTEXT_LINES);
   const beforeEnd = Math.min(
@@ -102,13 +115,27 @@ function formatEditPreview(
     (wasInsertion ? edit.startLine - 1 : edit.endLine) + CONTEXT_LINES,
   );
 
-  const afterStart = beforeStart;
-  const afterEnd = Math.min(after.length, afterStart + (beforeEnd - beforeStart) + (insertedCount - removedCount));
+  // The same logical region in the fully-edited file: shifted by the
+  // line-count changes of edits above this one and by this edit's own
+  // delta, so the change itself is always inside the window.
+  const afterStart = Math.min(
+    Math.max(0, beforeStart + deltaBefore),
+    after.length,
+  );
+  const afterEnd = Math.min(
+    Math.max(afterStart, beforeEnd + deltaBefore + delta),
+    after.length,
+  );
+
+  const shiftNote =
+    deltaBefore === 0
+      ? ""
+      : ` -> now at line ${edit.startLine + deltaBefore}`;
 
   return [
     `--- ${removedCount === 0 ? "inserted before" : "replaced"} line ${edit.startLine}` +
       (removedCount > 1 ? `-${edit.endLine}` : "") +
-      ` (${removedCount} line(s) removed, ${insertedCount} inserted)`,
+      ` (${removedCount} line(s) removed, ${insertedCount} inserted)${shiftNote}`,
     formatNumberedLines(before.slice(beforeStart, beforeEnd), beforeStart + 1),
     "+++ after",
     formatNumberedLines(after.slice(afterStart, afterEnd), afterStart + 1),
@@ -137,9 +164,18 @@ export const editFileTool = tool(
 
       await writeText(filePath, joinLines(after));
 
-      const previews = parsed.map((edit) =>
-        formatEditPreview(before, after, edit),
+      // Preview in ascending line order, tracking how many lines earlier
+      // edits added or removed so each "after" window lands on the exact
+      // lines of the edited file where the change ended up.
+      const ordered = [...parsed].sort(
+        (a, b) => a.startLine - b.startLine || a.endLine - b.endLine,
       );
+      let deltaBefore = 0;
+      const previews = ordered.map((edit) => {
+        const preview = formatEditPreview(before, after, edit, deltaBefore);
+        deltaBefore += editLineDelta(edit);
+        return preview;
+      });
 
       return [
         `Edited file: ${filePath}`,

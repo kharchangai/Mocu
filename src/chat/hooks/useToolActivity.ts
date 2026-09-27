@@ -16,7 +16,10 @@
 
 import { useCallback, useEffect, useMemo, useState, useSyncExternalStore } from 'react';
 
-import type { AgentToolActivity } from '../services/toolActivity';
+import type {
+  AgentAnswerDelta,
+  AgentToolActivity,
+} from '../services/toolActivity';
 import { resolveActivityChatId } from '../services/toolActivity';
 
 import {
@@ -97,6 +100,20 @@ function upsertActivity(
   );
 }
 
+/*
+ * A request that ended must never leave a card spinning: fold still
+ * 'running' entries into 'done' (no more updates will come for them).
+ */
+function finalizeActivities(
+  activities: AgentToolActivity[],
+): AgentToolActivity[] {
+  return activities.map((activity) =>
+    activity.status === 'running'
+      ? { ...activity, status: 'done' as const }
+      : activity,
+  );
+}
+
 function handleActivityEvent(event: Event): void {
   const activity = (event as CustomEvent<AgentToolActivity>).detail;
 
@@ -120,8 +137,56 @@ function handleActivityEvent(event: Event): void {
   notifyPending(chatId);
 }
 
+/*
+ * Live answer preview per chat: the text the model is streaming right
+ * now (the full accumulated text of the current model call, or '' /
+ * missing when there is nothing to preview).
+ */
+const answerByChat = new Map<string, string>();
+
+const answerListeners = new Set<() => void>();
+
+function notifyAnswer(): void {
+  for (const listener of answerListeners) {
+    listener();
+  }
+}
+
+function setLiveAnswer(
+  chatId: string,
+  text: string,
+): void {
+  if (answerByChat.get(chatId) === text) {
+    return;
+  }
+
+  answerByChat.set(chatId, text);
+
+  notifyAnswer();
+}
+
+function handleAnswerEvent(event: Event): void {
+  const delta = (event as CustomEvent<AgentAnswerDelta>)
+    .detail;
+
+  const chatId = delta?.chatId?.trim();
+
+  if (!chatId) {
+    return;
+  }
+
+  setLiveAnswer(chatId, delta.text ?? '');
+}
+
 if (typeof window !== 'undefined') {
-  window.addEventListener('mocu_tool_activity', handleActivityEvent);
+  window.addEventListener(
+    'mocu_tool_activity',
+    handleActivityEvent,
+  );
+  window.addEventListener(
+    'mocu_agent_answer',
+    handleAnswerEvent,
+  );
 }
 
 /*
@@ -130,6 +195,8 @@ if (typeof window !== 'undefined') {
  */
 export function beginToolActivityRequest(chatId: string): void {
   pendingByChat.set(chatId, []);
+
+  setLiveAnswer(chatId, '');
 
   notifyPending(chatId);
 }
@@ -143,7 +210,14 @@ export function commitToolActivities(
   chatId: string,
   messageId: string,
 ): void {
-  const activities = pendingByChat.get(chatId) ?? [];
+  const activities = finalizeActivities(
+    pendingByChat.get(chatId) ?? [],
+  );
+
+  /*
+   * The real answer message replaces the streamed preview.
+   */
+  setLiveAnswer(chatId, '');
 
   if (activities.length === 0) {
     return;
@@ -164,6 +238,30 @@ export function commitToolActivities(
   saveToolActivities(committedActivities);
 
   notifyCommitted();
+}
+
+/*
+ * Ends a chat's current request WITHOUT committing: the entries stay
+ * visible (e.g. after Stop or a failure) but stop spinning. A normal
+ * finish commits them to the response message instead.
+ */
+export function finishToolActivities(chatId: string): void {
+  const activities = pendingByChat.get(chatId) ?? [];
+
+  if (
+    !activities.some(
+      (activity) => activity.status === 'running',
+    )
+  ) {
+    return;
+  }
+
+  pendingByChat.set(
+    chatId,
+    finalizeActivities(activities),
+  );
+
+  notifyPending(chatId);
 }
 
 const EMPTY_ACTIVITIES: AgentToolActivity[] = [];
@@ -216,6 +314,16 @@ function subscribeToCommitted(
   };
 }
 
+function subscribeToAnswer(
+  listener: () => void,
+): () => void {
+  answerListeners.add(listener);
+
+  return () => {
+    answerListeners.delete(listener);
+  };
+}
+
 /*
  * React binding for one chat view. Returns that chat's pending
  * activities plus a stable reader for committed activities; re-renders
@@ -263,8 +371,18 @@ export function useToolActivity(chatId: string | null) {
     [],
   );
 
+  /*
+   * The text the model is streaming right now for this chat, rendered
+   * as the answer preview below the trace.
+   */
+  const liveAnswer = useSyncExternalStore(
+    subscribeToAnswer,
+    () => answerByChat.get(activityChatId ?? '') ?? '',
+  );
+
   return {
     pendingActivities,
+    liveAnswer,
     beginRequest: useCallback((requestChatId: string) => {
       setActivityChatId(requestChatId);
       beginToolActivityRequest(requestChatId);

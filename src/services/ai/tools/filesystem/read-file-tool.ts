@@ -116,7 +116,9 @@ export const readFileTool = tool(
 
       const header = [
         `File: ${filePath}`,
-        `Lines: ${totalLines} total, showing ${shownFrom}-${shownTo}`,
+        `Lines: ${totalLines} total, showing ${
+          shownFrom > shownTo ? "none (offset is past the end)" : `${shownFrom}-${shownTo}`
+        }`,
       ].join("\n");
 
       const footer =

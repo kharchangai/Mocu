@@ -1,21 +1,13 @@
 // src/chat/components/ChatStatusBubble.tsx
 //
-// In-chat companion to the floating StatusBubble.
-// While the agent is processing a request it shows the same animated,
-// color-coded status capsule next to a human-readable label, so the
-// user always knows what the agent is doing (thinking, searching the
-// web, running a terminal command, ...).
+// In-chat status line shown while the agent works.
 //
-// It listens to the same "mocu_activity" custom events that the
-// widget bubble listens to, so both stay in sync automatically.
+// Deliberately minimal — black & white, one line: a small pulsing dot
+// and the current activity ("Thinking…", "Running a terminal
+// command…"). It listens to the same "mocu_activity" custom events as
+// the floating avatar bubble, so both stay in sync automatically.
 
 import { useEffect, useState } from 'react';
-import { motion, AnimatePresence } from 'framer-motion';
-
-import {
-  AgentStatusIcon,
-  getStatusAccent,
-} from '../../components/AgentStatusVisuals';
 
 // Friendly, human-readable label per status/tool.
 const STATUS_LABELS: Record<string, string> = {
@@ -72,52 +64,21 @@ export function ChatStatusBubble({
     return null;
   }
 
-  const status = activeActivity || 'thinking';
-  const accent = getStatusAccent(status);
-
-  const label =
-    status === 'thinking'
-      ? `${agentName} is thinking…`
-      : STATUS_LABELS[status] ?? `${prettifyStatus(status)}…`;
+  const label = activeActivity
+    ? STATUS_LABELS[activeActivity] ?? `${prettifyStatus(activeActivity)}…`
+    : `${agentName} is thinking…`;
 
   return (
     <div
-      className="chat-status-bubble"
+      className="chat-status-line"
       role="status"
       aria-label={label}
     >
-      <AnimatePresence mode="wait">
-        <motion.div
-          key={status}
-          initial={{ opacity: 0, y: 10, scale: 0.9 }}
-          animate={{ opacity: 1, y: 0, scale: 1 }}
-          exit={{ opacity: 0, y: 6, scale: 0.92 }}
-          transition={{ type: 'spring', stiffness: 320, damping: 24 }}
-          className="chat-status-bubble-body"
-        >
-          {/* Progress capsule, visually identical to the widget bubble */}
-          <div className="chat-status-bubble-capsule">
-            {/* Rotating conic gradient acting as a living border */}
-            <motion.div
-              className="absolute inset-0"
-              animate={{ rotate: 360 }}
-              transition={{ repeat: Infinity, duration: 3.5, ease: 'linear' }}
-              style={{
-                background: `conic-gradient(from 0deg, transparent 0%, ${accent} 30%, transparent 55%)`,
-              }}
-            />
-
-            {/* Inner frosted glass body */}
-            <div className="chat-status-bubble-glass">
-              <div className="relative z-10">
-                <AgentStatusIcon state={status} />
-              </div>
-            </div>
-          </div>
-
-          <span className="chat-status-bubble-label">{label}</span>
-        </motion.div>
-      </AnimatePresence>
+      <span
+        className="chat-status-line__dot"
+        aria-hidden="true"
+      />
+      <span className="chat-status-line__label">{label}</span>
     </div>
   );
 }

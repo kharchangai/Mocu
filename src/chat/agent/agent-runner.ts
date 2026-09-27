@@ -22,6 +22,8 @@ import {
   getToolResultText,
 } from '../../services/ai/agent/helpers';
 import { dispatchAgentToolActivity, getChatIdFromConfig } from '../services/toolActivity';
+import { createAgentModelTrace } from '../services/agentTrace';
+import { streamChatModelWithTrace } from '../../services/ai/model-stream';
 import { isAbortError, throwIfAborted } from '../../services/ai/agent/abort';
 import { ToolExecutor } from '../../services/ai/agent/tool-executor';
 import { terminalExecutionTool } from '../../services/ai/tools/terminal_execution_tool';
@@ -241,7 +243,24 @@ async function runAgentNode(
     new SystemMessage(systemPrompt),
     new HumanMessage(input.userMessage.trim()),
   ];
-  let response = await llmWithTools.invoke(messages, runnableConfig);
+  const initialModelTrace = createAgentModelTrace(
+    getChatIdFromConfig(runnableConfig),
+  );
+
+  let response = await streamChatModelWithTrace({
+    model: llmWithTools,
+    messages,
+    config: runnableConfig,
+    handlers: {
+      onStart: initialModelTrace.begin,
+      onThinking: initialModelTrace.onThinking,
+      onText: initialModelTrace.onText,
+    },
+  });
+
+  initialModelTrace.finish({
+    hasToolCalls: Boolean(response.tool_calls?.length),
+  });
   const toolResults: string[] = [];
   let step = 0;
 
@@ -306,7 +325,26 @@ async function runAgentNode(
     }
 
     messages = [...messages, response, ...toolMessages];
-    response = await llmWithTools.invoke(messages, runnableConfig);
+
+    const stepModelTrace = createAgentModelTrace(
+      getChatIdFromConfig(runnableConfig),
+    );
+
+    response = await streamChatModelWithTrace({
+      model: llmWithTools,
+      messages,
+      config: runnableConfig,
+      handlers: {
+        onStart: stepModelTrace.begin,
+        onThinking: stepModelTrace.onThinking,
+        onText: stepModelTrace.onText,
+      },
+    });
+
+    stepModelTrace.finish({
+      hasToolCalls: Boolean(response.tool_calls?.length),
+    });
+
     step += 1;
   }
 
@@ -314,15 +352,30 @@ async function runAgentNode(
     const finalLlm = input.agent.llm
       ? await getAsyncLLMByModel(input.agent.llm)
       : await getAsyncLLM('expensive');
-    response = await finalLlm.invoke(
-      [
+    const finalTrace = createAgentModelTrace(
+      getChatIdFromConfig(runnableConfig),
+      { mode: 'answer' },
+    );
+
+    response = await streamChatModelWithTrace({
+      model: finalLlm,
+      messages: [
         new SystemMessage(systemPrompt),
         new HumanMessage(
           `${input.userMessage.trim()}\n\nTOOL RESULTS\n${toolResults.join('\n\n')}\n\nGive the final answer for the user.`,
         ),
       ],
-      runnableConfig,
-    );
+      config: runnableConfig,
+      handlers: {
+        onStart: finalTrace.begin,
+        onThinking: finalTrace.onThinking,
+        onText: finalTrace.onText,
+      },
+    });
+
+    finalTrace.finish({
+      hasToolCalls: false,
+    });
   }
 
   throwIfAborted(signal);

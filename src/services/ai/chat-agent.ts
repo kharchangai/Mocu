@@ -29,6 +29,14 @@ import {
 } from "../../chat/services/toolActivity";
 
 import {
+  createAgentModelTrace,
+} from "../../chat/services/agentTrace";
+
+import {
+  streamChatModelWithTrace,
+} from "../ai/model-stream";
+
+import {
   getPreviousConversationTurn,
   retrieveUserMemoryPrompt,
   saveUserMemoryInBackground,
@@ -152,6 +160,11 @@ import {
   runFocusTurn,
   startFocusFromRequest,
 } from "./focus/focusManager";
+import {
+  hasActiveStepWorkflow,
+  runStepWorkflowTurn,
+} from "./stepbystep/workflowManager";
+import { runSpecialistSlashCommand } from "./specialistCommands";
 
 const MAX_TOOL_STEPS = 5;
 const OPTIONAL_CONTEXT_TIMEOUT_MS = 10_000;
@@ -1397,6 +1410,16 @@ export const callChatAgent =
     );
 
     const focusChatId = getChatIdFromConfig(runnableConfig) || "default";
+    const specialistResponse = await runSpecialistSlashCommand({
+      chatId: focusChatId,
+      userText: rawUserText,
+      historyMessages: state.messages.slice(0, -1),
+      config: runnableConfig,
+    });
+    if (specialistResponse) {
+      return { messages: [specialistResponse] };
+    }
+
     if (await hasActiveFocusSession(focusChatId)) {
       const focusResponse = await runFocusTurn(
         focusChatId,
@@ -1404,6 +1427,15 @@ export const callChatAgent =
         runnableConfig,
       );
       return { messages: [focusResponse] };
+    }
+
+    if (await hasActiveStepWorkflow(focusChatId)) {
+      const workflowResponse = await runStepWorkflowTurn(
+        focusChatId,
+        rawUserText,
+        runnableConfig,
+      );
+      return { messages: [workflowResponse] };
     }
 
     const requestedFocusGoal = parseFocusStartGoal(rawUserText);
@@ -1765,12 +1797,39 @@ export const callChatAgent =
         ...chatMessages,
       ];
 
+    /*
+     * Streamed, so the user sees the model think and write live while
+     * the turn runs — the trace feeds the chat with both.
+     */
+    const initialModelTrace = createAgentModelTrace(
+      getChatIdFromConfig(runnableConfig),
+    );
+
     let response =
       await invokeChatModel(
-        (config) => llmWithTools.invoke(messagesToRun, config),
+        (config) =>
+          streamChatModelWithTrace({
+            model: llmWithTools,
+            messages: messagesToRun,
+            config,
+            handlers: {
+              onStart:
+                initialModelTrace.begin,
+              onThinking:
+                initialModelTrace.onThinking,
+              onText:
+                initialModelTrace.onText,
+            },
+          }),
         runnableConfig,
         "initial response",
       );
+
+    initialModelTrace.finish({
+      hasToolCalls: Boolean(
+        response.tool_calls?.length,
+      ),
+    });
 
     throwIfAborted(
       signal,
@@ -1875,12 +1934,35 @@ export const callChatAgent =
         ...toolMessages,
       ];
 
+      const stepModelTrace = createAgentModelTrace(
+        getChatIdFromConfig(runnableConfig),
+      );
+
       response =
         await invokeChatModel(
-          (config) => llmWithTools.invoke(messagesToRun, config),
+          (config) =>
+            streamChatModelWithTrace({
+              model: llmWithTools,
+              messages: messagesToRun,
+              config,
+              handlers: {
+                onStart:
+                  stepModelTrace.begin,
+                onThinking:
+                  stepModelTrace.onThinking,
+                onText:
+                  stepModelTrace.onText,
+              },
+            }),
           runnableConfig,
           `response after tool step ${currentStepNumber}`,
         );
+
+      stepModelTrace.finish({
+        hasToolCalls: Boolean(
+          response.tool_calls?.length,
+        ),
+      });
 
       throwIfAborted(
         signal,
@@ -1913,11 +1995,17 @@ export const callChatAgent =
         signal,
       );
 
+      const toolLimitTrace = createAgentModelTrace(
+        getChatIdFromConfig(runnableConfig),
+        { convertToAnswer: false },
+      );
+
       response =
         await invokeChatModel(
           (config) =>
-            plainLlm.invoke(
-              [
+            streamChatModelWithTrace({
+              model: plainLlm,
+              messages: [
                 ...messagesToRun,
                 response,
                 new HumanMessage(
@@ -1925,10 +2013,22 @@ export const callChatAgent =
                 ),
               ],
               config,
-            ),
+              handlers: {
+                onStart:
+                  toolLimitTrace.begin,
+                onThinking:
+                  toolLimitTrace.onThinking,
+                onText:
+                  toolLimitTrace.onText,
+              },
+            }),
           runnableConfig,
           "tool-limit response",
         );
+
+      toolLimitTrace.finish({
+        hasToolCalls: false,
+      });
 
       throwIfAborted(
         signal,
@@ -1972,12 +2072,34 @@ export const callChatAgent =
         signal,
       );
 
+      const finalTrace = createAgentModelTrace(
+        getChatIdFromConfig(runnableConfig),
+        { mode: "answer" },
+      );
+
       const finalResponse =
         await invokeChatModel(
-          (config) => plainLlm.invoke(cleanMessages, config),
+          (config) =>
+            streamChatModelWithTrace({
+              model: plainLlm,
+              messages: cleanMessages,
+              config,
+              handlers: {
+                onStart:
+                  finalTrace.begin,
+                onThinking:
+                  finalTrace.onThinking,
+                onText:
+                  finalTrace.onText,
+              },
+            }),
           runnableConfig,
           "final response after tools",
         );
+
+      finalTrace.finish({
+        hasToolCalls: false,
+      });
 
       throwIfAborted(
         signal,

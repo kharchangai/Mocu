@@ -3,12 +3,15 @@ import { describe, expect, it } from "vitest";
 import {
   applyLineEdit,
   applyLineEdits,
+  editLineDelta,
   formatNumberedLines,
   joinLines,
+  replacementLines,
   splitLines,
   validateLineEdit,
 } from "./line-utils";
 import { renderNumberedWindow } from "./read-file-tool";
+import { formatEditPreview } from "./edit-file-tool";
 import {
   compilePattern,
   deriveKeywordPattern,
@@ -109,6 +112,74 @@ describe("line-utils", () => {
     expect(() =>
       validateLineEdit({ startLine: 3, endLine: 1, text: "x" }, 5),
     ).toThrow(/Invalid line range/);
+  });
+});
+
+describe("replacement text lines", () => {
+  it("treats a trailing newline as a line terminator, not a blank line", () => {
+    expect(replacementLines("x")).toEqual(["x"]);
+    expect(replacementLines("x\n")).toEqual(["x"]);
+    expect(replacementLines("a\nb\n")).toEqual(["a", "b"]);
+    expect(replacementLines("x\n\n")).toEqual(["x", ""]);
+  });
+
+  it("blanks one line with a lone newline and deletes with empty text", () => {
+    expect(replacementLines("\n")).toEqual([""]);
+    expect(replacementLines("")).toEqual([]);
+
+    // Regression: text ending in "\n" used to inject a phantom blank line
+    // and shift every following line.
+    expect(
+      applyLineEdits(["1", "2", "3"], [
+        { startLine: 2, endLine: 2, text: "B\n" },
+      ]),
+    ).toEqual(["1", "B", "3"]);
+
+    expect(
+      applyLineEdits(["1", "2", "3"], [
+        { startLine: 2, endLine: 2, text: "\n" },
+      ]),
+    ).toEqual(["1", "", "3"]);
+  });
+
+  it("reports the net line-count delta of an edit", () => {
+    expect(editLineDelta({ startLine: 2, endLine: 2, text: "X\nY" })).toBe(1);
+    expect(editLineDelta({ startLine: 2, endLine: 4, text: "" })).toBe(-3);
+    expect(editLineDelta({ startLine: 3, endLine: 2, text: "a\nb" })).toBe(2);
+    expect(editLineDelta({ startLine: 3, endLine: 2, text: "" })).toBe(0);
+  });
+});
+
+describe("formatEditPreview", () => {
+  const before = splitLines("1\n2\n3\n4\n5\n6\n7\n8\n9\n10");
+
+  it("keeps the after window aligned when earlier edits shift lines", () => {
+    const edits = [
+      { startLine: 2, endLine: 2, text: "X\nY" },
+      { startLine: 8, endLine: 8, text: "B" },
+    ];
+    const after = applyLineEdits(before, edits);
+
+    // Regression: the "after" window was built from before-file offsets,
+    // so it showed the wrong lines once an earlier edit shifted counts.
+    const preview = formatEditPreview(before, after, edits[1], 1);
+    expect(preview).toContain("   8 | 7");
+    expect(preview).toContain("   9 | B");
+    expect(preview).toContain("-> now at line 9");
+  });
+
+  it("keeps the change visible when earlier edits insert many lines", () => {
+    const edits = [
+      { startLine: 2, endLine: 1, text: "i1\ni2\ni3\ni4\ni5" },
+      { startLine: 8, endLine: 8, text: "B" },
+    ];
+    const after = applyLineEdits(before, edits);
+
+    // Regression: with a shift >= the context size the edited line was
+    // completely outside the "after" window.
+    const preview = formatEditPreview(before, after, edits[1], 5);
+    expect(preview).toContain("  13 | B");
+    expect(preview).toContain("-> now at line 13");
   });
 });
 

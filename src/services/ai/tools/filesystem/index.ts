@@ -22,6 +22,7 @@ export {
 export {
   editFileTool,
   editFileInputSchema,
+  formatEditPreview,
   type EditFileInput,
   type LineEditInput,
 } from "./edit-file-tool";
@@ -48,6 +49,8 @@ export {
   joinLines,
   applyLineEdits,
   validateLineEdit,
+  replacementLines,
+  editLineDelta,
   type LineEdit,
 } from "./line-utils";
 
