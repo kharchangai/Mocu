@@ -5,7 +5,9 @@ import {
   useMemo,
   useRef,
   useState,
+  type UIEvent,
 } from 'react';
+import { Eye, EyeOff, List } from 'lucide-react';
 
 import {
   AIMessage,
@@ -202,6 +204,68 @@ type WorkflowMessageMapping = {
   activitiesByMessage: Map<string, AgentToolActivity[]>;
   threadMarkers: Map<string, ChatThreadMarker>;
 };
+
+type ThreadSectionNavigationItem = {
+  key: string;
+  type: 'step' | 'focus';
+  sessionId: string;
+  sectionNumber: number;
+  title: string;
+  subtitle: string;
+  firstIndex: number | null;
+  canResume: boolean;
+};
+
+function getThreadSectionKey(
+  type: 'step' | 'focus',
+  sessionId: string,
+  sectionNumber: number,
+): string {
+  return `${type}:${sessionId}:${sectionNumber}`;
+}
+
+function getThreadGroupKey(type: 'step' | 'focus', sessionId: string): string {
+  return `${type}:${sessionId}`;
+}
+
+function getThreadGroupKeyFromSectionKey(sectionKey: string): string {
+  return sectionKey.slice(0, sectionKey.lastIndexOf(':'));
+}
+
+function getThreadGroupKeyFromMarker(marker: ChatThreadMarker): string {
+  return getThreadGroupKey(marker.type, marker.sessionId);
+}
+
+function getThreadSectionElementId(key: string): string {
+  return `chat-thread-${encodeURIComponent(key)}`;
+}
+
+function getThreadViewStorageKey(chatId: string): string {
+  return `mocu-chat-thread-view:${chatId}`;
+}
+
+function readSavedThreadKey(chatId: string | null): string | null {
+  if (!chatId) return null;
+  try {
+    return window.localStorage.getItem(getThreadViewStorageKey(chatId));
+  } catch {
+    return null;
+  }
+}
+
+function saveThreadView(chatId: string | null, threadKey: string | null): void {
+  if (!chatId) return;
+  try {
+    const storageKey = getThreadViewStorageKey(chatId);
+    if (threadKey) {
+      window.localStorage.setItem(storageKey, threadKey);
+    } else {
+      window.localStorage.removeItem(storageKey);
+    }
+  } catch {
+    // Chat view preferences are best-effort when browser storage is unavailable.
+  }
+}
 
 function workflowLogData(entry: WorkflowLogEntry): Record<string, unknown> {
   try {
@@ -609,9 +673,30 @@ export function ChatBox({
   const [draftMessage, setDraftMessage] = useState('');
   const [resumableWorkflows, setResumableWorkflows] = useState<StepWorkflowOverview[]>([]);
   const [resumableFocuses, setResumableFocuses] = useState<FocusOverview[]>([]);
+  const [allWorkflows, setAllWorkflows] = useState<StepWorkflowOverview[]>([]);
+  const [allFocuses, setAllFocuses] = useState<FocusOverview[]>([]);
   const [focusChatTurns, setFocusChatTurns] = useState<FocusChatTurn[]>([]);
   const [resumingType, setResumingType] = useState<'step' | 'focus' | null>(null);
   const [savedWorkRefreshKey, setSavedWorkRefreshKey] = useState(0);
+  const [sectionsMenuOpen, setSectionsMenuOpen] = useState(false);
+  const [currentThreadKey, setCurrentThreadKey] = useState<string | null>(null);
+  const [sectionOnlyVisible, setSectionOnlyVisible] = useState(false);
+  const [liveSectionThreadKey, setLiveSectionThreadKey] = useState<string | null>(null);
+  const [sectionTransientMessageThreadKeys, setSectionTransientMessageThreadKeys] =
+    useState<Map<string, string>>(() => new Map());
+
+  const currentThreadGroupKey = currentThreadKey
+    ? getThreadGroupKeyFromSectionKey(currentThreadKey)
+    : null;
+  const currentThreadIsActive = Boolean(currentThreadGroupKey && (
+    allFocuses.some((focus) =>
+      focus.status === 'active' &&
+      currentThreadGroupKey === getThreadGroupKey('focus', focus.id),
+    ) || allWorkflows.some((workflow) =>
+      workflow.status === 'active' &&
+      currentThreadGroupKey === getThreadGroupKey('step', workflow.id),
+    )
+  ));
 
   /*
    * Busy state of THIS chat. The run store lives outside React, so a
@@ -623,6 +708,15 @@ export function ChatBox({
 
   const isLoading = isChatBusy || isPreparingChat;
   const extensionInteraction = useExtensionInteraction(chatId);
+
+  useEffect(() => {
+    const savedThreadKey = readSavedThreadKey(chatId);
+    setSectionsMenuOpen(false);
+    setCurrentThreadKey(savedThreadKey);
+    setSectionOnlyVisible(savedThreadKey !== null);
+    setLiveSectionThreadKey(null);
+    setSectionTransientMessageThreadKeys(new Map());
+  }, [chatId]);
 
   useEffect(() => {
     const handleSavedWorkChanged = (event: Event): void => {
@@ -639,7 +733,11 @@ export function ChatBox({
     if (!chatId) {
       setResumableWorkflows([]);
       setResumableFocuses([]);
+      setAllWorkflows([]);
+      setAllFocuses([]);
       setFocusChatTurns([]);
+      setCurrentThreadKey(null);
+      setSectionOnlyVisible(false);
       return;
     }
 
@@ -650,6 +748,8 @@ export function ChatBox({
       getFocusChatTurns(chatId),
     ]).then(([workflows, focuses, focusTurns]) => {
       if (cancelled) return;
+      setAllWorkflows(workflows);
+      setAllFocuses(focuses);
       setResumableWorkflows(workflows.filter((workflow) => workflow.status !== 'active'));
       setResumableFocuses(focuses.filter((focus) => focus.status !== 'active'));
       setFocusChatTurns(focusTurns);
@@ -657,6 +757,8 @@ export function ChatBox({
       if (!cancelled) {
         setResumableWorkflows([]);
         setResumableFocuses([]);
+        setAllWorkflows([]);
+        setAllFocuses([]);
         setFocusChatTurns([]);
       }
     });
@@ -992,11 +1094,23 @@ export function ChatBox({
     projectMemoryRef.current = [];
   }, [chatId]);
 
+  const markMessageAsPartOfThread = (messageId: string, threadKey: string | null): void => {
+    if (!threadKey) return;
+    setSectionTransientMessageThreadKeys((current) => {
+      const next = new Map(current);
+      next.set(messageId, threadKey);
+      return next;
+    });
+  };
+
   const handleSendMessage = async (
     text: string,
     options?: SendOptions,
   ): Promise<void> => {
     const normalizedText = text.trim();
+    const requestThreadKey = sectionOnlyVisible && currentThreadIsActive
+      ? currentThreadGroupKey
+      : null;
 
     /*
      * Block a second send only while THIS conversation is busy: its own
@@ -1106,13 +1220,15 @@ export function ChatBox({
      * A newly created chat already contains its first user message.
      */
     if (!wasCreated) {
-      onAppendMessage(
+      const userMessage = onAppendMessage(
         requestChatId,
         'user',
         normalizedText,
       );
+      markMessageAsPartOfThread(userMessage.id, requestThreadKey);
     }
 
+    setLiveSectionThreadKey(requestThreadKey);
     setDraftMessage('');
 
     setIsPreparingChat(false);
@@ -1214,6 +1330,7 @@ export function ChatBox({
         'assistant',
         cancellationMessage,
       );
+      markMessageAsPartOfThread(assistantMessage.id, requestThreadKey);
 
       /*
        * Persist this interrupted turn's tool trace with the cancellation
@@ -1339,6 +1456,7 @@ export function ChatBox({
         'assistant',
         response,
       );
+      markMessageAsPartOfThread(assistantMessage.id, requestThreadKey);
 
       /*
        * Attach the tool boxes used for this request to the response
@@ -1408,6 +1526,7 @@ export function ChatBox({
         'assistant',
         failureContent,
       );
+      markMessageAsPartOfThread(errorMessage.id, requestThreadKey);
 
       /*
        * Even on failure, keep the tools that already ran attached to
@@ -1423,6 +1542,7 @@ export function ChatBox({
        * spinners stop, the entries stay until the next request.
        */
       finishToolActivities(requestChatId);
+      setLiveSectionThreadKey(null);
 
       /*
        * End this chat's run (other chats keep theirs), then release the
@@ -1497,6 +1617,91 @@ export function ChatBox({
     focusMessageMapping.forEach((marker, messageId) => markers.set(messageId, marker));
     return markers;
   }, [stepWorkflowMessageMapping.threadMarkers, focusMessageMapping]);
+
+  useEffect(() => {
+    if (sectionTransientMessageThreadKeys.size === 0) return;
+    setSectionTransientMessageThreadKeys((current) => {
+      let changed = false;
+      const next = new Map(current);
+      for (const [messageId, threadKey] of current) {
+        const marker = chatThreadMarkers.get(messageId);
+        if (
+          marker && getThreadGroupKeyFromMarker(marker) === threadKey
+        ) {
+          next.delete(messageId);
+          changed = true;
+        }
+      }
+      return changed ? next : current;
+    });
+  }, [chatThreadMarkers, sectionTransientMessageThreadKeys.size]);
+
+  const sectionNavigationItems = useMemo(() => {
+    const firstMessageIndexBySection = new Map<string, number>();
+    displayMessages.forEach((message, index) => {
+      const marker = chatThreadMarkers.get(message.id);
+      if (!marker) return;
+      const key = getThreadSectionKey(marker.type, marker.sessionId, marker.sectionNumber);
+      if (!firstMessageIndexBySection.has(key)) {
+        firstMessageIndexBySection.set(key, index);
+      }
+    });
+
+    const items: ThreadSectionNavigationItem[] = [];
+    for (const focus of allFocuses) {
+      for (const section of focus.sections) {
+        const key = getThreadSectionKey('focus', focus.id, section.sectionNumber);
+        items.push({
+          key,
+          type: 'focus',
+          sessionId: focus.id,
+          sectionNumber: section.sectionNumber,
+          title: `Focus · Section ${section.sectionNumber}`,
+          subtitle: focus.goal,
+          firstIndex: firstMessageIndexBySection.get(key) ?? null,
+          canResume: resumableFocuses.some((item) => item.id === focus.id),
+        });
+      }
+    }
+    for (const workflow of allWorkflows) {
+      for (const step of workflow.steps) {
+        const key = getThreadSectionKey('step', workflow.id, step.stepNumber);
+        items.push({
+          key,
+          type: 'step',
+          sessionId: workflow.id,
+          sectionNumber: step.stepNumber,
+          title: `Step-by-Step · Step ${step.stepNumber}`,
+          subtitle: step.title || workflow.finalGoal,
+          firstIndex: firstMessageIndexBySection.get(key) ?? null,
+          canResume: resumableWorkflows.some((item) => item.id === workflow.id),
+        });
+      }
+    }
+
+    return items.sort((first, second) => {
+      if (first.firstIndex === null && second.firstIndex !== null) return 1;
+      if (first.firstIndex !== null && second.firstIndex === null) return -1;
+      return (first.firstIndex ?? 0) - (second.firstIndex ?? 0);
+    });
+  }, [
+    allFocuses,
+    allWorkflows,
+    chatThreadMarkers,
+    displayMessages,
+    resumableFocuses,
+    resumableWorkflows,
+  ]);
+  const sectionNavigationMessageIds = useMemo(() => {
+    const messageIds = new Map<string, string>();
+    for (const item of sectionNavigationItems) {
+      if (item.firstIndex !== null) {
+        const message = displayMessages[item.firstIndex];
+        if (message) messageIds.set(item.key, message.id);
+      }
+    }
+    return messageIds;
+  }, [displayMessages, sectionNavigationItems]);
 
   /*
    * Workflow logs remain the fallback for older conversations, but live
@@ -1581,18 +1786,154 @@ export function ChatBox({
     }
   };
 
+  const handleThreadScroll = (event: UIEvent<HTMLDivElement>): void => {
+    const container = event.currentTarget;
+    const containerRect = container.getBoundingClientRect();
+    const visibleThreadRow = Array.from(
+      container.querySelectorAll<HTMLElement>('[data-chat-thread-key]'),
+    ).find((row) => {
+      const rowRect = row.getBoundingClientRect();
+      return rowRect.bottom > containerRect.top + 36 && rowRect.top < containerRect.bottom;
+    });
+    const nextKey = visibleThreadRow?.dataset.chatThreadKey;
+
+    if (nextKey) {
+      setCurrentThreadKey((current) => current === nextKey ? current : nextKey);
+      if (sectionOnlyVisible && currentThreadKey !== nextKey) {
+        saveThreadView(chatId, nextKey);
+      }
+    } else if (!sectionOnlyVisible) {
+      setCurrentThreadKey(null);
+    }
+  };
+
+  const jumpToThreadSection = (item: ThreadSectionNavigationItem): void => {
+    setCurrentThreadKey(item.key);
+    if (sectionOnlyVisible) saveThreadView(chatId, item.key);
+    setSectionsMenuOpen(false);
+    if (item.firstIndex === null) return;
+    document.getElementById(getThreadSectionElementId(item.key))?.scrollIntoView({
+      behavior: 'smooth',
+      block: 'start',
+    });
+  };
+
+  const toggleSectionOnlyVisible = (): void => {
+    if (!currentThreadKey) return;
+    const nextVisible = !sectionOnlyVisible;
+    setSectionOnlyVisible(nextVisible);
+    saveThreadView(chatId, nextVisible ? currentThreadKey : null);
+  };
+
+  const visibleMessageIndexes = useMemo(() => {
+    if (!sectionOnlyVisible || !currentThreadKey) {
+      return displayMessages.map((_message, index) => index);
+    }
+    const selectedThreadGroupKey = getThreadGroupKeyFromSectionKey(currentThreadKey);
+    return displayMessages.reduce<number[]>((visible, message, index) => {
+      const marker = chatThreadMarkers.get(message.id);
+      const belongsToSelectedThread = Boolean(
+        marker && getThreadGroupKeyFromMarker(marker) === selectedThreadGroupKey
+      ) || sectionTransientMessageThreadKeys.get(message.id) === selectedThreadGroupKey;
+      if (belongsToSelectedThread) visible.push(index);
+      return visible;
+    }, []);
+  }, [
+    chatThreadMarkers,
+    currentThreadKey,
+    displayMessages,
+    sectionOnlyVisible,
+    sectionTransientMessageThreadKeys,
+  ]);
+
+  const showLiveSectionActivity = !sectionOnlyVisible || Boolean(
+    currentThreadGroupKey && liveSectionThreadKey === currentThreadGroupKey,
+  );
+  const isolatedThreadLabel = currentThreadGroupKey?.startsWith('focus:')
+    ? 'this Focus session'
+    : 'this Step-by-Step workflow';
+
   return (
     <section
       className="chat-box"
       aria-label={`Chat with ${agentName}`}
     >
+      <div className="chat-box-thread-controls">
+        <button
+          type="button"
+          className="chat-box-thread-control"
+          aria-label="Browse Focus and Step-by-Step sections"
+          aria-expanded={sectionsMenuOpen}
+          title="Browse sections"
+          onClick={() => setSectionsMenuOpen((open) => !open)}
+        >
+          <List size={17} aria-hidden="true" />
+        </button>
+        <button
+          type="button"
+          className={`chat-box-thread-control${sectionOnlyVisible ? ' chat-box-thread-control--active' : ''}`}
+          aria-label={sectionOnlyVisible ? 'Show the full chat' : `Show only ${isolatedThreadLabel}`}
+          aria-pressed={sectionOnlyVisible}
+          title={sectionOnlyVisible ? 'Show the full chat' : `Show only ${isolatedThreadLabel}`}
+          disabled={!currentThreadKey}
+          onClick={toggleSectionOnlyVisible}
+        >
+          {sectionOnlyVisible
+            ? <EyeOff size={17} aria-hidden="true" />
+            : <Eye size={17} aria-hidden="true" />}
+        </button>
+        {sectionsMenuOpen ? (
+          <div className="chat-box-thread-menu" role="dialog" aria-label="Focus and Step-by-Step sections">
+            <div className="chat-box-thread-menu-heading">
+              <strong>Sections</strong>
+              <span>{sectionNavigationItems.length}</span>
+            </div>
+            {sectionNavigationItems.length > 0 ? (
+              <div className="chat-box-thread-menu-list">
+                {sectionNavigationItems.map((item) => (
+                  <div className={`chat-box-thread-menu-item chat-box-thread-menu-item--${item.type}`} key={item.key}>
+                    <button
+                      type="button"
+                      className="chat-box-thread-menu-jump"
+                      disabled={item.firstIndex === null}
+                      onClick={() => jumpToThreadSection(item)}
+                      title={item.firstIndex === null ? 'No chat messages in this section yet' : `Go to ${item.title}`}
+                    >
+                      <strong>{item.title}</strong>
+                      <span>{item.subtitle}</span>
+                    </button>
+                    {item.canResume ? (
+                      <button
+                        type="button"
+                        className="chat-box-thread-menu-resume"
+                        disabled={resumingType !== null}
+                        onClick={() => void (
+                          item.type === 'focus'
+                            ? handleResumeFocus(item.sessionId)
+                            : handleResumeWorkflow(item.sessionId)
+                        )}
+                      >
+                        {resumingType === item.type ? 'Resuming…' : 'Resume'}
+                      </button>
+                    ) : null}
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <p className="chat-box-thread-menu-empty">No Focus or Step-by-Step sections in this chat yet.</p>
+            )}
+          </div>
+        ) : null}
+      </div>
       {hasMessages ? (
         <div
           className="chat-box-messages"
           aria-live="polite"
+          onScroll={handleThreadScroll}
         >
           <div className="chat-box-messages-inner">
-            {displayMessages.map((message, messageIndex) => {
+            {visibleMessageIndexes.map((messageIndex) => {
+              const message = displayMessages[messageIndex];
               const thread = chatThreadMarkers.get(message.id);
               const cancelledRun = cancelledRunByIndex.get(messageIndex);
               /*
@@ -1612,8 +1953,19 @@ export function ChatBox({
                 ? `Focus · Section ${thread.sectionNumber}`
                 : `Step-by-Step · Step ${thread?.sectionNumber}`;
 
+              const threadKey = thread
+                ? getThreadSectionKey(thread.type, thread.sessionId, thread.sectionNumber)
+                : null;
+
               return (
-                <div className={rowClass} key={message.id}>
+                <div
+                  className={rowClass}
+                  id={threadKey && sectionNavigationMessageIds.get(threadKey) === message.id
+                    ? getThreadSectionElementId(threadKey)
+                    : undefined}
+                  data-chat-thread-key={threadKey ?? undefined}
+                  key={message.id}
+                >
                   {thread?.label ? <span className="chat-thread-label">{sectionLabel}</span> : null}
                   {message.role === 'user' ? (
                     <>
@@ -1702,7 +2054,7 @@ export function ChatBox({
               * running. Once the response arrives they are committed
               * to that message and move above it.
               */}
-            {toolActivity.pendingActivities.length > 0 ? (
+            {showLiveSectionActivity && toolActivity.pendingActivities.length > 0 ? (
               <ToolActivityFeed
                 activities={
                   toolActivity.pendingActivities
@@ -1710,13 +2062,13 @@ export function ChatBox({
               />
             ) : null}
 
-            {isLoading && toolActivity.liveAnswer ? (
+            {showLiveSectionActivity && isLoading && toolActivity.liveAnswer ? (
               <AssistantMessage
                 content={toolActivity.liveAnswer}
               />
             ) : null}
 
-            {isLoading && !toolActivity.liveAnswer ? (
+            {showLiveSectionActivity && isLoading && !toolActivity.liveAnswer ? (
               <ChatStatusBubble
                 agentName={agentName}
                 isLoading={isLoading}
