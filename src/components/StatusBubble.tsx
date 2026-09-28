@@ -17,7 +17,13 @@ export const StatusBubble: React.FC<StatusBubbleProps> = ({ state }) => {
   useEffect(() => {
     const handleActivity = (event: Event) => {
       const customEvent = event as CustomEvent<string | null>;
-      setActiveActivity(customEvent.detail);
+
+      // Keep the last tool's icon visible after its call completes. The
+      // agent stays in `thinking` while it prepares the reply, and clearing
+      // here made the bubble immediately fall back to the spinner.
+      if (customEvent.detail) {
+        setActiveActivity(customEvent.detail);
+      }
     };
 
     window.addEventListener('mocu_activity', handleActivity);
@@ -25,6 +31,14 @@ export const StatusBubble: React.FC<StatusBubbleProps> = ({ state }) => {
       window.removeEventListener('mocu_activity', handleActivity);
     };
   }, []);
+
+  // Once Mocu leaves the thinking phase, return the bubble to its normal
+  // listening / speaking / idle state. A new tool call replaces the icon.
+  useEffect(() => {
+    if (state !== 'thinking') {
+      setActiveActivity(null);
+    }
+  }, [state]);
 
   const currentVisualState = activeActivity || state;
 

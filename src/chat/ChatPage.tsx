@@ -770,12 +770,6 @@ function ChatPage() {
           onActiveChange={setFocusActive}
         />
       </RightPanelDock>
-
-      {/*
-       * Floating mini Mocu cube. Clicking it reveals the
-       * Mocu avatar window.
-       */}
-      <MocuMiniCube />
     </div>
   );
 
@@ -917,6 +911,15 @@ function ChatPage() {
         ) : null}
         {renderMainContent()}
       </main>
+
+      {/*
+       * Floating mini Mocu cube (black cube with eyes and mouth).
+       * Rendered here, at the page layout level, so it shows on the
+       * home page (ProjectLanding) and every other view too — not
+       * only in the chat conversation. Clicking it toggles the full
+       * Mocu avatar window.
+       */}
+      <MocuMiniCube />
     </div>
   );
 }
