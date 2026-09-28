@@ -6,6 +6,7 @@ import {
 export function buildStepPrompt(
   state: WorkflowState,
   toolsDescription: string,
+  docsContextPrompt = "",
 ): string {
   const index = state.currentStepIndex;
   const current = state.plan.steps[index];
@@ -61,6 +62,7 @@ WORKFLOW:
 
 AVAILABLE TOOLS:
 ${toolsDescription.trim()}
+${docsContextPrompt.trim() ? `\n\n${docsContextPrompt.trim()}` : ""}
 `.trim();
 
   return `${instructions}

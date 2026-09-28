@@ -267,7 +267,7 @@ function buildWorkflowMessageMapping(
     .filter((index) => index >= 0);
   const userMessages = userMessageIndexes.map((index) => messages[index]);
   const activitiesByMessage = new Map<string, AgentToolActivity[]>();
-  const groups = new Map<string, ThreadMessageGroup>();
+  const groups = new Map<string, ThreadMessageGroup[]>();
   const lastMessageByWorkflowId = new Map<string, string>();
   let messageSearchStart = 0;
 
@@ -320,19 +320,26 @@ function buildWorkflowMessageMapping(
     const matchedMessage = userMessages[messageIndex];
     const fullMessageIndex = userMessageIndexes[messageIndex];
     const groupKey = `${turn.workflowId}:${turn.stepNumber}`;
-    const group = groups.get(groupKey) ?? {
-      type: 'step',
-      id: turn.workflowId,
-      sectionNumber: turn.stepNumber,
-      userMessageIds: [],
-      firstIndex: fullMessageIndex,
-      lastIndex: fullMessageIndex,
-    };
+    const segments = groups.get(groupKey) ?? [];
+    const messageEndIndex = messages[fullMessageIndex + 1]?.role === 'assistant'
+      ? fullMessageIndex + 1
+      : fullMessageIndex;
+    let group = segments[segments.length - 1];
+    if (!group || fullMessageIndex > group.lastIndex + 1) {
+      group = {
+        type: 'step',
+        id: turn.workflowId,
+        sectionNumber: turn.stepNumber,
+        userMessageIds: [],
+        firstIndex: fullMessageIndex,
+        lastIndex: messageEndIndex,
+      };
+      segments.push(group);
+    }
     group.userMessageIds.push(matchedMessage.id);
+    group.lastIndex = Math.max(group.lastIndex, messageEndIndex);
     lastMessageByWorkflowId.set(turn.workflowId, matchedMessage.id);
-    group.firstIndex = Math.min(group.firstIndex, fullMessageIndex);
-    group.lastIndex = Math.max(group.lastIndex, fullMessageIndex);
-    groups.set(groupKey, group);
+    groups.set(groupKey, segments);
 
     const activities: AgentToolActivity[] = [];
     const activityByCallId = new Map<string, number>();
@@ -395,25 +402,25 @@ function buildWorkflowMessageMapping(
   }
 
   const threadMarkers = new Map<string, ChatThreadMarker>();
-  for (const group of groups.values()) {
-    const firstUserId = group.userMessageIds[0];
-    const finalIndex = messages[group.lastIndex + 1]?.role === 'assistant'
-      ? group.lastIndex + 1
-      : group.lastIndex;
-    for (let index = group.firstIndex; index <= finalIndex; index += 1) {
-      const message = messages[index];
-      if (!message) continue;
-      const isFirst = index === group.firstIndex;
-      const isLast = index === finalIndex;
-      const position = isFirst && isLast ? 'single' : isFirst ? 'start' : isLast ? 'end' : 'middle';
-      threadMarkers.set(message.id, {
-        type: group.type,
-        sessionId: group.id,
-        sectionNumber: group.sectionNumber,
-        position,
-        label: message.id === firstUserId,
-        canResume: false,
-      });
+  for (const segments of groups.values()) {
+    for (const group of segments) {
+      const firstUserId = group.userMessageIds[0];
+      const finalIndex = group.lastIndex;
+      for (let index = group.firstIndex; index <= finalIndex; index += 1) {
+        const message = messages[index];
+        if (!message) continue;
+        const isFirst = index === group.firstIndex;
+        const isLast = index === finalIndex;
+        const position = isFirst && isLast ? 'single' : isFirst ? 'start' : isLast ? 'end' : 'middle';
+        threadMarkers.set(message.id, {
+          type: group.type,
+          sessionId: group.id,
+          sectionNumber: group.sectionNumber,
+          position,
+          label: message.id === firstUserId,
+          canResume: false,
+        });
+      }
     }
   }
 
@@ -440,7 +447,7 @@ function buildFocusMessageMapping(
     .map((message, index) => message.role === 'user' ? index : -1)
     .filter((index) => index >= 0);
   const userMessages = userMessageIndexes.map((index) => messages[index]);
-  const groups = new Map<string, ThreadMessageGroup>();
+  const groups = new Map<string, ThreadMessageGroup[]>();
   const lastMessageByFocusId = new Map<string, string>();
   let messageSearchStart = 0;
 
@@ -476,42 +483,49 @@ function buildFocusMessageMapping(
     const messageId = message.id;
     const fullMessageIndex = userMessageIndexes[messageIndex];
     const groupKey = `${turn.focusId}:${turn.sectionNumber}`;
-    const group = groups.get(groupKey) ?? {
-      type: 'focus',
-      id: turn.focusId,
-      sectionNumber: turn.sectionNumber,
-      userMessageIds: [],
-      firstIndex: fullMessageIndex,
-      lastIndex: fullMessageIndex,
-    };
+    const segments = groups.get(groupKey) ?? [];
+    const messageEndIndex = messages[fullMessageIndex + 1]?.role === 'assistant'
+      ? fullMessageIndex + 1
+      : fullMessageIndex;
+    let group = segments[segments.length - 1];
+    if (!group || fullMessageIndex > group.lastIndex + 1) {
+      group = {
+        type: 'focus',
+        id: turn.focusId,
+        sectionNumber: turn.sectionNumber,
+        userMessageIds: [],
+        firstIndex: fullMessageIndex,
+        lastIndex: messageEndIndex,
+      };
+      segments.push(group);
+    }
     group.userMessageIds.push(messageId);
+    group.lastIndex = Math.max(group.lastIndex, messageEndIndex);
     lastMessageByFocusId.set(turn.focusId, messageId);
-    group.firstIndex = Math.min(group.firstIndex, fullMessageIndex);
-    group.lastIndex = Math.max(group.lastIndex, fullMessageIndex);
-    groups.set(groupKey, group);
+    groups.set(groupKey, segments);
     messageSearchStart = messageIndex + 1;
   }
 
   const threadMarkers = new Map<string, ChatThreadMarker>();
-  for (const group of groups.values()) {
-    const firstUserId = group.userMessageIds[0];
-    const finalIndex = messages[group.lastIndex + 1]?.role === 'assistant'
-      ? group.lastIndex + 1
-      : group.lastIndex;
-    for (let index = group.firstIndex; index <= finalIndex; index += 1) {
-      const message = messages[index];
-      if (!message) continue;
-      const isFirst = index === group.firstIndex;
-      const isLast = index === finalIndex;
-      const position = isFirst && isLast ? 'single' : isFirst ? 'start' : isLast ? 'end' : 'middle';
-      threadMarkers.set(message.id, {
-        type: group.type,
-        sessionId: group.id,
-        sectionNumber: group.sectionNumber,
-        position,
-        label: message.id === firstUserId,
-        canResume: false,
-      });
+  for (const segments of groups.values()) {
+    for (const group of segments) {
+      const firstUserId = group.userMessageIds[0];
+      const finalIndex = group.lastIndex;
+      for (let index = group.firstIndex; index <= finalIndex; index += 1) {
+        const message = messages[index];
+        if (!message) continue;
+        const isFirst = index === group.firstIndex;
+        const isLast = index === finalIndex;
+        const position = isFirst && isLast ? 'single' : isFirst ? 'start' : isLast ? 'end' : 'middle';
+        threadMarkers.set(message.id, {
+          type: group.type,
+          sessionId: group.id,
+          sectionNumber: group.sectionNumber,
+          position,
+          label: message.id === firstUserId,
+          canResume: false,
+        });
+      }
     }
   }
 

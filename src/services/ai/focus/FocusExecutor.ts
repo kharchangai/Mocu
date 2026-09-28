@@ -9,6 +9,7 @@ import { emptyFocusMemory } from "./types";
 import { FocusStore } from "./focusStore";
 import { saveSpecialistSectionMemoryInBackground } from "../agent/specialist-memory";
 import { withShortDescription } from "../agent/tool-summaries";
+import { buildDocsContextPrompt } from "../../../chat/docs";
 
 const FocusMemorySchema = z.object({
   summary: z.string(),
@@ -76,7 +77,7 @@ function historyMessages(entries: Awaited<ReturnType<FocusStore["readSectionHist
   return messages;
 }
 
-function focusPrompt(state: FocusState, toolDescriptions: string): string {
+function focusPrompt(state: FocusState, toolDescriptions: string, docsContextPrompt = ""): string {
   const previousSections = Object.entries(state.memories)
     .map(([sectionNumber, memory]) => ({ sectionNumber: Number(sectionNumber), ...memory }))
     .filter((section) => section.sectionNumber < state.currentSectionNumber)
@@ -102,7 +103,7 @@ AVAILABLE TOOLS
 ${toolDescriptions || "No task tools are available."}
 
 FOCUS GOAL
-${state.goal}`;
+${state.goal}${docsContextPrompt.trim() ? `\n\n${docsContextPrompt.trim()}` : ""}`;
 }
 
 export interface FocusExecutorOptions {
@@ -258,10 +259,11 @@ export class FocusExecutor {
      * tool's bound schema and key behavior lives in the summaries. */
     const llmTools = allTools.map(withShortDescription);
     const descriptions = llmTools.map((item) => `- ${item.name}: ${item.description}`).join("\n");
+    const docsContextPrompt = await buildDocsContextPrompt(userMessage);
     const llm = await this.options.buildTurnLlm(turn.selectedModel);
     const llmWithTools = llmTools.length ? llm.bindTools(llmTools) : llm;
     const messages: BaseMessage[] = [
-      new SystemMessage(focusPrompt(state, descriptions)),
+      new SystemMessage(focusPrompt(state, descriptions, docsContextPrompt)),
       ...historyMessages(previousHistory),
       new HumanMessage(userMessage),
     ];

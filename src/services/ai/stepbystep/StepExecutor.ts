@@ -19,6 +19,7 @@ import type { WorkflowStore } from "./workflowStore";
 import { dispatchAgentToolActivity } from "../../../chat/services/toolActivity";
 import { saveSpecialistSectionMemoryInBackground } from "../agent/specialist-memory";
 import { withShortDescription } from "../agent/tool-summaries";
+import { buildDocsContextPrompt } from "../../../chat/docs";
 
 import {
   emptyMemory,
@@ -554,6 +555,7 @@ export class StepExecutor {
       .map((item) => `- ${item.name}: ${item.description}`)
       .join("\n");
 
+    const docsContextPrompt = await buildDocsContextPrompt(message);
     const llm = await this.options.buildTurnLlm(turn.selectedModel);
     const llmWithTools =
       llmTools.length > 0 ? llm.bindTools(llmTools) : llm;
@@ -561,7 +563,7 @@ export class StepExecutor {
     const history = await this.store.readStepHistory(state.id, stepNumber);
     const messages: BaseMessage[] = [
       new SystemMessage(
-        buildStepPrompt(state, toolsDescription),
+        buildStepPrompt(state, toolsDescription, docsContextPrompt),
       ),
       ...buildMessagesFromStepHistory(history),
       new HumanMessage(message),

@@ -1,33 +1,15 @@
-// import {
-//   createStepPlan,
-//   type StepPlan,
-// } from "./services/ai/stepbystep/createStepPlan";
-// import agentResponse from "./test-agent-response.txt?raw";
-
-// const userMessage = "میخوام این رو قدم به قدم باهم انجام بدیم";
+import { shouldRouteToGraphSystem } from "./graphStructure/jevGate";
 
 export async function runTest(): Promise<void> {
-  // let plan: StepPlan;
+  const userMessage =
+    "لطفا ساختار فایل‌های این پروژه را بررسی کن و فایل تنظیمات را پیدا کن";
 
-  // try {
-  //   plan = await createStepPlan({
-  //     userMessage,
-  //     agentResponse,
-  //   });
-  // } catch (error) {
-  //   console.error("[createStepPlan test] Failed:", error);
+  console.log("[jevGate test] userMessage:", userMessage);
 
-  //   return;
-  // }
-
-  // console.log("[createStepPlan test] final_goal:", plan.final_goal);
-
-  // for (const step of plan.steps) {
-  //   console.log(
-  //     `[createStepPlan test] Step ${step.step_number}: ${step.title}`,
-  //     step.summary,
-  //     step.goal,
-  //     step.tips,
-  //   );
-  // }
+  try {
+    const needsSystem = await shouldRouteToGraphSystem(userMessage);
+    console.log("[jevGate test] needs full system path:", needsSystem);
+  } catch (error) {
+    console.error("[jevGate test] Failed:", error);
+  }
 }
