@@ -453,34 +453,7 @@ export async function getStepWorkflowStepHistory(
   }));
 }
 
-export async function getStepWorkflowOverview(
-  chatId: string,
-): Promise<StepWorkflowOverview | null> {
-  let state = await getActiveStepWorkflow(chatId);
-
-  if (!state) {
-    const candidates = await Promise.all(
-      (await store.getChatWorkflowIds(chatId)).map(async (workflowId) => {
-        try {
-          return await store.load(workflowId);
-        } catch {
-          return null;
-        }
-      }),
-    );
-    state = candidates
-      .filter((candidate): candidate is WorkflowState =>
-        candidate !== null && candidate.chatId === chatId,
-      )
-      .sort((first, second) =>
-        (second.createdAt ?? "").localeCompare(first.createdAt ?? ""),
-      )[0] ?? null;
-  }
-
-  if (!state) {
-    return null;
-  }
-
+function toStepWorkflowOverview(state: WorkflowState): StepWorkflowOverview {
   const currentStepNumber = state.currentStepIndex + 1;
 
   return {
@@ -505,6 +478,37 @@ export async function getStepWorkflowOverview(
       memory: state.memories[String(step.step_number)] ?? null,
     })),
   };
+}
+
+/** All saved step-by-step workflows for a chat, newest first. */
+export async function getStepWorkflowOverviews(
+  chatId: string,
+): Promise<StepWorkflowOverview[]> {
+  const candidates = await Promise.all(
+    (await store.getChatWorkflowIds(chatId)).map(async (workflowId) => {
+      try {
+        return await store.load(workflowId);
+      } catch {
+        return null;
+      }
+    }),
+  );
+  return candidates
+    .filter((candidate): candidate is WorkflowState =>
+      candidate !== null && candidate.chatId === chatId,
+    )
+    .sort((first, second) =>
+      (second.createdAt ?? "").localeCompare(first.createdAt ?? ""),
+    )
+    .map(toStepWorkflowOverview);
+}
+
+export async function getStepWorkflowOverview(
+  chatId: string,
+): Promise<StepWorkflowOverview | null> {
+  const active = await getActiveStepWorkflow(chatId);
+  if (active) return toStepWorkflowOverview(active);
+  return (await getStepWorkflowOverviews(chatId))[0] ?? null;
 }
 
 export interface StepWorkflowLogPage {

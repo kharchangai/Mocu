@@ -190,13 +190,7 @@ export interface FocusOverview {
   sections: Array<{ sectionNumber: number; memory: FocusMemory | null; isCurrent: boolean }>;
 }
 
-export async function getFocusOverview(chatId: string): Promise<FocusOverview | null> {
-  const active = await getActiveFocusSession(chatId);
-  const state = active ?? (await Promise.all((await store.getChatSessionIds(chatId)).map(async (id) => {
-    try { return await store.load(id); } catch { return null; }
-  }))).filter((item): item is FocusState => item !== null && item.chatId === chatId)
-    .sort((a, b) => b.createdAt.localeCompare(a.createdAt))[0] ?? null;
-  if (!state) return null;
+function toFocusOverview(state: FocusState): FocusOverview {
   const lastSection = Math.max(state.currentSectionNumber, ...Object.keys(state.memories).map(Number), 1);
   return {
     id: state.id,
@@ -209,6 +203,23 @@ export async function getFocusOverview(chatId: string): Promise<FocusOverview | 
       return { sectionNumber, memory: state.memories[String(sectionNumber)] ?? null, isCurrent: state.status === "active" && sectionNumber === state.currentSectionNumber };
     }),
   };
+}
+
+/** All saved Focus sessions for a chat, newest first. */
+export async function getFocusOverviews(chatId: string): Promise<FocusOverview[]> {
+  const candidates = await Promise.all((await store.getChatSessionIds(chatId)).map(async (id) => {
+    try { return await store.load(id); } catch { return null; }
+  }));
+  return candidates
+    .filter((item): item is FocusState => item !== null && item.chatId === chatId)
+    .sort((a, b) => b.createdAt.localeCompare(a.createdAt))
+    .map(toFocusOverview);
+}
+
+export async function getFocusOverview(chatId: string): Promise<FocusOverview | null> {
+  const active = await getActiveFocusSession(chatId);
+  if (active) return toFocusOverview(active);
+  return (await getFocusOverviews(chatId))[0] ?? null;
 }
 
 export async function getFocusSectionHistory(chatId: string, focusId: string, sectionNumber: number): Promise<FocusLogEntry[]> {

@@ -56,14 +56,14 @@ import {
 } from '../services/toolActivity';
 import {
   getStepWorkflowLogs,
-  getStepWorkflowOverview,
+  getStepWorkflowOverviews,
   resumeStepByStepWorkflow,
   type StepWorkflowLogPage,
   type StepWorkflowOverview,
 } from '../../services/ai/stepbystep/workflowManager';
 import {
   getFocusChatTurns,
-  getFocusOverview,
+  getFocusOverviews,
   hasActiveFocusSession,
   parseFocusStartGoal,
   resumeFocusSession,
@@ -182,6 +182,7 @@ type WorkflowLogTurn = {
 
 type ChatThreadMarker = {
   type: 'step' | 'focus';
+  sessionId: string;
   sectionNumber: number;
   position: 'start' | 'middle' | 'end' | 'single';
   label: boolean;
@@ -237,7 +238,7 @@ function workflowLogData(entry: WorkflowLogEntry): Record<string, unknown> {
 function buildWorkflowMessageMapping(
   entries: WorkflowLogEntry[],
   messages: ChatMessage[],
-  resumableWorkflowId: string | null,
+  resumableWorkflowIds: ReadonlySet<string>,
 ): WorkflowMessageMapping {
   const turns: WorkflowLogTurn[] = [];
   let currentTurn: WorkflowLogTurn | null = null;
@@ -407,6 +408,7 @@ function buildWorkflowMessageMapping(
       const position = isFirst && isLast ? 'single' : isFirst ? 'start' : isLast ? 'end' : 'middle';
       threadMarkers.set(message.id, {
         type: group.type,
+        sessionId: group.id,
         sectionNumber: group.sectionNumber,
         position,
         label: message.id === firstUserId,
@@ -415,10 +417,12 @@ function buildWorkflowMessageMapping(
     }
   }
 
-  const resumableMessageId = resumableWorkflowId ? lastMessageByWorkflowId.get(resumableWorkflowId) : undefined;
-  const resumableMarker = resumableMessageId ? threadMarkers.get(resumableMessageId) : undefined;
-  if (resumableMessageId && resumableMarker) {
-    threadMarkers.set(resumableMessageId, { ...resumableMarker, canResume: true });
+  for (const workflowId of resumableWorkflowIds) {
+    const resumableMessageId = lastMessageByWorkflowId.get(workflowId);
+    const resumableMarker = resumableMessageId ? threadMarkers.get(resumableMessageId) : undefined;
+    if (resumableMessageId && resumableMarker) {
+      threadMarkers.set(resumableMessageId, { ...resumableMarker, canResume: true });
+    }
   }
 
   return {
@@ -430,7 +434,7 @@ function buildWorkflowMessageMapping(
 function buildFocusMessageMapping(
   turns: FocusChatTurn[],
   messages: ChatMessage[],
-  resumableFocusId: string | null,
+  resumableFocusIds: ReadonlySet<string>,
 ): Map<string, ChatThreadMarker> {
   const userMessageIndexes = messages
     .map((message, index) => message.role === 'user' ? index : -1)
@@ -502,6 +506,7 @@ function buildFocusMessageMapping(
       const position = isFirst && isLast ? 'single' : isFirst ? 'start' : isLast ? 'end' : 'middle';
       threadMarkers.set(message.id, {
         type: group.type,
+        sessionId: group.id,
         sectionNumber: group.sectionNumber,
         position,
         label: message.id === firstUserId,
@@ -510,10 +515,12 @@ function buildFocusMessageMapping(
     }
   }
 
-  const resumableMessageId = resumableFocusId ? lastMessageByFocusId.get(resumableFocusId) : undefined;
-  const resumableMarker = resumableMessageId ? threadMarkers.get(resumableMessageId) : undefined;
-  if (resumableMessageId && resumableMarker) {
-    threadMarkers.set(resumableMessageId, { ...resumableMarker, canResume: true });
+  for (const focusId of resumableFocusIds) {
+    const resumableMessageId = lastMessageByFocusId.get(focusId);
+    const resumableMarker = resumableMessageId ? threadMarkers.get(resumableMessageId) : undefined;
+    if (resumableMessageId && resumableMarker) {
+      threadMarkers.set(resumableMessageId, { ...resumableMarker, canResume: true });
+    }
   }
 
   return threadMarkers;
@@ -586,8 +593,8 @@ export function ChatBox({
   const [isPreparingChat, setIsPreparingChat] = useState(false);
 
   const [draftMessage, setDraftMessage] = useState('');
-  const [resumableWorkflow, setResumableWorkflow] = useState<StepWorkflowOverview | null>(null);
-  const [resumableFocus, setResumableFocus] = useState<FocusOverview | null>(null);
+  const [resumableWorkflows, setResumableWorkflows] = useState<StepWorkflowOverview[]>([]);
+  const [resumableFocuses, setResumableFocuses] = useState<FocusOverview[]>([]);
   const [focusChatTurns, setFocusChatTurns] = useState<FocusChatTurn[]>([]);
   const [resumingType, setResumingType] = useState<'step' | 'focus' | null>(null);
   const [savedWorkRefreshKey, setSavedWorkRefreshKey] = useState(0);
@@ -616,26 +623,26 @@ export function ChatBox({
 
   useEffect(() => {
     if (!chatId) {
-      setResumableWorkflow(null);
-      setResumableFocus(null);
+      setResumableWorkflows([]);
+      setResumableFocuses([]);
       setFocusChatTurns([]);
       return;
     }
 
     let cancelled = false;
     void Promise.all([
-      getStepWorkflowOverview(chatId),
-      getFocusOverview(chatId),
+      getStepWorkflowOverviews(chatId),
+      getFocusOverviews(chatId),
       getFocusChatTurns(chatId),
-    ]).then(([workflow, focus, focusTurns]) => {
+    ]).then(([workflows, focuses, focusTurns]) => {
       if (cancelled) return;
-      setResumableWorkflow(workflow && workflow.status !== 'active' ? workflow : null);
-      setResumableFocus(focus && focus.status !== 'active' ? focus : null);
+      setResumableWorkflows(workflows.filter((workflow) => workflow.status !== 'active'));
+      setResumableFocuses(focuses.filter((focus) => focus.status !== 'active'));
       setFocusChatTurns(focusTurns);
     }).catch(() => {
       if (!cancelled) {
-        setResumableWorkflow(null);
-        setResumableFocus(null);
+        setResumableWorkflows([]);
+        setResumableFocuses([]);
         setFocusChatTurns([]);
       }
     });
@@ -643,12 +650,12 @@ export function ChatBox({
     return () => { cancelled = true; };
   }, [chatId, messages.length, savedWorkRefreshKey]);
 
-  const handleResumeWorkflow = async (): Promise<void> => {
-    if (!chatId || !resumableWorkflow || resumingType) return;
+  const handleResumeWorkflow = async (workflowId: string): Promise<void> => {
+    if (!chatId || !resumableWorkflows.some((workflow) => workflow.id === workflowId) || resumingType) return;
     setResumingType('step');
     try {
-      await resumeStepByStepWorkflow(chatId, resumableWorkflow.id);
-      setResumableWorkflow(null);
+      await resumeStepByStepWorkflow(chatId, workflowId);
+      setResumableWorkflows((current) => current.filter((workflow) => workflow.id !== workflowId));
       onAppendMessage(chatId, 'assistant', 'Step-by-Step is ready to continue from your saved progress. Send a message to pick up where you left off.');
     } catch (error) {
       window.alert(error instanceof Error ? error.message : 'Could not resume this workflow.');
@@ -657,12 +664,12 @@ export function ChatBox({
     }
   };
 
-  const handleResumeFocus = async (): Promise<void> => {
-    if (!chatId || !resumableFocus || resumingType) return;
+  const handleResumeFocus = async (focusId: string): Promise<void> => {
+    if (!chatId || !resumableFocuses.some((focus) => focus.id === focusId) || resumingType) return;
     setResumingType('focus');
     try {
-      await resumeFocusSession(chatId, resumableFocus.id);
-      setResumableFocus(null);
+      await resumeFocusSession(chatId, focusId);
+      setResumableFocuses((current) => current.filter((focus) => focus.id !== focusId));
       onAppendMessage(chatId, 'assistant', 'Focus is ready to continue from your saved progress. Send a message to pick up where you left off.');
     } catch (error) {
       window.alert(error instanceof Error ? error.message : 'Could not resume this Focus session.');
@@ -1459,17 +1466,17 @@ export function ChatBox({
     () => buildWorkflowMessageMapping(
       stepWorkflowLogEntries,
       displayMessages,
-      resumableWorkflow?.id ?? null,
+      new Set(resumableWorkflows.map((workflow) => workflow.id)),
     ),
-    [stepWorkflowLogEntries, displayMessages, resumableWorkflow?.id],
+    [stepWorkflowLogEntries, displayMessages, resumableWorkflows],
   );
   const focusMessageMapping = useMemo(
     () => buildFocusMessageMapping(
       focusChatTurns,
       displayMessages,
-      resumableFocus?.id ?? null,
+      new Set(resumableFocuses.map((focus) => focus.id)),
     ),
-    [focusChatTurns, displayMessages, resumableFocus?.id],
+    [focusChatTurns, displayMessages, resumableFocuses],
   );
   const chatThreadMarkers = useMemo(() => {
     const markers = new Map(stepWorkflowMessageMapping.threadMarkers);
@@ -1663,7 +1670,11 @@ export function ChatBox({
                       type="button"
                       className="chat-thread-resume"
                       disabled={resumingType !== null}
-                      onClick={() => void (thread.type === 'focus' ? handleResumeFocus() : handleResumeWorkflow())}
+                      onClick={() => void (
+                        thread.type === 'focus'
+                          ? handleResumeFocus(thread.sessionId)
+                          : handleResumeWorkflow(thread.sessionId)
+                      )}
                     >
                       {resumingType === thread.type ? 'Resuming…' : thread.type === 'focus' ? 'Resume Focus' : 'Resume Step-by-Step'}
                     </button>
