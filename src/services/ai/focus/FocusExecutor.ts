@@ -4,6 +4,7 @@ import type { ChatOpenAI } from "@langchain/openai";
 import { z } from "zod";
 
 import { dispatchAgentToolActivity } from "../../../chat/services/toolActivity";
+import { invokeAgentModelWithTrace } from "../../../chat/services/agentTrace";
 import type { FocusMemory, FocusState, FocusToolLike, FocusTurnContext, FocusTurnResult } from "./types";
 import { emptyFocusMemory } from "./types";
 import { FocusStore } from "./focusStore";
@@ -279,7 +280,12 @@ export class FocusExecutor {
     let previousCallSignature = "";
     let repeatedRounds = 0;
     for (let round = 0; round <= maxRounds; round += 1) {
-      const response: AIMessage = await llmWithTools.invoke(messages, turn.config);
+      const response: AIMessage = await invokeAgentModelWithTrace({
+        chatId: state.chatId,
+        model: llmWithTools,
+        messages,
+        config: turn.config,
+      });
       const calls = response.tool_calls ?? [];
       if (!calls.length) {
         reply = messageText(response).trim();
@@ -301,7 +307,13 @@ export class FocusExecutor {
           }));
         }
         messages.push(new HumanMessage("(System note: You are repeating the same tool calls without progress. Stop calling tools and give a final reply that summarizes the work completed so far and what remains.)"));
-        const final = await (await this.options.buildTurnLlm(turn.selectedModel)).invoke(messages, turn.config);
+        const final = await invokeAgentModelWithTrace({
+          chatId: state.chatId,
+          model: await this.options.buildTurnLlm(turn.selectedModel),
+          messages,
+          config: turn.config,
+          mode: "answer",
+        });
         reply = messageText(final).trim();
         break;
       }
@@ -337,14 +349,27 @@ export class FocusExecutor {
       compactOldToolResults(messages);
       if (round === maxRounds) {
         messages.push(new HumanMessage("(System note: The configured tool-use ceiling for this turn has been reached. Stop calling tools. Give a final reply that summarizes the work completed so far and what remains.)"));
-        const final = await (await this.options.buildTurnLlm(turn.selectedModel)).invoke(messages, turn.config);
+        const final = await invokeAgentModelWithTrace({
+          chatId: state.chatId,
+          model: await this.options.buildTurnLlm(turn.selectedModel),
+          messages,
+          config: turn.config,
+          mode: "answer",
+        });
         reply = messageText(final).trim();
       }
     }
 
     if (controlUsed && !reply) {
       messages.push(new HumanMessage("(System note: A Focus control just succeeded. Give only a short acknowledgement/recap. Do not call tools or do more work.)"));
-      reply = messageText(await (await this.options.buildTurnLlm(turn.selectedModel)).invoke(messages, turn.config)).trim();
+      const final = await invokeAgentModelWithTrace({
+        chatId: state.chatId,
+        model: await this.options.buildTurnLlm(turn.selectedModel),
+        messages,
+        config: turn.config,
+        mode: "answer",
+      });
+      reply = messageText(final).trim();
     }
     if (!reply) reply = "I had to stop this turn before finishing. Send 'continue' and I will pick up where I left off.";
 

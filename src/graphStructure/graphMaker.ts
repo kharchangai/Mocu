@@ -1,0 +1,234 @@
+// src/graphStructure/graphMaker.ts
+//
+// Turns the raw records collected by a GraphRecorder into a graph of
+// nodes and edges. Pure function: same records always produce the same
+// graph, so it is easy to unit-test.
+//
+// Nodes produced per run:
+//   run          root of the whole run (user message + final answer live here)
+//   user_message the message that started the run
+//   model_call   one per LLM invocation, in order
+//   tool_call    one per tool id (running + done records are merged)
+//   final_answer the answer shown to the user
+//
+// Edges:
+//   START     run -> user_message
+//   NEXT      chronological chain through the run
+//   CALLS     model_call -> tool_call it triggered
+//   PARENT    every other node -> run
+
+import type {
+  GraphRecorder,
+  GraphRecord,
+} from "./recorder";
+
+export type GraphNodeKind =
+  | "run"
+  | "user_message"
+  | "model_call"
+  | "tool_call"
+  | "final_answer";
+
+export type GraphNode = {
+  id: string;
+  kind: GraphNodeKind;
+  label: string;
+  at: number;
+  attributes: Record<string, unknown>;
+};
+
+export type GraphEdgeType = "START" | "NEXT" | "CALLS" | "PARENT";
+
+export type GraphEdge = {
+  from: string;
+  to: string;
+  type: GraphEdgeType;
+};
+
+export type AgentRunGraph = {
+  runId: string;
+  agentKind: string;
+  chatId?: string;
+  nodes: GraphNode[];
+  edges: GraphEdge[];
+};
+
+/**
+ * Merges all tool_call records sharing an id into one node draft, in
+ * first-seen order: the "running" record opens it, later records fill in
+ * args/result/status. Returns a map from tool_call_id to the merged node.
+ */
+const mergeToolNodes = (
+  records: readonly GraphRecord[],
+): Map<string, GraphNode> => {
+  const nodes = new Map<string, GraphNode>();
+
+  for (const record of records) {
+    if (record.type !== "tool_call") {
+      continue;
+    }
+
+    const existing = nodes.get(record.id);
+
+    if (!existing) {
+      nodes.set(record.id, {
+        id: `tool:${record.id}`,
+        kind: "tool_call",
+        label: record.tool,
+        at: record.at,
+        attributes: {
+          toolCallId: record.id,
+          tool: record.tool,
+          ...(record.args !== undefined ? { args: record.args } : {}),
+          ...(record.result !== undefined ? { result: record.result } : {}),
+          status: record.status,
+        },
+      });
+      continue;
+    }
+
+    if (record.args !== undefined) {
+      existing.attributes.args = record.args;
+    }
+    if (record.result !== undefined) {
+      existing.attributes.result = record.result;
+    }
+    existing.attributes.status = record.status;
+    existing.attributes.tool = record.tool;
+    existing.label = record.tool;
+  }
+
+  return nodes;
+};
+
+/**
+ * Walks the records in order and builds the chronological NEXT chain while
+ * attaching CALLS edges from each model call to the tool calls it triggered.
+ */
+export const buildGraph = (
+  recorder: Pick<
+    GraphRecorder,
+    "runId" | "agentKind" | "chatId" | "getRecords"
+  >,
+): AgentRunGraph => {
+  const records = recorder.getRecords();
+  const mergedTools = mergeToolNodes(records);
+
+  const nodes: GraphNode[] = [];
+  const edges: GraphEdge[] = [];
+
+  const runNode: GraphNode = {
+    id: `run:${recorder.runId}`,
+    kind: "run",
+    label: recorder.runId,
+    at: records.length ? records[0].at : 0,
+    attributes: {
+      agentKind: recorder.agentKind,
+      ...(recorder.chatId !== undefined ? { chatId: recorder.chatId } : {}),
+    },
+  };
+  nodes.push(runNode);
+
+  // Chronological chain: every new node is linked from the previous one.
+  let tail: GraphNode | undefined;
+  // Most recent model_call node, used as the CALLS source for tools.
+  let lastModel: GraphNode | undefined;
+  const emittedTools = new Set<string>();
+
+  const linkNext = (node: GraphNode): void => {
+    edges.push({
+      from: tail ? tail.id : runNode.id,
+      to: node.id,
+      type: tail ? "NEXT" : "START",
+    });
+    tail = node;
+  };
+
+  const parentEdge = (node: GraphNode): void => {
+    edges.push({ from: runNode.id, to: node.id, type: "PARENT" });
+  };
+
+  for (const record of records) {
+    switch (record.type) {
+      case "run_start": {
+        const node: GraphNode = {
+          id: "user_message",
+          kind: "user_message",
+          label: "User message",
+          at: record.at,
+          attributes: { text: record.userMessage },
+        };
+        linkNext(node);
+        parentEdge(node);
+        nodes.push(node);
+        runNode.attributes.userMessage = record.userMessage;
+        break;
+      }
+
+      case "model_call": {
+        const node: GraphNode = {
+          id: `model:${record.index}`,
+          kind: "model_call",
+          label: `Model call ${record.index + 1}`,
+          at: record.at,
+          attributes: {
+            index: record.index,
+            ...(record.thought !== undefined ? { thought: record.thought } : {}),
+            ...(record.text !== undefined ? { text: record.text } : {}),
+            hasToolCalls: record.hasToolCalls,
+          },
+        };
+        linkNext(node);
+        parentEdge(node);
+        nodes.push(node);
+        lastModel = node;
+        break;
+      }
+
+      case "tool_call": {
+        // Emit the merged node only on the record's first appearance.
+        if (emittedTools.has(record.id)) {
+          break;
+        }
+        emittedTools.add(record.id);
+
+        const node = mergedTools.get(record.id) as GraphNode;
+        linkNext(node);
+        parentEdge(node);
+        nodes.push(node);
+
+        if (lastModel) {
+          edges.push({
+            from: lastModel.id,
+            to: node.id,
+            type: "CALLS",
+          });
+        }
+        break;
+      }
+
+      case "run_end": {
+        const node: GraphNode = {
+          id: "final_answer",
+          kind: "final_answer",
+          label: "Final answer",
+          at: record.at,
+          attributes: { text: record.finalAnswer },
+        };
+        linkNext(node);
+        parentEdge(node);
+        nodes.push(node);
+        runNode.attributes.finalAnswer = record.finalAnswer;
+        break;
+      }
+    }
+  }
+
+  return {
+    runId: recorder.runId,
+    agentKind: recorder.agentKind,
+    ...(recorder.chatId !== undefined ? { chatId: recorder.chatId } : {}),
+    nodes,
+    edges,
+  };
+};

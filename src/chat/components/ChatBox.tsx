@@ -1074,17 +1074,6 @@ export function ChatBox({
   ]);
 
   useEffect(() => {
-    bottomAnchorRef.current?.scrollIntoView({
-      behavior: 'smooth',
-      block: 'end',
-    });
-  }, [
-    messages,
-    projectMemoryMessages,
-    isLoading,
-  ]);
-
-  useEffect(() => {
     /*
      * Clear transient view state whenever the displayed conversation
      * changes. The agent run of the previous chat is intentionally left
@@ -1844,6 +1833,26 @@ export function ChatBox({
     displayMessages,
     sectionOnlyVisible,
     sectionTransientMessageThreadKeys,
+  ]);
+
+  useEffect(() => {
+    // Restoring a saved Focus/Step-only view changes the rendered message
+    // list after the initial chat render. Wait for that layout (and its
+    // thread markers) before scrolling so reopening lands on the newest turn.
+    const frame = window.requestAnimationFrame(() => {
+      bottomAnchorRef.current?.scrollIntoView({
+        behavior: 'smooth',
+        block: 'end',
+      });
+    });
+    return () => window.cancelAnimationFrame(frame);
+  }, [
+    chatId,
+    messages,
+    projectMemoryMessages,
+    isLoading,
+    sectionOnlyVisible,
+    chatThreadMarkers,
   ]);
 
   const showLiveSectionActivity = !sectionOnlyVisible || Boolean(

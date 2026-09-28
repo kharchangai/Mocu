@@ -17,6 +17,7 @@ import {
 import { buildStepPrompt } from "./buildStepPrompt";
 import type { WorkflowStore } from "./workflowStore";
 import { dispatchAgentToolActivity } from "../../../chat/services/toolActivity";
+import { invokeAgentModelWithTrace } from "../../../chat/services/agentTrace";
 import { saveSpecialistSectionMemoryInBackground } from "../agent/specialist-memory";
 import { withShortDescription } from "../agent/tool-summaries";
 import { buildDocsContextPrompt } from "../../../chat/docs";
@@ -580,10 +581,12 @@ export class StepExecutor {
     let reply = "";
 
     for (let round = 0; round <= maxRounds; round++) {
-      const response: AIMessage = await llmWithTools.invoke(
+      const response: AIMessage = await invokeAgentModelWithTrace({
+        chatId: state.chatId,
+        model: llmWithTools,
         messages,
-        turn.config,
-      );
+        config: turn.config,
+      });
 
       const toolCalls = response.tool_calls ?? [];
 
@@ -694,10 +697,13 @@ export class StepExecutor {
           turn.selectedModel,
         );
 
-        const finalResponse = await plainLlm.invoke(
+        const finalResponse = await invokeAgentModelWithTrace({
+          chatId: state.chatId,
+          model: plainLlm,
           messages,
-          turn.config,
-        );
+          config: turn.config,
+          mode: "answer",
+        });
 
         reply = messageText(finalResponse).trim();
       }
@@ -716,10 +722,13 @@ export class StepExecutor {
         turn.selectedModel,
       );
 
-      const finalResponse = await plainLlm.invoke(
+      const finalResponse = await invokeAgentModelWithTrace({
+        chatId: state.chatId,
+        model: plainLlm,
         messages,
-        turn.config,
-      );
+        config: turn.config,
+        mode: "answer",
+      });
 
       reply = messageText(finalResponse).trim();
     }

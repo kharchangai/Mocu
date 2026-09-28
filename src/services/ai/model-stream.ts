@@ -44,7 +44,7 @@ export type ModelStreamHandlers = {
  * bindings, and a structural type keeps this file free of LangChain
  * generic gymnastics.
  */
-type StreamableChatModel = {
+export type StreamableChatModel = {
   stream(
     input: unknown,
     config?: unknown,

@@ -14,10 +14,17 @@
 // agent's answer arrives at the very end instead of appearing and
 // jumping around while the agent works.
 
+import type { BaseMessage, AIMessage } from '@langchain/core/messages';
+import type { RunnableConfig } from '@langchain/core/runnables';
+
 import {
   dispatchAgentAnswerDelta,
   dispatchAgentToolActivity,
 } from './toolActivity';
+import {
+  streamChatModelWithTrace,
+  type StreamableChatModel,
+} from '../../services/ai/model-stream';
 
 let traceCounter = 0;
 
@@ -61,6 +68,41 @@ export type AgentModelTraceOptions = {
    * follows anyway (tool-limit path).
    */
   convertToAnswer?: boolean;
+};
+
+export const invokeAgentModelWithTrace = async ({
+  chatId,
+  model,
+  messages,
+  config,
+  mode = 'tools',
+}: {
+  chatId: string;
+  model: StreamableChatModel;
+  messages: BaseMessage[];
+  config?: unknown;
+  mode?: 'tools' | 'answer';
+}): Promise<AIMessage> => {
+  const trace = createAgentModelTrace(chatId, { mode });
+
+  try {
+    const response = await streamChatModelWithTrace({
+      model,
+      messages,
+      config: config as RunnableConfig | undefined,
+      handlers: {
+        onStart: trace.begin,
+        onThinking: trace.onThinking,
+        onText: trace.onText,
+      },
+    });
+    trace.finish({ hasToolCalls: Boolean(response.tool_calls?.length) });
+    return response;
+  } catch (error) {
+    // Close any in-progress thought row if the provider fails mid-stream.
+    trace.finish({ hasToolCalls: false });
+    throw error;
+  }
 };
 
 export const createAgentModelTrace = (
