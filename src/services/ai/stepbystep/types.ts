@@ -1,3 +1,4 @@
+import type { PreparedAgentGraphTurn } from "../../../graphStructure/agentTurn";
 import type { BaseMessage } from "@langchain/core/messages";
 import type { StepPlan } from "./createStepPlan";
 
@@ -85,6 +86,8 @@ export interface ExecutorTurnContext {
   tools: StructuredToolLike[];
   /** Model name override from the chat composer, if any. */
   selectedModel?: string;
+  /** Project-scoped prior-run graph retrieval and optional recording. */
+  graphTurn?: PreparedAgentGraphTurn;
 }
 
 /**

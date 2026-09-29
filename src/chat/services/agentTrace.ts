@@ -43,6 +43,7 @@ export type AgentModelTrace = {
    */
   finish: (options: {
     hasToolCalls: boolean;
+    suppressText?: boolean;
   }) => void;
 };
 
@@ -96,7 +97,18 @@ export const invokeAgentModelWithTrace = async ({
         onText: trace.onText,
       },
     });
-    trace.finish({ hasToolCalls: Boolean(response.tool_calls?.length) });
+    const hasToolCalls = Boolean(response.tool_calls?.length);
+    const responseText = typeof response.content === 'string'
+      ? response.content
+      : '';
+    const containsPrintedToolCall =
+      !hasToolCalls &&
+      /<tool_call\b[\s\S]*?<function\s*=[^>]+>[\s\S]*?<\/tool_call>/i.test(responseText);
+
+    trace.finish({
+      hasToolCalls,
+      suppressText: containsPrintedToolCall,
+    });
     return response;
   } catch (error) {
     // Close any in-progress thought row if the provider fails mid-stream.
@@ -190,13 +202,26 @@ export const createAgentModelTrace = (
       });
     },
 
-    finish: ({ hasToolCalls }) => {
+    finish: ({ hasToolCalls, suppressText = false }) => {
       /*
        * Always close the thought row, even when the model produced no
        * reasoning: an empty finished row renders as nothing, while a
        * row left "running" would spin forever.
        */
       dispatchThought('done');
+
+      if (suppressText) {
+        dispatchAgentToolActivity({
+          id: noteId,
+          tool: 'note',
+          kind: 'note',
+          text: '',
+          status: 'done',
+          chatId,
+        });
+        dispatchAgentAnswerDelta({ chatId, text: '' });
+        return;
+      }
 
       if (mode === 'answer' || !text.trim()) {
         return;

@@ -21,7 +21,12 @@ import { invokeAgentModelWithTrace } from "../../../chat/services/agentTrace";
 import { saveSpecialistSectionMemoryInBackground } from "../agent/specialist-memory";
 import { withShortDescription } from "../agent/tool-summaries";
 import { buildDocsContextPrompt } from "../../../chat/docs";
-
+import { compactAgentContext } from "../agent/context-compaction";
+import {
+  createStepToolCallFailureMessage,
+  parseStepToolCallFailureMessage,
+} from "./toolCallFailure";
+import { persistAgentGraphTurn } from "../../../graphStructure/agentTurn";
 import {
   emptyMemory,
   type ExecutorTurnContext,
@@ -41,6 +46,108 @@ const MemorySchema = z.object({
   openItems: z.array(z.string()),
 });
 
+const MAX_MODEL_RETRIES = 3;
+const MODEL_RETRY_DELAY_MS = 500;
+
+type ModelTraceOptions = Parameters<typeof invokeAgentModelWithTrace>[0];
+
+export class StepExecutorModelError extends Error {
+  readonly attempts: number;
+  readonly originalError: unknown;
+
+  constructor(originalError: unknown, attempts: number) {
+    const detail = originalError instanceof Error
+      ? originalError.message
+      : String(originalError);
+    super(`Model request failed after ${attempts} attempt(s): ${detail}`);
+    this.name = "StepExecutorModelError";
+    this.attempts = attempts;
+    this.originalError = originalError;
+  }
+}
+
+function getModelErrorStatus(error: unknown): number | undefined {
+  if (!error || typeof error !== "object") {
+    return undefined;
+  }
+
+  const record = error as {
+    status?: unknown;
+    statusCode?: unknown;
+    response?: { status?: unknown };
+  };
+  const status = record.status ?? record.statusCode ?? record.response?.status;
+  return typeof status === "number" ? status : undefined;
+}
+
+function isRetryableModelError(error: unknown): boolean {
+  const status = getModelErrorStatus(error);
+  return status === undefined ||
+    status === 400 ||
+    status === 408 ||
+    status === 409 ||
+    status === 429 ||
+    status >= 500;
+}
+
+async function invokeStepModelWithRetry(
+  options: ModelTraceOptions,
+): ReturnType<typeof invokeAgentModelWithTrace> {
+  const signal = options.config && typeof options.config === "object"
+    ? (options.config as { signal?: AbortSignal }).signal
+    : undefined;
+  let lastError: unknown;
+  let attempts = 0;
+
+  for (let retry = 0; retry <= MAX_MODEL_RETRIES; retry += 1) {
+    attempts += 1;
+    if (signal?.aborted) {
+      throw new DOMException("The operation was cancelled.", "AbortError");
+    }
+
+    try {
+      if (Array.isArray(options.messages)) compactAgentContext(options.messages as BaseMessage[]);
+      return await invokeAgentModelWithTrace(options);
+    } catch (error) {
+      if (
+        (error instanceof Error && error.name === "AbortError") ||
+        signal?.aborted
+      ) {
+        throw error;
+      }
+
+      lastError = error;
+      if (retry === MAX_MODEL_RETRIES || !isRetryableModelError(error)) {
+        break;
+      }
+
+      const delayMs = MODEL_RETRY_DELAY_MS * 2 ** retry;
+      console.warn(
+        `[Step-by-step Agent] Model request failed; retrying (${retry + 1}/${MAX_MODEL_RETRIES}) in ${delayMs}ms:`,
+        error,
+      );
+      await new Promise<void>((resolve, reject) => {
+        const timeout = setTimeout(() => {
+          signal?.removeEventListener("abort", onAbort);
+          resolve();
+        }, delayMs);
+        const onAbort = () => {
+          clearTimeout(timeout);
+          signal?.removeEventListener("abort", onAbort);
+          reject(new DOMException("The operation was cancelled.", "AbortError"));
+        };
+
+        signal?.addEventListener("abort", onAbort, { once: true });
+        if (signal?.aborted) {
+          onAbort();
+        }
+      });
+    }
+  }
+
+  throw new StepExecutorModelError(lastError, attempts);
+}
+
 function asRecord(value: unknown): Record<string, unknown> {
   return value && typeof value === "object" && !Array.isArray(value)
     ? value as Record<string, unknown>
@@ -56,7 +163,12 @@ function buildMessagesFromStepHistory(entries: LogEntry[]): BaseMessage[] {
     if (entry.kind === "user" && typeof data.message === "string") {
       messages.push(new HumanMessage(data.message));
     } else if (entry.kind === "assistant" && typeof data.reply === "string") {
-      messages.push(new AIMessage(data.reply));
+      const toolCallFailure = parseStepToolCallFailureMessage(data.reply);
+      messages.push(new AIMessage(
+        toolCallFailure
+          ? `The previous turn stopped at step ${toolCallFailure.stepNumber} because the model returned tool-call markup as text. Those calls were not executed; ask the user to switch to a tool-calling model and continue.`
+          : data.reply,
+      ));
     } else if (entry.kind === "tool_call") {
       const callId = typeof data.callId === "string" ? data.callId : entry.id;
       const name = typeof data.name === "string" ? data.name : "workflow_tool";
@@ -129,7 +241,6 @@ export interface StepExecutorOptions {
   buildTurnLlm: (selectedModel?: string) => Promise<ChatOpenAI>;
   /** Builds the cheap LLM used to write the concise per-step summary. */
   buildSummaryLlm: () => Promise<ChatOpenAI>;
-  maxToolRounds?: number;
 }
 
 /**
@@ -564,7 +675,9 @@ export class StepExecutor {
     const history = await this.store.readStepHistory(state.id, stepNumber);
     const messages: BaseMessage[] = [
       new SystemMessage(
-        buildStepPrompt(state, toolsDescription, docsContextPrompt),
+        buildStepPrompt(state, toolsDescription, [docsContextPrompt, turn.graphTurn?.graphHint ?? ""]
+          .filter((item) => item.trim())
+          .join("\n\n")),
       ),
       ...buildMessagesFromStepHistory(history),
       new HumanMessage(message),
@@ -574,24 +687,46 @@ export class StepExecutor {
       message,
     });
 
-    const maxRounds = this.options.maxToolRounds ?? 10;
     let advanceRequested = false;
     let finishRequested = false;
     let planUpdateRequested = false;
+    let malformedToolReplyRetryUsed = false;
     let reply = "";
 
-    for (let round = 0; round <= maxRounds; round++) {
-      const response: AIMessage = await invokeAgentModelWithTrace({
+    // Keep executing tool rounds until the model finishes the user's request
+    // or invokes a workflow-control tool. There is deliberately no round cap:
+    // long coding tasks routinely need more than ten model/tool exchanges.
+    for (let round = 0; ; round++) {
+      const response: AIMessage = await invokeStepModelWithRetry({
         chatId: state.chatId,
         model: llmWithTools,
         messages,
         config: turn.config,
       });
 
+      turn.graphTurn?.recorder?.recordModelCall({ hasToolCalls: Boolean(response.tool_calls?.length), text: messageText(response).slice(0, 2000) });
       const toolCalls = response.tool_calls ?? [];
 
       if (toolCalls.length === 0) {
-        reply = messageText(response).trim();
+        const responseText = messageText(response).trim();
+
+        if (/<tool_call\b[\s\S]*?<function\s*=[^>]+>[\s\S]*?<\/tool_call>/i.test(responseText)) {
+          if (!malformedToolReplyRetryUsed) {
+            malformedToolReplyRetryUsed = true;
+            messages.push(response);
+            messages.push(
+              new HumanMessage(
+                "(System recovery instruction: Your previous response printed tool-call markup as ordinary text, so those actions were NOT executed. The real tools are available through native function calling. Retry the intended work now by issuing actual structured tool calls; do not print tool-call tags or claim the actions were completed. If you cannot issue a native tool call, stop and explain that clearly.)",
+              ),
+            );
+            continue;
+          }
+
+          reply = createStepToolCallFailureMessage(stepNumber);
+        } else {
+          reply = responseText;
+        }
+
         break;
       }
 
@@ -645,20 +780,19 @@ export class StepExecutor {
             turn.config,
           );
 
-          resultText =
-            typeof output === "string"
-              ? output
-              : JSON.stringify(output);
-          if (isToolErrorResult(resultText)) {
-            activityStatus = "error";
-          }
+          resultText = typeof output === "string" ? output : JSON.stringify(output);
+          if (isToolErrorResult(resultText)) activityStatus = "error";
         } catch (error) {
           activityStatus = "error";
-          resultText = JSON.stringify({
-            ok: false,
-            error: errorMessage(error),
-          });
+          resultText = JSON.stringify({ ok: false, error: errorMessage(error) });
         }
+        turn.graphTurn?.recorder?.recordToolCall({
+          id: toolCallId,
+          tool: toolCall.name,
+          args: toolArgs,
+          result: resultText,
+          status: activityStatus,
+        });
 
         await this.store.append(state.id, stepNumber, "tool_result", {
           callId: toolCallId,
@@ -690,23 +824,6 @@ export class StepExecutor {
       if (planUpdateRequested) {
         break;
       }
-
-      if (round === maxRounds) {
-        // Force a final text reply instead of more tool calls.
-        const plainLlm = await this.options.buildTurnLlm(
-          turn.selectedModel,
-        );
-
-        const finalResponse = await invokeAgentModelWithTrace({
-          chatId: state.chatId,
-          model: plainLlm,
-          messages,
-          config: turn.config,
-          mode: "answer",
-        });
-
-        reply = messageText(finalResponse).trim();
-      }
     }
 
     if (planUpdateRequested && !reply) {
@@ -722,14 +839,14 @@ export class StepExecutor {
         turn.selectedModel,
       );
 
-      const finalResponse = await invokeAgentModelWithTrace({
+      const finalResponse = await invokeStepModelWithRetry({
         chatId: state.chatId,
         model: plainLlm,
         messages,
         config: turn.config,
         mode: "answer",
       });
-
+      turn.graphTurn?.recorder?.recordModelCall({ hasToolCalls: Boolean(finalResponse.tool_calls?.length), text: messageText(finalResponse).slice(0, 2000) });
       reply = messageText(finalResponse).trim();
     }
 
@@ -758,6 +875,9 @@ export class StepExecutor {
     }
 
     await this.store.save(state);
+    if (turn.graphTurn?.recorder) {
+      await persistAgentGraphTurn(turn.graphTurn, reply, "[Step Workflow]");
+    }
 
     const status: WorkflowStatus = state.status;
     const advanced = advanceRequested && status === "active";

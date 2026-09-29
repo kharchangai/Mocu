@@ -1,3 +1,4 @@
+import type { PreparedAgentGraphTurn } from "../../../graphStructure/agentTurn";
 import type { BaseMessage } from "@langchain/core/messages";
 
 export type FocusStatus = "active" | "completed" | "cancelled";
@@ -53,6 +54,7 @@ export interface FocusTurnContext {
   config?: Record<string, unknown>;
   tools: FocusToolLike[];
   selectedModel?: string;
+  graphTurn?: PreparedAgentGraphTurn;
 }
 
 export interface FocusTurnResult {

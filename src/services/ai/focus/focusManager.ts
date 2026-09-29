@@ -1,4 +1,5 @@
 import { AIMessage, type BaseMessage } from "@langchain/core/messages";
+import { prepareAgentGraphTurn } from "../../../graphStructure/agentTurn";
 import type { RunnableConfig } from "@langchain/core/runnables";
 import { getAsyncLLM, getMainAgentLlm, getSelectedChatModel } from "../llm";
 import { desktopVisionTool } from "../tools/desktop-vision-tool";
@@ -143,11 +144,22 @@ export async function handleFocusMessage(chatId: string, message: string, config
   const configurable = config.configurable;
   const hasExplicitModel = configurable !== undefined && Object.prototype.hasOwnProperty.call(configurable, "selectedModel");
   const selectedModel = hasExplicitModel ? getSelectedChatModel(config) : state.selectedModel ?? "";
-  const tools = await buildTaskTools(config, state.projectPath || options.projectPath?.trim());
+  const projectPath = state.projectPath || options.projectPath?.trim() || "";
+  const tools = await buildTaskTools(config, projectPath || undefined);
+  const graphTurn = await prepareAgentGraphTurn({
+    agentKind: "focus",
+    chatId,
+    projectPath,
+    userMessage: message,
+  });
+  if (graphTurn.digestTool && !tools.some((item) => item.name === graphTurn.digestTool?.name)) {
+    tools.push(graphTurn.digestTool as unknown as FocusToolLike);
+  }
   return executor.send(id, message, {
     config: config as unknown as Record<string, unknown>,
     tools,
     selectedModel: selectedModel || undefined,
+    graphTurn,
   });
 }
 

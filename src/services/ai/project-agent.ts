@@ -175,7 +175,13 @@ import {
   findSpecialistProjectMemories,
   type SpecialistProjectMemoryMatch,
 } from "./agent/specialist-memory";
-
+import { createGraphRecorder, type GraphRecorder } from "../../graphStructure/recorder";
+import { shouldRouteToGraphSystem } from "../../graphStructure/jevGate";
+import { cleanRunRecords } from "../../graphStructure/cleanup";
+import { buildGraph } from "../../graphStructure/graphMaker";
+import { saveRunGraph } from "../../graphStructure/graphStorage";
+import { createGraphDigestTool, searchRunGraphHints } from "../../graphStructure/graphDigest";
+import { runProjectMemoryExclusive } from "../../chat/project/memory/projectMemoryOperationQueue";
 import {
   buildDocsContextPrompt,
 } from "../../chat/docs";
@@ -1313,27 +1319,26 @@ const createProjectToolExecutor = (
 /*
  * Executes one tool call and builds its ToolMessage.
  */
-const executeProjectToolCall =
-  async ({
-    toolExecutor,
-    toolName,
-    toolArgs,
-    toolCallId,
-    stepNumber,
-    signal,
-    chatId,
-  }: {
-    toolExecutor: ToolExecutor;
-    toolName: string;
-    toolArgs: ToolArgs;
-    toolCallId: string;
-    stepNumber: number;
-    signal?: AbortSignal;
-    chatId?: string;
-  }): Promise<ProjectToolExecutionResult> => {
-    throwIfAborted(
-      signal,
-    );
+const executeProjectToolCall = async ({
+  toolExecutor,
+  toolName,
+  toolArgs,
+  toolCallId,
+  stepNumber,
+  signal,
+  chatId,
+  recorder,
+}: {
+  toolExecutor: ToolExecutor;
+  toolName: string;
+  toolArgs: ToolArgs;
+  toolCallId: string;
+  stepNumber: number;
+  signal?: AbortSignal;
+  chatId?: string;
+  recorder?: GraphRecorder;
+}): Promise<ProjectToolExecutionResult> => {
+  throwIfAborted(signal);
 
     dispatchAgentActivity(
       toolName,
@@ -1352,16 +1357,16 @@ const executeProjectToolCall =
       chatId,
     });
 
-    let toolResult =
-      "";
+    let toolResult = "";
+    let executionFailed = false;
+    recorder?.recordToolCall({ id: toolCallId, tool: toolName, args: toolArgs, status: "running" });
 
     try {
-      const rawToolResult =
-        await toolExecutor.execute(
-          toolName,
-          toolArgs,
-          { toolCallId, toolName, chatId },
-        );
+      const rawToolResult = await toolExecutor.execute(
+        toolName,
+        toolArgs,
+        { toolCallId, toolName, chatId },
+      );
 
       throwIfAborted(
         signal,
@@ -1371,28 +1376,14 @@ const executeProjectToolCall =
         getToolResultText(
           rawToolResult,
         ).trim();
-    } catch (
-      error: unknown
-    ) {
-      if (
-        isAbortError(
-          error,
-        )
-      ) {
-        throw error;
-      }
-
-      console.error(
-        `[Project Agent] Error executing ${toolName}:`,
-        error,
-      );
-
-      toolResult =
-        CHAT_TOOL_FAILURE_RESULT;
+    } catch (error: unknown) {
+      executionFailed = true;
+      recorder?.recordToolCall({ id: toolCallId, tool: toolName, args: toolArgs, result: error instanceof Error ? error.message : String(error), status: "error" });
+      if (isAbortError(error)) throw error;
+      console.error(`[Project Agent] Error executing ${toolName}:`, error);
+      toolResult = CHAT_TOOL_FAILURE_RESULT;
     } finally {
-      dispatchAgentActivity(
-        null,
-      );
+      dispatchAgentActivity(null);
     }
 
     const normalizedToolResult =
@@ -1411,29 +1402,21 @@ const executeProjectToolCall =
           : "done",
       chatId,
     });
+    recorder?.recordToolCall({ id: toolCallId, tool: toolName, args: toolArgs, result: normalizedToolResult, status: executionFailed ? "error" : "done" });
 
     return {
-      toolMessage:
-        new ToolMessage({
-          content:
-            normalizedToolResult,
-
-          tool_call_id:
-            toolCallId,
-
-          name:
-            toolName,
-        }),
-
+      toolMessage: new ToolMessage({
+        content: normalizedToolResult,
+        tool_call_id: toolCallId,
+        name: toolName,
+      }),
       summary: [
         `[Tool result: ${toolName}]`,
         `[Step: ${stepNumber}]`,
         normalizedToolResult,
-      ].join(
-        "\n",
-      ),
+      ].join("\n"),
     };
-  };
+};
 
 /*
  * Builds the prompt used when the tool-step limit is reached.
@@ -1854,10 +1837,15 @@ export const callProjectAgent =
       );
     }
 
-    const relatedMemoryPrompt =
-      buildProjectMemoryPrompt(
-        memoryResult,
-      );
+    let relatedMemoryPrompt = "";
+    try {
+      const baseMemoryPrompt = buildProjectMemoryPrompt(memoryResult);
+      const graphHint = await searchRunGraphHints(normalizedProjectPath, userText);
+      relatedMemoryPrompt = [baseMemoryPrompt, graphHint].filter(Boolean).join("\n\n");
+    } catch (error) {
+      console.warn("[Project Agent] Project memory prompt assembly failed:", error);
+      relatedMemoryPrompt = buildProjectMemoryPrompt(memoryResult);
+    }
 
     /*
      * Search the user's saved docs and notes for this message and inject
@@ -1973,8 +1961,6 @@ export const callProjectAgent =
           normalizedProjectPath,
       }) as TerminalTool;
 
-    const projectChatId = getChatIdFromConfig(runnableConfig) || "default";
-    const readSpecialistHistoryTool = createReadSpecialistSectionHistoryTool(projectChatId);
 
     /*
      * Expose extension commands as callable tools so the agent can run
@@ -2061,87 +2047,55 @@ export const callProjectAgent =
     /*
      * Expose tools to the model.
      */
+    const projectChatId = getChatIdFromConfig(runnableConfig) || "default";
+    const readSpecialistHistoryTool = createReadSpecialistSectionHistoryTool(projectChatId);
+    const graphRecorder = createGraphRecorder({ agentKind: "project", chatId: projectChatId, projectPath: normalizedProjectPath });
+    let recordThisRun = false;
+    try {
+      recordThisRun = await shouldRouteToGraphSystem(userText);
+      if (recordThisRun) graphRecorder.startRun(userText);
+    } catch (error) {
+      console.warn("[Project Agent] JEV recording gate failed; continuing without recording:", error);
+    }
+    const graphDigestTool = createGraphDigestTool(normalizedProjectPath);
     const specialistMemoryTool = createFindSpecialistProjectMemoryTool(normalizedProjectPath);
-    const llmWithTools =
-      llm.bindTools([
-        scheduleTool,
-        desktopVisionTool,
-        terminalTool,
-        perplexitySearchTool,
-        textToSpeechTool,
-        speechControlTool,
-        skillLoaderTool,
-        createAgentTool,
-        readFileTool,
-        writeFileTool,
-        editFileTool,
-        findFileTool,
-        specialistMemoryTool,
-        readSpecialistHistoryTool,
-        ...docTools,
-        ...notesTools,
-        ...extensionTools.tools,
-        ...mcpTools.tools,
-        ...agentTools.tools,
-      ]);
-
-    /*
-     * Register tools for execution.
-     */
-    const toolExecutor =
-      createProjectToolExecutor(
-        terminalTool,
-        runnableConfig,
-      );
+    const llmWithTools = llm.bindTools([
+      scheduleTool, desktopVisionTool, terminalTool, perplexitySearchTool,
+      textToSpeechTool, speechControlTool, skillLoaderTool, createAgentTool,
+      readFileTool, writeFileTool, editFileTool, findFileTool,
+      graphDigestTool.runnable, specialistMemoryTool, readSpecialistHistoryTool,
+      ...docTools, ...notesTools, ...extensionTools.tools, ...mcpTools.tools, ...agentTools.tools,
+    ]);
+    const toolExecutor = createProjectToolExecutor(terminalTool, runnableConfig);
+    toolExecutor.registerTool({
+      name: graphDigestTool.name,
+      description: graphDigestTool.description,
+      execute: (args) => graphDigestTool.execute(args as { query: string; runId?: string }),
+    });
 
     toolExecutor.registerTool({
       name: specialistMemoryTool.name,
       description: specialistMemoryTool.description,
       execute: async (args) => specialistMemoryTool.invoke(args as never, runnableConfig),
     });
-
     toolExecutor.registerTool({
       name: readSpecialistHistoryTool.name,
       description: readSpecialistHistoryTool.description,
       execute: async (args) => readSpecialistHistoryTool.invoke(args as never, runnableConfig),
     });
 
-    extensionTools.registerAll(
-      toolExecutor,
-    );
+    extensionTools.registerAll(toolExecutor);
+    mcpTools.registerAll(toolExecutor);
+    agentTools.registerAll(toolExecutor);
 
-    mcpTools.registerAll(
-      toolExecutor,
-    );
-
-    agentTools.registerAll(
-      toolExecutor,
-    );
-
-    /*
-     * The exact tool names exposed to the model, so the system prompt can
-     * list them concretely instead of a vague summary.
-     */
     const availableToolNames = [
-      "terminal_executor",
-      "schedule_action",
-      "desktop_vision_action",
-      "text_to_speech",
-      "speech_control",
-      perplexitySearchTool.name,
-      skillLoaderTool.name,
-      createAgentTool.name,
-      readFileTool.name,
-      writeFileTool.name,
-      editFileTool.name,
-      findFileTool.name,
-      specialistMemoryTool.name,
-      readSpecialistHistoryTool.name,
-      ...docTools.map((docTool) => docTool.name),
-      ...notesTools.map((noteTool) => noteTool.name),
-      ...extensionTools.entries.map((entry) => entry.name),
-      ...mcpTools.tools.map((mcpTool) => mcpTool.name),
-      ...agentTools.entries.map((entry) => entry.name),
+      "terminal_executor", "schedule_action", "desktop_vision_action", "text_to_speech",
+      "speech_control", perplexitySearchTool.name, skillLoaderTool.name, createAgentTool.name,
+      readFileTool.name, writeFileTool.name, editFileTool.name, findFileTool.name,
+      graphDigestTool.name, specialistMemoryTool.name, readSpecialistHistoryTool.name,
+      ...docTools.map((item) => item.name), ...notesTools.map((item) => item.name),
+      ...extensionTools.entries.map((item) => item.name), ...mcpTools.tools.map((item) => item.name),
+      ...agentTools.entries.map((item) => item.name),
     ];
 
     const systemPrompt = addMcpToolsToProjectSystemPrompt(
@@ -2161,12 +2115,11 @@ export const callProjectAgent =
               `Original user request: ${previousTurn?.userMessage ?? userText}`,
               "Previous attempt report (completed work and failure details):",
               resumableProgress.slice(-MAX_PARTIAL_PROGRESS_CHARS),
-            ].join("\n\n")
+            ].join("\\n\\n")
           : "",
       ),
       mcpTools.prompt,
     );
-
     let messagesToRun:
       BaseMessage[] = [
         new SystemMessage(
@@ -2204,14 +2157,12 @@ export const callProjectAgent =
     );
 
     initialModelTrace.finish({
-      hasToolCalls: Boolean(
-        response.tool_calls?.length,
-      ),
+      hasToolCalls: Boolean(response.tool_calls?.length),
     });
-
-    throwIfAborted(
-      signal,
-    );
+    if (recordThisRun) {
+      graphRecorder.recordModelCall({ hasToolCalls: Boolean(response.tool_calls?.length), text: getTextContent(response.content).slice(0, 2000) });
+    }
+    throwIfAborted(signal);
 
     let stepCount =
       0;
@@ -2321,21 +2272,9 @@ export const callProjectAgent =
               ) as ToolArgs,
 
             toolCallId,
-
-            stepNumber:
-              currentStepNumber,
-
-            signal,
-
-            /*
-             * Scope every activity event and extension command of this
-             * tool call to the conversation that owns the run, so
-             * parallel chats never see each other's tool boxes.
-             */
-            chatId:
-              getChatIdFromConfig(
-                runnableConfig,
-              ),
+            stepNumber: currentStepNumber,
+            chatId: getChatIdFromConfig(runnableConfig),
+            recorder: recordThisRun ? graphRecorder : undefined,
           });
 
         /*
@@ -2371,10 +2310,6 @@ export const callProjectAgent =
         );
       }
 
-      throwIfAborted(
-        signal,
-      );
-
       messagesToRun = [
         ...messagesToRun,
         response,
@@ -2404,16 +2339,11 @@ export const callProjectAgent =
         () => toolResultsSummary,
       );
 
-      stepModelTrace.finish({
-        hasToolCalls: Boolean(
-          response.tool_calls?.length,
-        ),
-      });
-
-      throwIfAborted(
-        signal,
-      );
-
+      stepModelTrace.finish({ hasToolCalls: Boolean(response.tool_calls?.length) });
+      if (recordThisRun) {
+        graphRecorder.recordModelCall({ hasToolCalls: Boolean(response.tool_calls?.length), text: getTextContent(response.content).slice(0, 2000) });
+      }
+      throwIfAborted(signal);
       stepCount +=
         1;
     }
@@ -2575,6 +2505,24 @@ export const callProjectAgent =
 
     response.content =
       finalAssistantContent;
+
+    if (recordThisRun) {
+      graphRecorder.finishRun(finalAssistantContent);
+      try {
+        const cleanup = await cleanRunRecords(graphRecorder.getRecords());
+        const graph = buildGraph({
+          runId: graphRecorder.runId,
+          agentKind: graphRecorder.agentKind,
+          chatId: graphRecorder.chatId,
+          projectPath: normalizedProjectPath,
+          getRecords: () => cleanup.kept,
+        });
+        const saved = await runProjectMemoryExclusive(() => saveRunGraph(normalizedProjectPath, graph));
+        console.log(`[Project Agent] Saved run graph ${saved.key}; embedded=${saved.embedded}`);
+      } catch (error) {
+        console.warn("[Project Agent] Graph recording failed; user task already completed:", error);
+      }
+    }
 
     saveProjectMemoryInBackground(
       userText,

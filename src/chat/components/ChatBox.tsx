@@ -63,6 +63,8 @@ import {
   type StepWorkflowLogPage,
   type StepWorkflowOverview,
 } from '../../services/ai/stepbystep/workflowManager';
+import { parseStepToolCallFailureMessage } from '../../services/ai/stepbystep/toolCallFailure';
+import { StepExecutorModelError } from '../../services/ai/stepbystep/StepExecutor';
 import {
   getFocusChatTurns,
   getFocusOverviews,
@@ -1509,7 +1511,9 @@ export function ChatBox({
                 ? error.progressSummary.join('\n\n')
                 : 'No project tool actions completed before the model error.',
             ].join('\n')
-          : 'Sorry, I encountered an error while processing that request.';
+          : error instanceof StepExecutorModelError
+            ? `The step-by-step model request failed after ${error.attempts} attempts: ${error.originalError instanceof Error ? error.originalError.message : String(error.originalError)}`
+            : 'Sorry, I encountered an error while processing that request.';
       const errorMessage = onAppendMessage(
         requestChatId,
         'assistant',
@@ -2033,6 +2037,7 @@ export function ChatBox({
                           content={message.content}
                           footer={messageIndex === lastAssistantIndex ? memoryFooter : undefined}
                           failureDetails={getProjectAgentFailureDetails(message.content)}
+                          workflowToolCallFailure={parseStepToolCallFailureMessage(message.content)}
                           onRegenerate={message.content.includes(PROJECT_AGENT_PARTIAL_PROGRESS_MARKER)
                             ? () => retryFromAssistantMessage(messageIndex)
                             : undefined}

@@ -16,6 +16,9 @@ type AssistantMessageProps = {
     summary: string;
     progress: string;
   };
+  workflowToolCallFailure?: {
+    stepNumber: number;
+  };
   onRegenerate?: () => void;
 
   /*
@@ -92,6 +95,7 @@ function AssistantMessageImpl({
   content,
   footer,
   failureDetails,
+  workflowToolCallFailure,
   onRegenerate,
 }: AssistantMessageProps) {
   const [isCopied, setIsCopied] =
@@ -111,9 +115,13 @@ function AssistantMessageImpl({
   }, []);
 
   const handleCopy = async () => {
+    const copyText = workflowToolCallFailure
+      ? `Step-by-step paused at step ${workflowToolCallFailure.stepNumber}. The model returned tool-call markup as text twice, so those actions were not run. Switch to a model/provider with native tool-calling support and send “continue” to resume.`
+      : content;
+
     try {
       await navigator.clipboard.writeText(
-        content,
+        copyText,
       );
 
       setIsCopied(true);
@@ -146,7 +154,36 @@ function AssistantMessageImpl({
       className="assistant-message"
       aria-label="Mocu response"
     >
-      {failureDetails ? (
+      {workflowToolCallFailure ? (
+        <section
+          className="assistant-failure-card assistant-failure-card--tool-call"
+          role="alert"
+          aria-label="Step-by-step workflow paused"
+        >
+          <div className="assistant-failure-card__heading">
+            <span className="assistant-failure-card__icon" aria-hidden="true">
+              !
+            </span>
+            <div>
+              <p className="assistant-failure-card__eyebrow">
+                Step-by-step paused · Step {workflowToolCallFailure.stepNumber}
+              </p>
+              <h3>The model couldn’t run its requested tools</h3>
+            </div>
+          </div>
+
+          <p className="assistant-failure-card__summary">
+            The model returned tool-call markup as text twice instead of making
+            executable tool calls. The actions in that text were not run.
+          </p>
+
+          <div className="assistant-failure-card__saved">
+            Your workflow and any earlier completed actions are saved. Select a
+            model/provider with native tool-calling support, then send “continue”
+            to resume this step.
+          </div>
+        </section>
+      ) : failureDetails ? (
         <section
           className="assistant-failure-card"
           role="alert"

@@ -101,6 +101,20 @@
   box-shadow: 0 4px 18px rgba(108, 44, 35, 0.05);
 }
 
+.assistant-failure-card--tool-call {
+  border-color: #eadcb9;
+  background: #fffdf7;
+}
+
+.assistant-failure-card--tool-call .assistant-failure-card__icon {
+  background: #fff0c2;
+  color: #87621b;
+}
+
+.assistant-failure-card--tool-call .assistant-failure-card__eyebrow {
+  color: #87621b;
+}
+
 .assistant-failure-card__heading {
   display: flex;
   align-items: center;

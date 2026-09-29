@@ -11,6 +11,8 @@ import { FocusStore } from "./focusStore";
 import { saveSpecialistSectionMemoryInBackground } from "../agent/specialist-memory";
 import { withShortDescription } from "../agent/tool-summaries";
 import { buildDocsContextPrompt } from "../../../chat/docs";
+import { persistAgentGraphTurn } from "../../../graphStructure/agentTurn";
+import { compactAgentContext } from "../agent/context-compaction";
 
 const FocusMemorySchema = z.object({
   summary: z.string(),
@@ -94,8 +96,7 @@ FOCUS RULES
 - Use record_focus_milestone only for a significant result worth carrying forward (for example a file created/changed, a verified decision, or a meaningful test result), not routine actions.
 - Advance only when the user explicitly asks to move to the next section or clearly says this section is done. Then call next_focus_section, stop all work, and briefly acknowledge the new section.
 - End or cancel Focus only when the user explicitly asks to stop/end/leave/cancel the session. Then call end_focus and stop all work.
-- If the user's request is unclear or a decision is necessary, ask. Reply in the user's language.
-- Focus is isolated from Mocu's global and project memory. Do not claim to access or update those memories.
+- Focus is isolated from Mocu's global and project memory tools; do not claim to access or update them. You may use the provided graph hint and digest tool as historical reference, not proof of current project state.
 
 PREVIOUS SECTION MEMORIES (compact carry-over only)
 ${JSON.stringify(previousSections)}
@@ -260,7 +261,9 @@ export class FocusExecutor {
      * tool's bound schema and key behavior lives in the summaries. */
     const llmTools = allTools.map(withShortDescription);
     const descriptions = llmTools.map((item) => `- ${item.name}: ${item.description}`).join("\n");
-    const docsContextPrompt = await buildDocsContextPrompt(userMessage);
+    const docsContextPrompt = [await buildDocsContextPrompt(userMessage), turn.graphTurn?.graphHint ?? ""]
+      .filter((item) => item.trim())
+      .join("\n\n");
     const llm = await this.options.buildTurnLlm(turn.selectedModel);
     const llmWithTools = llmTools.length ? llm.bindTools(llmTools) : llm;
     const messages: BaseMessage[] = [
@@ -280,12 +283,14 @@ export class FocusExecutor {
     let previousCallSignature = "";
     let repeatedRounds = 0;
     for (let round = 0; round <= maxRounds; round += 1) {
+      compactAgentContext(messages);
       const response: AIMessage = await invokeAgentModelWithTrace({
         chatId: state.chatId,
         model: llmWithTools,
         messages,
         config: turn.config,
       });
+      turn.graphTurn?.recorder?.recordModelCall({ hasToolCalls: Boolean(response.tool_calls?.length), text: messageText(response).slice(0, 2000) });
       const calls = response.tool_calls ?? [];
       if (!calls.length) {
         reply = messageText(response).trim();
@@ -307,6 +312,7 @@ export class FocusExecutor {
           }));
         }
         messages.push(new HumanMessage("(System note: You are repeating the same tool calls without progress. Stop calling tools and give a final reply that summarizes the work completed so far and what remains.)"));
+        compactAgentContext(messages);
         const final = await invokeAgentModelWithTrace({
           chatId: state.chatId,
           model: await this.options.buildTurnLlm(turn.selectedModel),
@@ -314,6 +320,7 @@ export class FocusExecutor {
           config: turn.config,
           mode: "answer",
         });
+        turn.graphTurn?.recorder?.recordModelCall({ hasToolCalls: Boolean(final.tool_calls?.length), text: messageText(final).slice(0, 2000) });
         reply = messageText(final).trim();
         break;
       }
@@ -337,6 +344,7 @@ export class FocusExecutor {
           toolStatus = "error";
           resultText = JSON.stringify({ ok: false, error: error instanceof Error ? error.message : String(error) });
         }
+        turn.graphTurn?.recorder?.recordToolCall({ id: callId, tool: call.name, args, result: resultText, status: toolStatus });
         await this.store.append(state.id, sectionNumber, "tool_result", { callId, name: call.name, result: resultText });
         dispatchAgentToolActivity({ id: callId, tool: call.name, args, result: resultText, status: toolStatus, chatId: state.chatId });
         messages.push(new ToolMessage({ content: resultText, tool_call_id: callId, name: call.name }));
@@ -349,6 +357,7 @@ export class FocusExecutor {
       compactOldToolResults(messages);
       if (round === maxRounds) {
         messages.push(new HumanMessage("(System note: The configured tool-use ceiling for this turn has been reached. Stop calling tools. Give a final reply that summarizes the work completed so far and what remains.)"));
+        compactAgentContext(messages);
         const final = await invokeAgentModelWithTrace({
           chatId: state.chatId,
           model: await this.options.buildTurnLlm(turn.selectedModel),
@@ -356,12 +365,14 @@ export class FocusExecutor {
           config: turn.config,
           mode: "answer",
         });
+        turn.graphTurn?.recorder?.recordModelCall({ hasToolCalls: Boolean(final.tool_calls?.length), text: messageText(final).slice(0, 2000) });
         reply = messageText(final).trim();
       }
     }
 
     if (controlUsed && !reply) {
       messages.push(new HumanMessage("(System note: A Focus control just succeeded. Give only a short acknowledgement/recap. Do not call tools or do more work.)"));
+      compactAgentContext(messages);
       const final = await invokeAgentModelWithTrace({
         chatId: state.chatId,
         model: await this.options.buildTurnLlm(turn.selectedModel),
@@ -369,6 +380,7 @@ export class FocusExecutor {
         config: turn.config,
         mode: "answer",
       });
+      turn.graphTurn?.recorder?.recordModelCall({ hasToolCalls: Boolean(final.tool_calls?.length), text: messageText(final).slice(0, 2000) });
       reply = messageText(final).trim();
     }
     if (!reply) reply = "I had to stop this turn before finishing. Send 'continue' and I will pick up where I left off.";
@@ -382,6 +394,9 @@ export class FocusExecutor {
       await this.finalizeSection(state, "end");
     }
     await this.store.save(state);
+    if (turn.graphTurn?.recorder) {
+      await persistAgentGraphTurn(turn.graphTurn, reply, "[Focus]");
+    }
     return {
       reply,
       status: state.status,

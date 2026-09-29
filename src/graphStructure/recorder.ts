@@ -64,35 +64,18 @@ export type GraphRecord =
 export type GraphRecorderOptions = {
   agentKind: AgentKind;
   chatId?: string;
-  /** Optional explicit id; generated when omitted. */
   runId?: string;
+  projectPath?: string;
 };
 
 export type GraphRecorder = {
   readonly runId: string;
   readonly agentKind: AgentKind;
   readonly chatId?: string;
-  /** Call once at the start of the run with the user's message. */
+  readonly projectPath?: string;
   startRun: (userMessage: string) => void;
-  /** Call after each model invocation; returns the call index used. */
-  recordModelCall: (call: {
-    thought?: string;
-    text?: string;
-    hasToolCalls?: boolean;
-  }) => number;
-  /**
-   * Call around each tool execution. Dispatch once with status "running"
-   * before the tool runs, then again with the result and a terminal status.
-   * Records sharing an id are merged by the graph maker.
-   */
-  recordToolCall: (call: {
-    id: string;
-    tool: string;
-    args?: Record<string, unknown>;
-    result?: string;
-    status?: ToolCallStatus;
-  }) => void;
-  /** Call once at the end of the run with the final user-facing answer. */
+  recordModelCall: (call: { thought?: string; text?: string; hasToolCalls?: boolean }) => number;
+  recordToolCall: (call: { id: string; tool: string; args?: Record<string, unknown>; result?: string; status?: ToolCallStatus }) => void;
   finishRun: (finalAnswer: string) => void;
   getRecords: () => readonly GraphRecord[];
 };
@@ -121,7 +104,7 @@ export const createGraphRecorder = (
     runId,
     agentKind: options.agentKind,
     chatId: options.chatId,
-
+    projectPath: options.projectPath,
     startRun(userMessage: string): void {
       try {
         if (started) {

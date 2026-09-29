@@ -146,10 +146,10 @@ function CancelledRunCardImpl({
               className="cancelled-run-card__tools"
               title={toolNames.join(', ')}
             >
-              {toolNames.slice(0, 6).map((name) => (
+              {toolNames.slice(0, 6).map((name, index) => (
                 <span
                   className="cancelled-run-card__chip"
-                  key={name}
+                  key={`${name}-${index}`}
                 >
                   {name}
                 </span>

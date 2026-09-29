@@ -1,4 +1,5 @@
 import type { StructuredToolInterface } from "@langchain/core/tools";
+import { prepareAgentGraphTurn } from "../../../graphStructure/agentTurn";
 import type { RunnableConfig } from "@langchain/core/runnables";
 import { AIMessage, type BaseMessage } from "@langchain/core/messages";
 import { createStepPlan, type StepPlan } from "./createStepPlan";
@@ -361,10 +362,17 @@ export async function handleStepWorkflowMessage(
     await store.save(state);
   }
 
-  const tools = await buildMainAgentToolRuntime(
-    config,
-    options.projectPath?.trim() || undefined,
-  );
+  const projectPath = state.projectPath?.trim() || options.projectPath?.trim() || "";
+  const tools = await buildMainAgentToolRuntime(config, projectPath || undefined);
+  const graphTurn = await prepareAgentGraphTurn({
+    agentKind: "stepbystep",
+    chatId,
+    projectPath,
+    userMessage: message,
+  });
+  if (graphTurn.digestTool && !tools.some((item) => item.name === graphTurn.digestTool?.name)) {
+    tools.push(graphTurn.digestTool as unknown as StructuredToolLike);
+  }
 
   return executor.send(
     workflowId,
@@ -373,8 +381,10 @@ export async function handleStepWorkflowMessage(
       config: config as unknown as Record<string, unknown>,
       tools,
       selectedModel: selectedModel || undefined,
+      graphTurn,
     },
   );
+
 }
 
 /**
