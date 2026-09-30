@@ -1365,7 +1365,7 @@ const executeProjectToolCall = async ({
       const rawToolResult = await toolExecutor.execute(
         toolName,
         toolArgs,
-        { toolCallId, toolName, chatId },
+        { toolCallId, toolName, chatId, signal },
       );
 
       throwIfAborted(
@@ -1379,7 +1379,7 @@ const executeProjectToolCall = async ({
     } catch (error: unknown) {
       executionFailed = true;
       recorder?.recordToolCall({ id: toolCallId, tool: toolName, args: toolArgs, result: error instanceof Error ? error.message : String(error), status: "error" });
-      if (isAbortError(error)) throw error;
+      if (isAbortError(error) || signal?.aborted) throw error;
       console.error(`[Project Agent] Error executing ${toolName}:`, error);
       toolResult = CHAT_TOOL_FAILURE_RESULT;
     } finally {
@@ -2273,6 +2273,7 @@ export const callProjectAgent =
 
             toolCallId,
             stepNumber: currentStepNumber,
+            signal,
             chatId: getChatIdFromConfig(runnableConfig),
             recorder: recordThisRun ? graphRecorder : undefined,
           });

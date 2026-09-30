@@ -16,7 +16,10 @@
  * applied in a single pass, so the numbers stay valid.
  */
 import { tool } from "@langchain/core/tools";
+import type { RunnableConfig } from "@langchain/core/runnables";
 import { z } from "zod";
+
+import { isAbortError, throwIfAborted } from "../../agent/abort";
 
 import {
   applyLineEdits,
@@ -143,8 +146,12 @@ export function formatEditPreview(
 }
 
 export const editFileTool = tool(
-  async ({ path, edits }) => {
+  async ({ path, edits }, config: RunnableConfig) => {
+    const signal = config?.signal;
+
     try {
+      throwIfAborted(signal);
+
       const filePath = await resolveAbsolutePath(path);
 
       if (!(await fileExists(filePath))) {
@@ -163,6 +170,8 @@ export const editFileTool = tool(
       const after = applyLineEdits(before, parsed);
 
       await writeText(filePath, joinLines(after));
+
+      throwIfAborted(signal);
 
       // Preview in ascending line order, tracking how many lines earlier
       // edits added or removed so each "after" window lands on the exact
@@ -184,6 +193,11 @@ export const editFileTool = tool(
         previews.join("\n\n"),
       ].join("\n");
     } catch (error) {
+      // A cancelled run must surface as an abort, not as a tool error.
+      if (isAbortError(error) || signal?.aborted) {
+        throw error;
+      }
+
       return `Error: ${error instanceof Error ? error.message : String(error)}`;
     }
   },

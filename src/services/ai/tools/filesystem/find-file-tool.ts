@@ -13,8 +13,10 @@
  * example. File-name-only and direct regex searches are also supported.
  */
 import { tool } from "@langchain/core/tools";
+import type { RunnableConfig } from "@langchain/core/runnables";
 import { z } from "zod";
 
+import { isAbortError, throwIfAborted } from "../../agent/abort";
 import { splitLines } from "./line-utils";
 import {
   DEFAULT_RELEVANCE_THRESHOLD,
@@ -268,8 +270,15 @@ function truncateMatchText(text: string): string {
 }
 
 export const findFileTool = tool(
-  async ({ root, namePattern, patterns, contentPattern, extensions, query, threshold, batchSize }) => {
+  async (
+    { root, namePattern, patterns, contentPattern, extensions, query, threshold, batchSize },
+    config: RunnableConfig,
+  ) => {
+    const signal = config?.signal;
+
     try {
+      throwIfAborted(signal);
+
       if (!namePattern && !patterns?.length && !contentPattern && !query) {
         return [
           "Error: Provide at least one of: query, namePattern, patterns, contentPattern.",
@@ -333,7 +342,10 @@ export const findFileTool = tool(
 
       const results: FindResult[] = [];
 
-      for await (const file of walkFiles(rootPath)) {
+      for await (const file of walkFiles(rootPath, signal)) {
+        // Stop the scan the moment the user cancels the run.
+        throwIfAborted(signal);
+
         if (results.length >= MAX_RESULTS) {
           break;
         }
@@ -378,6 +390,10 @@ export const findFileTool = tool(
         for (let i = 0; i < lines.length; i++) {
           if (results.length >= MAX_RESULTS) {
             break;
+          }
+
+          if (i % 500 === 0) {
+            throwIfAborted(signal);
           }
 
           const matchesContent = contentRegexes.some((regex) => {
@@ -428,6 +444,7 @@ export const findFileTool = tool(
             candidates,
             threshold ?? DEFAULT_RELEVANCE_THRESHOLD,
             batchSize ?? MAX_JEV_QUESTIONS,
+            signal,
           );
 
           results.length = 0;
@@ -439,6 +456,11 @@ export const findFileTool = tool(
 
           jevNote = `Jev relevance filter applied (query: "${query.trim()}", threshold ${threshold ?? DEFAULT_RELEVANCE_THRESHOLD}).`;
         } catch (error) {
+          // A cancelled run must surface as an abort, not as a fallback.
+          if (isAbortError(error) || signal?.aborted) {
+            throw error;
+          }
+
           jevNote =
             `Jev relevance filter unavailable, returning unfiltered matches: ` +
             `${error instanceof Error ? error.message : String(error)}`;
@@ -494,6 +516,11 @@ export const findFileTool = tool(
 
       return lines.join("\n");
     } catch (error) {
+      // A cancelled run must surface as an abort, not as a tool error.
+      if (isAbortError(error) || signal?.aborted) {
+        throw error;
+      }
+
       return `Error: ${error instanceof Error ? error.message : String(error)}`;
     }
   },

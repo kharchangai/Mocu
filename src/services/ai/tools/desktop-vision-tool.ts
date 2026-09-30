@@ -1,12 +1,16 @@
 import { tool } from "@langchain/core/tools";
+import type { RunnableConfig } from "@langchain/core/runnables";
 import { z } from "zod";
 import { invoke } from "@tauri-apps/api/core";
 import { HumanMessage } from "@langchain/core/messages";
 import { ChatOpenAI } from "@langchain/openai";
 import { readSettings } from "../../../store"; // Adjust the relative path if your store file is located elsewhere
+import { isAbortError } from "../agent/abort";
 
 export const desktopVisionTool = tool(
-  async ({ userRequest }) => {
+  async ({ userRequest }, config: RunnableConfig) => {
+    const signal = config?.signal;
+
     try {
       console.log("[Vision Tool] Loading settings from store...");
       const settings = await readSettings();
@@ -66,7 +70,7 @@ export const desktopVisionTool = tool(
             }
           ]
         })
-      ]);
+      ], { signal });
 
       console.log("[Vision Tool] Analysis complete.");
       
@@ -81,6 +85,11 @@ export const desktopVisionTool = tool(
       return resultText;
 
     } catch (error) {
+      // A cancelled run must surface as an abort, not as a tool error.
+      if (isAbortError(error) || signal?.aborted) {
+        throw error;
+      }
+
       console.error("[Vision Tool Error]:", error);
       return "An error occurred while capturing or analyzing your desktop screen.";
     }

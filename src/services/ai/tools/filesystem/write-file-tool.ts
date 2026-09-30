@@ -6,7 +6,10 @@
  * the agent cannot silently destroy content it has not read.
  */
 import { tool } from "@langchain/core/tools";
+import type { RunnableConfig } from "@langchain/core/runnables";
 import { z } from "zod";
+
+import { isAbortError, throwIfAborted } from "../../agent/abort";
 
 import {
   splitLines,
@@ -47,8 +50,12 @@ export const writeFileInputSchema = z.object({
 export type WriteFileInput = z.infer<typeof writeFileInputSchema>;
 
 export const writeFileTool = tool(
-  async ({ path, content, overwrite }) => {
+  async ({ path, content, overwrite }, config: RunnableConfig) => {
+    const signal = config?.signal;
+
     try {
+      throwIfAborted(signal);
+
       const filePath = await resolveAbsolutePath(path);
 
       if (utf8ByteLength(content) > MAX_FILE_BYTES) {
@@ -66,6 +73,8 @@ export const writeFileTool = tool(
 
       await writeText(filePath, content);
 
+      throwIfAborted(signal);
+
       const lines = splitLines(content);
       const preview = formatNumberedLines(
         lines.slice(0, 20),
@@ -80,6 +89,11 @@ export const writeFileTool = tool(
         lines.length > 20 ? `\n[... ${lines.length - 20} more lines]` : "",
       ].join("\n");
     } catch (error) {
+      // A cancelled run must surface as an abort, not as a tool error.
+      if (isAbortError(error) || signal?.aborted) {
+        throw error;
+      }
+
       return `Error: ${error instanceof Error ? error.message : String(error)}`;
     }
   },

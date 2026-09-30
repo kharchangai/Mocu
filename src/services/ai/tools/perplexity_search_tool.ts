@@ -1,13 +1,17 @@
 import { tool } from "@langchain/core/tools";
+import type { RunnableConfig } from "@langchain/core/runnables";
 import { z } from "zod";
 import { readSettings } from "../../../store";
+import { isAbortError } from "../agent/abort";
 
 /**
  * Perplexity Search Tool.
  * Automatically reads configuration (API Key, Base URL, Model Name) from settings.
  */
 export const perplexitySearchTool = tool(
-  async ({ query }) => {
+  async ({ query }, config: RunnableConfig) => {
+    const signal = config?.signal;
+
     console.log(`[Perplexity Tool] Initiating search for query: "${query}"`);
 
     let settings;
@@ -55,7 +59,8 @@ export const perplexitySearchTool = tool(
           "Authorization": `Bearer ${apiKey}`,
           "Content-Type": "application/json"
         },
-        body: JSON.stringify(payload)
+        body: JSON.stringify(payload),
+        signal
       });
 
       if (!response.ok) {
@@ -78,6 +83,11 @@ export const perplexitySearchTool = tool(
       return resultText;
 
     } catch (error) {
+      // A cancelled run must surface as an abort, not as a tool error.
+      if (isAbortError(error) || signal?.aborted) {
+        throw error;
+      }
+
       console.error("[Perplexity Tool] Network or system error:", error);
       return `Error: Failed to connect to Perplexity API. Details: ${error}`;
     }

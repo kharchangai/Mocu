@@ -1,6 +1,9 @@
 import { tool } from "@langchain/core/tools";
+import type { RunnableConfig } from "@langchain/core/runnables";
 import { z } from "zod";
-import { Command } from "@tauri-apps/plugin-shell";
+import { Command, type Child } from "@tauri-apps/plugin-shell";
+
+import { createAbortError, isAbortError } from "../agent/abort";
 
 export interface TerminalExecutionToolOptions {
   /**
@@ -377,30 +380,92 @@ function getHardBlockReason(
   return null;
 }
 
-async function executeWithTimeout(
+async function executeCancellable(
   command: Command<string>,
-  timeoutMs: number
+  timeoutMs: number,
+  signal?: AbortSignal
 ): Promise<ExecutionResult> {
-  let timeoutId: ReturnType<typeof setTimeout> | undefined;
+  return await new Promise<ExecutionResult>((resolve, reject) => {
+    let child: Child | undefined;
+    let stdout = "";
+    let stderr = "";
+    let timeoutId: ReturnType<typeof setTimeout> | undefined;
+    let settled = false;
 
-  try {
-    return await Promise.race([
-      command.execute(),
-      new Promise<never>((_, reject) => {
-        timeoutId = setTimeout(() => {
-          reject(
-            new Error(
-              `Command execution exceeded the ${timeoutMs}ms time limit.`
-            )
-          );
-        }, timeoutMs);
-      }),
-    ]);
-  } finally {
-    if (timeoutId !== undefined) {
-      clearTimeout(timeoutId);
+    const killChild = (): void => {
+      if (child) {
+        void child.kill().catch(() => undefined);
+      }
+    };
+
+    const finish = (apply: () => void): void => {
+      if (settled) {
+        return;
+      }
+      settled = true;
+
+      if (timeoutId !== undefined) {
+        clearTimeout(timeoutId);
+      }
+      signal?.removeEventListener("abort", onAbort);
+      apply();
+    };
+
+    function onAbort(): void {
+      killChild();
+      finish(() => reject(createAbortError()));
     }
-  }
+
+    if (signal?.aborted) {
+      reject(createAbortError());
+      return;
+    }
+
+    signal?.addEventListener("abort", onAbort, { once: true });
+
+    timeoutId = setTimeout(() => {
+      killChild();
+      finish(() =>
+        reject(
+          new Error(
+            `Command execution exceeded the ${timeoutMs}ms time limit.`
+          )
+        )
+      );
+    }, timeoutMs);
+
+    command.stdout.on("data", (chunk: string) => {
+      stdout += chunk;
+    });
+    command.stderr.on("data", (chunk: string) => {
+      stderr += chunk;
+    });
+    command.on("error", (message: string) => {
+      finish(() => reject(new Error(message)));
+    });
+    command.on("close", (payload: { code: number | null }) => {
+      finish(() => resolve({ code: payload.code, stdout, stderr }));
+    });
+
+    /*
+     * spawn() (unlike execute()) returns a killable child handle, so a
+     * cancelled chat run stops the real OS process instead of only
+     * abandoning the promise while the command keeps running.
+     */
+    command
+      .spawn()
+      .then((handle) => {
+        child = handle;
+        if (signal?.aborted) {
+          onAbort();
+        }
+      })
+      .catch((error: unknown) => {
+        finish(() =>
+          reject(error instanceof Error ? error : new Error(String(error)))
+        );
+      });
+  });
 }
 
 /**
@@ -442,7 +507,8 @@ export const terminalExecutionTool = (
   ].join(" ");
 
   return tool(
-    async ({ command }) => {
+    async ({ command }, config: RunnableConfig) => {
+      const signal = config?.signal;
       const commandToRun = normalizeCommand(command);
 
       if (!commandToRun) {
@@ -503,9 +569,10 @@ export const terminalExecutionTool = (
           commandOptions
         );
 
-        const executionResult = await executeWithTimeout(
+        const executionResult = await executeCancellable(
           shellCommand,
-          timeoutMs
+          timeoutMs,
+          signal
         );
 
         const stdout = truncateOutput(
@@ -558,6 +625,11 @@ export const terminalExecutionTool = (
 
         return "Command executed successfully with no output.";
       } catch (error) {
+        // A cancelled run must surface as an abort, not as a tool error.
+        if (isAbortError(error) || signal?.aborted) {
+          throw error;
+        }
+
         const message = formatUnknownError(error);
 
         console.error(

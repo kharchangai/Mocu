@@ -13,6 +13,7 @@ import {
   writeTextFile,
 } from "@tauri-apps/plugin-fs";
 import { dirname, isAbsolute, normalize } from "@tauri-apps/api/path";
+import { throwIfAborted } from "../../agent/abort";
 
 /**
  * Validates and normalizes an absolute path.
@@ -99,6 +100,9 @@ export async function listDirectory(
  * - hidden directories (name starts with ".") are skipped
  * - well-known heavy directories (node_modules, target, ...) are skipped
  * - unreadable directories are skipped instead of failing the whole walk
+ *
+ * Cancellation: when the chat run's abort signal fires, the walk stops
+ * immediately with an AbortError instead of scanning the rest of the tree.
  */
 const SKIPPED_DIRECTORIES = new Set([
   "node_modules",
@@ -111,10 +115,13 @@ const SKIPPED_DIRECTORIES = new Set([
 
 export async function* walkFiles(
   rootPath: string,
+  signal?: AbortSignal,
 ): AsyncGenerator<{ path: string; name: string }> {
   const stack: string[] = [rootPath];
 
   while (stack.length > 0) {
+    throwIfAborted(signal);
+
     const directory = stack.pop() as string;
 
     let entries: Awaited<ReturnType<typeof readDir>>;
@@ -125,6 +132,8 @@ export async function* walkFiles(
     }
 
     for (const entry of entries) {
+      throwIfAborted(signal);
+
       const entryPath = `${directory.replace(/[\\/]+$/, "")}/${entry.name}`;
 
       if (entry.isSymlink) {

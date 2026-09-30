@@ -14,6 +14,7 @@
  * the unfiltered matches (same fallback philosophy as doc-section-finder).
  */
 import { getJevDecision } from "../decision/Jev_model";
+import { throwIfAborted } from "../../agent/abort";
 
 export const MAX_JEV_QUESTIONS = 32;
 export const DEFAULT_RELEVANCE_THRESHOLD = 0.6;
@@ -84,6 +85,7 @@ export function probabilityOfRelevant(
 async function judgeBatch(
   query: string,
   candidates: JevCandidate[],
+  signal?: AbortSignal,
 ): Promise<JevJudgedCandidate[]> {
   const questions = Object.fromEntries(
     candidates.map((candidate) => [
@@ -110,6 +112,7 @@ async function judgeBatch(
       })),
     },
     questions,
+    signal,
   })) as JevResponse;
 
   return candidates.map((candidate) => ({
@@ -128,6 +131,7 @@ export async function filterByJevRelevance(
   candidates: JevCandidate[],
   threshold = DEFAULT_RELEVANCE_THRESHOLD,
   batchSize = MAX_JEV_QUESTIONS,
+  signal?: AbortSignal,
 ): Promise<JevJudgedCandidate[]> {
   const cleanQuery = query.trim();
 
@@ -150,8 +154,11 @@ export async function filterByJevRelevance(
   const judged: JevJudgedCandidate[] = [];
 
   for (let offset = 0; offset < candidates.length; offset += clampedBatch) {
+    // Stop judging batches the moment the user cancels the run.
+    throwIfAborted(signal);
+
     const batch = candidates.slice(offset, offset + clampedBatch);
-    const results = await judgeBatch(cleanQuery, batch);
+    const results = await judgeBatch(cleanQuery, batch, signal);
     judged.push(
       ...results.filter(
         (candidate) => candidate.relevance >= clampedThreshold,

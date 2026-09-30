@@ -6,7 +6,10 @@
  * specific window of a large file.
  */
 import { tool } from "@langchain/core/tools";
+import type { RunnableConfig } from "@langchain/core/runnables";
 import { z } from "zod";
+
+import { isAbortError, throwIfAborted } from "../../agent/abort";
 
 import {
   formatNumberedLines,
@@ -94,8 +97,12 @@ export function renderNumberedWindow(
 }
 
 export const readFileTool = tool(
-  async ({ path, offset, limit }) => {
+  async ({ path, offset, limit }, config: RunnableConfig) => {
+    const signal = config?.signal;
+
     try {
+      throwIfAborted(signal);
+
       const filePath = await resolveAbsolutePath(path);
 
       if (!(await fileExists(filePath))) {
@@ -103,6 +110,8 @@ export const readFileTool = tool(
       }
 
       const content = await readText(filePath);
+
+      throwIfAborted(signal);
 
       if (utf8ByteLength(content) > MAX_FILE_BYTES) {
         return `Error: File is too large to read (limit ${MAX_FILE_BYTES} bytes): ${filePath}`;
@@ -128,6 +137,11 @@ export const readFileTool = tool(
 
       return `${header}\n\n${text}${footer}`;
     } catch (error) {
+      // A cancelled run must surface as an abort, not as a tool error.
+      if (isAbortError(error) || signal?.aborted) {
+        throw error;
+      }
+
       return `Error: ${error instanceof Error ? error.message : String(error)}`;
     }
   },

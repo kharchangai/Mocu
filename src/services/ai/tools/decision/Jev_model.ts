@@ -1,4 +1,5 @@
 import { readSettings } from "../../../../store";
+import { combineAbortSignals } from "../../agent/abort";
 
 /**
  * Jev Decision Model.
@@ -40,6 +41,8 @@ export type JevDecisionParams = {
   /** Optional override; defaults to the decision model from settings. */
   model?: string;
   timeoutMs?: number;
+  /** Cancels the API call when the chat run is stopped. */
+  signal?: AbortSignal;
 };
 
 function buildDecisionUrl(baseUrl: string): string {
@@ -65,6 +68,7 @@ export async function getJevDecision({
   baseUrl,
   model,
   timeoutMs = 30_000,
+  signal,
 }: JevDecisionParams) {
   const settings = await readSettings();
 
@@ -103,7 +107,8 @@ export async function getJevDecision({
       state,
       questions,
     }),
-    signal: AbortSignal.timeout(timeoutMs),
+    // Cancel with the caller's signal (chat stop button) or the timeout.
+    signal: combineAbortSignals([AbortSignal.timeout(timeoutMs), signal]),
   });
 
   if (!response.ok) {
