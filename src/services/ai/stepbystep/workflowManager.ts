@@ -28,6 +28,7 @@ import {
   speechControlTool,
 } from "../tools/text_to_speech_tool";
 import { createAgentTool } from "../tools/create_agent_tool";
+import { agentManagementTools } from "../tools/agent-management-tools";
 import {
   readFileTool,
   writeFileTool,
@@ -108,6 +109,7 @@ async function buildMainAgentToolRuntime(
     textToSpeechTool,
     speechControlTool,
     createAgentTool,
+    ...agentManagementTools,
     readFileTool,
     writeFileTool,
     editFileTool,

@@ -6,17 +6,32 @@ import {
   type MentionResourceNames,
 } from './SlashMentionText';
 import { getTextDirection } from './textDirection';
+import { RerunModelButton } from './RerunModelButton';
+import type { GatewayReasoningEffort } from '../../services/ai/model-catalog';
 
 type UserMessageProps = {
   content: string;
   resourceNames?: MentionResourceNames;
   onEdit?: () => void;
+  currentModel?: string | null;
+  currentReasoningEffort?: GatewayReasoningEffort | null;
+  canRerun?: boolean;
+  rerunDisabled?: boolean;
+  onRerun?: (
+    model: string | null,
+    reasoningEffort: GatewayReasoningEffort | null,
+  ) => void;
 };
 
 function UserMessageImpl({
   content,
   resourceNames,
   onEdit,
+  currentModel = null,
+  currentReasoningEffort = null,
+  canRerun = false,
+  rerunDisabled = false,
+  onRerun,
 }: UserMessageProps) {
   const [isCopied, setIsCopied] = useState(false);
   const copyTimeoutRef = useRef<number | null>(null);
@@ -58,6 +73,14 @@ function UserMessageImpl({
         </div>
 
         <div className="user-message-actions">
+          {canRerun && onRerun ? (
+            <RerunModelButton
+              currentModel={currentModel}
+              currentReasoningEffort={currentReasoningEffort}
+              disabled={rerunDisabled}
+              onSelect={onRerun}
+            />
+          ) : null}
           <button
             type="button"
             className="message-action-button"

@@ -94,6 +94,11 @@ function parseManifest(
     description: manifest.description as string,
     version: manifest.version as string,
     runtime: manifest.runtime,
+    permissions: Array.isArray(manifest.permissions)
+      ? manifest.permissions.filter((permission): permission is string =>
+          typeof permission === "string" && permission.trim().length > 0,
+        )
+      : [],
     entry: manifest.entry as string,
     commands: Array.isArray(manifest.commands)
       ? (manifest.commands as ExtensionManifest["commands"])
@@ -101,7 +106,6 @@ function parseManifest(
     config,
   };
 }
-
 export async function ensureExtensionsDirectory(): Promise<string> {
   const directoryExists = await exists(EXTENSIONS_DIRECTORY, {
     baseDir: BaseDirectory.AppData,

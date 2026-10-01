@@ -6,12 +6,20 @@ import {
 } from "react";
 import type { ReactNode } from "react";
 
-import { MarkdownRenderer } from "./markdown";
+import { MarkdownRenderer, StreamingMarkdown } from "./markdown";
 
 import "./AssistantMessage.css";
 
 type AssistantMessageProps = {
   content: string;
+
+  /*
+   * Set while the response is still streaming in: renders the content
+   * with StreamingMarkdown, which only re-parses the growing tail on
+   * every delta instead of the whole accumulated text (long responses
+   * otherwise freeze the chat while they stream).
+   */
+  streaming?: boolean;
   failureDetails?: {
     summary: string;
     progress: string;
@@ -93,6 +101,7 @@ function RetryIcon() {
 
 function AssistantMessageImpl({
   content,
+  streaming = false,
   footer,
   failureDetails,
   workflowToolCallFailure,
@@ -233,10 +242,14 @@ function AssistantMessageImpl({
         </section>
       ) : (
         <div className="assistant-message__body">
-          <MarkdownRenderer
-            content={content}
-            direction="auto"
-          />
+          {streaming ? (
+            <StreamingMarkdown content={content} />
+          ) : (
+            <MarkdownRenderer
+              content={content}
+              direction="auto"
+            />
+          )}
         </div>
       )}
 

@@ -9,6 +9,7 @@ import { skillLoaderTool } from "../tools/skill_loader_tool";
 import { scheduleTool } from "../../../schedule/schedule-tool";
 import { textToSpeechTool, speechControlTool } from "../tools/text_to_speech_tool";
 import { createAgentTool } from "../tools/create_agent_tool";
+import { agentManagementTools } from "../tools/agent-management-tools";
 import { readFileTool, writeFileTool, editFileTool, findFileTool } from "../tools/filesystem";
 import { docTools } from "../tools/docs_tools";
 import { notesTools } from "../tools/notes_tools";
@@ -44,6 +45,7 @@ async function buildTaskTools(config: RunnableConfig, projectPath?: string): Pro
     textToSpeechTool as FocusToolLike,
     speechControlTool as FocusToolLike,
     createAgentTool as FocusToolLike,
+    ...(agentManagementTools as unknown as FocusToolLike[]),
     readFileTool as FocusToolLike,
     writeFileTool as FocusToolLike,
     editFileTool as FocusToolLike,

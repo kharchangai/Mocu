@@ -1,6 +1,7 @@
 import { LLM_GENERATE_METHOD } from "./llm.js";
 import { DECISION_ASK_METHOD } from "./decision.js";
 import { EMBEDDING_EMBED_METHOD } from "./embedding.js";
+import { AGENTS_LIST_METHOD, AGENTS_RUN_METHOD } from "./agents.js";
 
 export type JsonRpcId = string | number;
 
@@ -86,6 +87,8 @@ export const HOST_METHODS = {
   llmGenerate: LLM_GENERATE_METHOD,
   decisionAsk: DECISION_ASK_METHOD,
   embeddingEmbed: EMBEDDING_EMBED_METHOD,
+  agentsList: AGENTS_LIST_METHOD,
+  agentsRun: AGENTS_RUN_METHOD,
   extensionInteract: "mocu.extension.interact",
   extensionInteractionCancel: "mocu.extension.interaction.cancel",
 } as const;

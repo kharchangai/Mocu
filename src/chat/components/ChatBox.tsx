@@ -49,6 +49,7 @@ import {
   endChatRun,
   abortChatRun,
   hasAnyChatRun,
+  isChatRunActive,
   useIsChatRunActive,
 } from '../services/chatRuns';
 
@@ -95,7 +96,11 @@ import {
 } from '../hooks/useMemorySaveStatus';
 import { useMentionResources } from './useMentionResources';
 import type { MentionResourceNames } from './SlashMentionText';
-import { migrateNewChatResourceSelection } from '../services/chatResourceToggles';
+import {
+  migrateNewChatResourceSelection,
+  NEW_CHAT_RESOURCE_KEY,
+  useChatResourceSelection,
+} from '../services/chatResourceToggles';
 import { parseSpecialistSlashCommand } from '../services/specialistSlashCommands';
 
 import {
@@ -124,14 +129,33 @@ const EditableUserMessage = memo(function EditableUserMessage({
   message,
   resourceNames,
   onEdit,
+  canRerun,
+  rerunDisabled,
+  currentModel,
+  currentReasoningEffort,
+  onRerun,
 }: {
   message: ChatMessage;
   resourceNames: MentionResourceNames;
   onEdit: (message: ChatMessage) => void;
+  canRerun: boolean;
+  rerunDisabled: boolean;
+  currentModel: string | null;
+  currentReasoningEffort: GatewayReasoningEffort | null;
+  onRerun: (
+    message: ChatMessage,
+    model: string | null,
+    reasoningEffort: GatewayReasoningEffort | null,
+  ) => void;
 }) {
   const handleEdit = useCallback(
     () => onEdit(message),
     [onEdit, message],
+  );
+  const handleRerun = useCallback(
+    (model: string | null, reasoningEffort: GatewayReasoningEffort | null) =>
+      onRerun(message, model, reasoningEffort),
+    [message, onRerun],
   );
 
   return (
@@ -139,6 +163,11 @@ const EditableUserMessage = memo(function EditableUserMessage({
       content={message.content}
       resourceNames={resourceNames}
       onEdit={handleEdit}
+      canRerun={canRerun}
+      rerunDisabled={rerunDisabled}
+      currentModel={currentModel}
+      currentReasoningEffort={currentReasoningEffort}
+      onRerun={handleRerun}
     />
   );
 });
@@ -643,6 +672,11 @@ type ChatBoxProps = {
     role: 'user' | 'assistant',
     content: string,
   ) => ChatMessage;
+  onReplaceMessage: (
+    chatId: string,
+    messageId: string,
+    content: string,
+  ) => void;
 
 };
 
@@ -664,6 +698,7 @@ export function ChatBox({
   projectDescription = '',
   onEnsureChat,
   onAppendMessage,
+  onReplaceMessage,
 }: ChatBoxProps) {
   /*
    * True only while a send is creating/resuming its conversation (before
@@ -673,6 +708,9 @@ export function ChatBox({
   const [isPreparingChat, setIsPreparingChat] = useState(false);
 
   const [draftMessage, setDraftMessage] = useState('');
+  const [rerunModelByMessageId, setRerunModelByMessageId] = useState<
+    Record<string, { model: string | null; reasoningEffort: GatewayReasoningEffort | null }>
+  >({});
   const [resumableWorkflows, setResumableWorkflows] = useState<StepWorkflowOverview[]>([]);
   const [resumableFocuses, setResumableFocuses] = useState<FocusOverview[]>([]);
   const [allWorkflows, setAllWorkflows] = useState<StepWorkflowOverview[]>([]);
@@ -710,6 +748,9 @@ export function ChatBox({
 
   const isLoading = isChatBusy || isPreparingChat;
   const extensionInteraction = useExtensionInteraction(chatId);
+  const chatResourceSelection = useChatResourceSelection(
+    chatId ?? NEW_CHAT_RESOURCE_KEY,
+  );
 
   useEffect(() => {
     const savedThreadKey = readSavedThreadKey(chatId);
@@ -1082,6 +1123,7 @@ export function ChatBox({
      * alone: it keeps running in the background.
      */
     setDraftMessage('');
+    setRerunModelByMessageId({});
     projectMemoryRef.current = [];
   }, [chatId]);
 
@@ -1552,6 +1594,146 @@ export function ChatBox({
     }
   };
 
+  const handleRerunMessage = async (
+    userMessage: ChatMessage,
+    model: string | null,
+    reasoningEffort: GatewayReasoningEffort | null,
+  ): Promise<void> => {
+    if (!chatId || isLoading || isChatRunActive(chatId)) return;
+
+    const userIndex = messages.findIndex((message) => message.id === userMessage.id);
+    const assistantMessage = messages[userIndex + 1];
+
+    // Replace only the assistant reply paired with this user turn. Never
+    // append another user message or create a duplicate turn in the history.
+    if (
+      userIndex < 0 ||
+      assistantMessage?.role !== 'assistant' ||
+      parseSpecialistSlashCommand(userMessage.content) ||
+      parseFocusStartGoal(userMessage.content) ||
+      allFocuses.some((focus) => focus.status === 'active') ||
+      allWorkflows.some((workflow) => workflow.status === 'active')
+    ) {
+      return;
+    }
+
+    const effectiveProjectPath = projectPath.trim();
+    const hasSelectedProject = effectiveProjectPath.length > 0;
+    const previousMessages = convertToLangChainMessages(
+      messages.slice(0, userIndex),
+    );
+    const previousUserTexts = new Set(
+      previousMessages
+        .filter((message) => message.getType() === 'human')
+        .map((message) => String(message.content).trim()),
+    );
+    // Project memory may already contain the turn being compared. Exclude
+    // that whole memory exchange (not just its user message), otherwise the
+    // old answer could be shown to the model as prior context.
+    const excludedMemoryTurnTexts = new Set(previousUserTexts);
+    excludedMemoryTurnTexts.add(userMessage.content.trim());
+    const memoryHistory = hasSelectedProject
+      ? projectMemoryRef.current.filter((message, index, history) => {
+          if (message.getType() === 'human') {
+            return !excludedMemoryTurnTexts.has(String(message.content).trim());
+          }
+          if (message.getType() === 'ai') {
+            const previousMemoryMessage = history[index - 1];
+            return previousMemoryMessage?.getType() !== 'human' ||
+              !excludedMemoryTurnTexts.has(String(previousMemoryMessage.content).trim());
+          }
+          return true;
+        })
+      : [];
+    const agentMessages: BaseMessage[] = [
+      ...memoryHistory,
+      ...previousMessages,
+      new HumanMessage(userMessage.content),
+    ];
+
+    const controller = beginChatRun(chatId);
+    setActiveRequestChat(chatId);
+    beginGuardedRun();
+    toolActivity.beginRequest(chatId);
+
+    try {
+      const agentConfig = {
+        signal: controller.signal,
+        configurable: {
+          thread_id: chatId,
+          [CHAT_ID_CONFIG_KEY]: chatId,
+          selectedSkills: chatResourceSelection.skills.map((skill) => skill.name),
+          selectedExtensions: chatResourceSelection.extensions.map((extension) => extension.id),
+          selectedMcpServers: chatResourceSelection.mcpServers.map((server) => server.id),
+          selectedAgent: chatResourceSelection.agent?.name ?? null,
+          projectDescription,
+          selectedModel: model?.trim() || null,
+          reasoningEffort,
+          // A comparison is not a new conversation turn; do not write a
+          // second copy of it into long-term memory from either agent.
+          suppressMemorySave: true,
+        },
+      };
+
+      const agentState = { messages: agentMessages, memoryContext: '' };
+      const agentResult = hasSelectedProject
+        ? await callProjectAgent(agentState, effectiveProjectPath, agentConfig)
+        : await callChatAgent(agentState, agentConfig);
+
+      if (controller.signal.aborted) {
+        toolActivity.discard(chatId);
+        return;
+      }
+
+      const responseMessage = agentResult.messages[agentResult.messages.length - 1];
+      const response = typeof responseMessage?.content === 'string'
+        ? responseMessage.content.trim()
+        : '';
+      if (!responseMessage || !response) {
+        throw new Error('The agent returned an empty response.');
+      }
+
+      messagesRef.current = convertToLangChainMessages(
+        messages.map((message) =>
+          message.id === assistantMessage.id
+            ? { ...message, content: response }
+            : message,
+        ),
+      );
+      setRerunModelByMessageId((current) => ({
+        ...current,
+        [assistantMessage.id]: { model, reasoningEffort },
+      }));
+      onReplaceMessage(chatId, assistantMessage.id, response);
+      toolActivity.commit(chatId, assistantMessage.id);
+    } catch (error) {
+      toolActivity.discard(chatId);
+      if (!controller.signal.aborted && !isAbortError(error)) {
+        console.error('[Chat Box] Model comparison failed:', error);
+        window.alert(
+          error instanceof Error
+            ? `Could not regenerate this reply: ${error.message}`
+            : 'Could not regenerate this reply.',
+        );
+      }
+    } finally {
+      finishToolActivities(chatId);
+      endChatRun(chatId, controller);
+      endGuardedRun();
+      if (!hasAnyChatRun()) setActiveRequestChat(null);
+    }
+  };
+
+  const rerunMessageHandlerRef = useRef(handleRerunMessage);
+  rerunMessageHandlerRef.current = handleRerunMessage;
+  const handleRerunFromMessage = useCallback((
+    message: ChatMessage,
+    model: string | null,
+    reasoningEffort: GatewayReasoningEffort | null,
+  ) => {
+    void rerunMessageHandlerRef.current(message, model, reasoningEffort);
+  }, []);
+
   const handleStopGeneration = (): void => {
     /*
      * Stop only THIS chat's run. Every other conversation keeps working.
@@ -1724,12 +1906,8 @@ export function ChatBox({
     index >= 0;
     index -= 1
   ) {
-    if (
-      displayMessages[index].role ===
-      'assistant'
-    ) {
+    if (displayMessages[index].role === 'assistant') {
       lastAssistantIndex = index;
-
       break;
     }
   }
@@ -1949,6 +2127,10 @@ export function ChatBox({
               const message = displayMessages[messageIndex];
               const thread = chatThreadMarkers.get(message.id);
               const cancelledRun = cancelledRunByIndex.get(messageIndex);
+              const rerunAssistantId = displayMessages[messageIndex + 1]?.id;
+              const rerunModelChoice = rerunAssistantId
+                ? rerunModelByMessageId[rerunAssistantId]
+                : undefined;
               /*
                * The refresh button belongs to a run that is still waiting to
                * be resumed: it shows while the cancellation checkpoint is the
@@ -1986,6 +2168,23 @@ export function ChatBox({
                         message={message}
                         resourceNames={mentionResourceNames}
                         onEdit={handleEditMessage}
+                        canRerun={Boolean(
+                          chatId &&
+                          displayMessages[messageIndex + 1]?.role === 'assistant' &&
+                          !thread &&
+                          !parseSpecialistSlashCommand(message.content) &&
+                          !parseFocusStartGoal(message.content) &&
+                          !allFocuses.some((focus) => focus.status === 'active') &&
+                          !allWorkflows.some((workflow) => workflow.status === 'active')
+                        )}
+                        rerunDisabled={isLoading}
+                        currentModel={rerunModelChoice
+                          ? rerunModelChoice.model
+                          : chatResourceSelection.model}
+                        currentReasoningEffort={rerunModelChoice
+                          ? rerunModelChoice.reasoningEffort
+                          : chatResourceSelection.reasoningEffort ?? null}
+                        onRerun={handleRerunFromMessage}
                       />
                       {cancelledRunFollows ? (
                         <div className="user-message-continue-row">
@@ -2079,6 +2278,7 @@ export function ChatBox({
             {showLiveSectionActivity && isLoading && toolActivity.liveAnswer ? (
               <AssistantMessage
                 content={toolActivity.liveAnswer}
+                streaming
               />
             ) : null}
 

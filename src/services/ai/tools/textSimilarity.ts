@@ -102,16 +102,73 @@ function roundScore(score: number): number {
  * per input text. Longer inputs are rejected with HTTP 400, which
  * previously failed the whole project memory save for long turns.
  *
- * Inputs are truncated conservatively (~4 characters per token),
- * keeping the text safely below the provider limit.
+ * A plain character cap is not safe: non-ASCII text (e.g. Persian)
+ * packs far fewer characters per token than English, so a 24k-char
+ * cap can still exceed the token limit. Instead, each text is cut at
+ * an estimated token budget (ASCII ≈ 4 chars/token, everything else
+ * counted far more conservatively) to stay safely below the limit.
  */
-const MAX_EMBEDDING_INPUT_CHARS = 24000;
+const MAX_EMBEDDING_INPUT_TOKENS = 6000;
+const ASCII_CHARS_PER_TOKEN = 4;
+const NON_ASCII_TOKENS_PER_UNIT = 0.6;
 
-const truncateEmbeddingText = (text: string): string => {
-  return text.length > MAX_EMBEDDING_INPUT_CHARS
-    ? text.slice(0, MAX_EMBEDDING_INPUT_CHARS)
-    : text;
+export const truncateEmbeddingText = (text: string): string => {
+  let tokens = 0;
+  let index = 0;
+
+  while (index < text.length) {
+    const codePoint =
+      text.codePointAt(index) ?? 0;
+    const width = codePoint > 0xffff ? 2 : 1;
+
+    tokens +=
+      (codePoint < 0x80
+        ? 1 / ASCII_CHARS_PER_TOKEN
+        : NON_ASCII_TOKENS_PER_UNIT) * width;
+
+    if (tokens > MAX_EMBEDDING_INPUT_TOKENS) {
+      return text.slice(0, index);
+    }
+
+    index += width;
+  }
+
+  return text;
 };
+
+/**
+ * Providers disagree about their exact input limit, so estimation can
+ * still be rejected. Errors that say the input is too long are handled
+ * by halving the texts and retrying.
+ */
+export const isEmbeddingInputTooLongError = (
+  error: unknown,
+): boolean => {
+  const message =
+    error instanceof Error
+      ? error.message
+      : String(error);
+
+  return /maximum input length|context length|too many tokens|input.{0,30}too long|reduce the length/i.test(
+    message,
+  );
+};
+
+export const shrinkEmbeddingText = (text: string): string => {
+  const half = text.slice(
+    0,
+    Math.floor(text.length / 2),
+  );
+
+  // Never cut a surrogate pair in half.
+  const last = half.charCodeAt(half.length - 1);
+
+  return last >= 0xd800 && last <= 0xdbff
+    ? half.slice(0, -1)
+    : half;
+};
+
+const MAX_EMBEDDING_LENGTH_RETRIES = 3;
 
 function assertValidEmbedding(
   embedding: number[],
@@ -183,6 +240,9 @@ export class TextSimilarity {
 
   /**
    * Embeds a batch of texts with one provider call, preserving order.
+   * Texts are truncated to a safe estimated token size first; if the
+   * provider still rejects the batch as too long, the texts are halved
+   * and retried so one long turn can never fail the whole memory save.
    */
   public async embedTexts(texts: string[]): Promise<number[][]> {
     if (texts.length === 0) {
@@ -191,19 +251,35 @@ export class TextSimilarity {
 
     const embeddings = await this.getEmbeddings();
 
-    const safeTexts = texts.map(
+    let safeTexts = texts.map(
       truncateEmbeddingText,
     );
 
-    const result = await embeddings.embedDocuments(safeTexts);
+    for (let attempt = 0; ; attempt += 1) {
+      try {
+        const result =
+          await embeddings.embedDocuments(safeTexts);
 
-    if (result.length !== texts.length) {
-      throw new Error(
-        `Embedding provider returned ${result.length} vectors for ${texts.length} texts.`,
-      );
+        if (result.length !== texts.length) {
+          throw new Error(
+            `Embedding provider returned ${result.length} vectors for ${texts.length} texts.`,
+          );
+        }
+
+        return result;
+      } catch (error: unknown) {
+        if (
+          attempt >= MAX_EMBEDDING_LENGTH_RETRIES ||
+          !isEmbeddingInputTooLongError(error)
+        ) {
+          throw error;
+        }
+
+        safeTexts = safeTexts.map(
+          shrinkEmbeddingText,
+        );
+      }
     }
-
-    return result;
   }
 
   /**

@@ -81,7 +81,7 @@ extension.start(); // start the stdin JSON-RPC loop — required!
 | `extension.registerCommand(name, handler)` | Register a command after construction. Throws on empty or duplicate names. |
 | `extension.start()` | Begin reading JSON-RPC from stdin. **Must be called** or Mocu calls will hang until timeout. |
 | `extension.llm.generate(params)` | Call the Mocu host LLM. See [llm-calls.md](llm-calls.md). |
-| `extension.notify(method, params)` | Send a one-way JSON-RPC notification to the host (used for activity streaming). See [streaming-activity.md](streaming-activity.md). |
+| `extension.agents.list()` / `extension.agents.run({ agentId, input }, options?)` | Discover and run the current user's saved agents. Add `"agents.invoke"` to `manifest.permissions`. Every run is host-managed; the extension does not need its own LLM. See [agent-calls.md](agent-calls.md). |
 
 ### Handler contract
 

@@ -49,6 +49,8 @@ export interface ExtensionManifest {
   version: string;
   runtime: ExtensionRuntime;
   entry: string;
+  /** Capabilities this extension requests; host APIs enforce relevant entries. */
+  permissions?: string[];
   commands?: ExtensionCommand[];
   /**
    * Inputs the extension needs from the user. Rendered as a settings form

@@ -21,7 +21,6 @@ import { invokeAgentModelWithTrace } from "../../../chat/services/agentTrace";
 import { saveSpecialistSectionMemoryInBackground } from "../agent/specialist-memory";
 import { withShortDescription } from "../agent/tool-summaries";
 import { buildDocsContextPrompt } from "../../../chat/docs";
-import { compactAgentContext } from "../agent/context-compaction";
 import {
   createStepToolCallFailureMessage,
   parseStepToolCallFailureMessage,
@@ -106,7 +105,6 @@ async function invokeStepModelWithRetry(
     }
 
     try {
-      if (Array.isArray(options.messages)) compactAgentContext(options.messages as BaseMessage[]);
       return await invokeAgentModelWithTrace(options);
     } catch (error) {
       if (

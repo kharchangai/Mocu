@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from typing import Any
 
+from .agents import AgentsApi
 from .decision import DecisionApi
 from .embedding import EmbeddingApi
 from .llm import LlmApi
@@ -12,26 +13,20 @@ from .ui import ExtensionUiApi
 
 class MocuExtension:
     """
-    Minimal Mocu extension. An extension registers command handlers and calls
-    `run()`; Mocu invokes the requested command on demand via
-    `extension.execute`. Extensions may also call host APIs from inside a
-    command: `extension.llm.generate()`, `extension.decision.ask()`,
-    `extension.embedding.embed()` and `context["mocu"]["ui"].interact()`.
-    Handlers receive `(input, context, config)`
-    where `config` holds the values the user filled in on the extension's
-    card in the Extensions page (manifest `config` fields).
+    Minimal Mocu extension. Extensions can call Mocu's host AI APIs, interact
+    with the user in chat, and invoke saved user agents through the host; they
+    do not need to bundle a language model for these features.
     """
 
     def __init__(self) -> None:
         self._protocol = JsonRpcProtocol()
         self._commands: dict[str, CommandHandler] = {}
 
-        # Let extensions call the Mocu host LLM, Jev decision model and
-        # embedding model.
+        # Host-managed AI APIs and saved user-agent invocation.
         self.llm = LlmApi(self._protocol)
         self.decision = DecisionApi(self._protocol)
         self.embedding = EmbeddingApi(self._protocol)
-
+        self.agents = AgentsApi(self._protocol)
         self._protocol.register_handler(
             "extension.execute",
             self._handle_execute,

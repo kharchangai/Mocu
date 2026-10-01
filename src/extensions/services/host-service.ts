@@ -7,7 +7,7 @@ import { getJevDecision } from "../../services/ai/tools/decision/Jev_model";
 import { TextSimilarity } from "../../services/ai/tools/textSimilarity";
 
 import { dispatchAgentToolActivity } from "../../chat/services/toolActivity";
-
+import { cancelExtensionAgentRun, handleAgentRun, handleAgentsList } from "./extension-agent-host";
 import { respondExtension } from "./extension-client";
 import { scanInstalledExtensions } from "./extension-scanner";
 import { getActiveRequestChatId } from "../../chat/services/activeChatSession";
@@ -63,9 +63,9 @@ function handleActivityNotification(
  * Handle host-bound JSON-RPC requests that extensions send toward Mocu.
  *
  * Rust forwards these as `extension://message` events. Supported host methods
- * include AI services and `mocu.extension.interact`, which pauses an
- * interactive command until the user responds in chat. Replies are written
- * back into the extension via Rust.
+ * include AI services, user-agent discovery/invocation, and
+ * `mocu.extension.interact`, which pauses an interactive command until the user responds in chat.
+ * Replies are written back into the extension via Rust.
  */
 async function handleHostMessage(
   extensionId: string,
@@ -117,6 +117,7 @@ async function handleHostMessage(
       typeof interactionRequestId === "string" ||
       typeof interactionRequestId === "number"
     ) {
+      cancelExtensionAgentRun(extensionId, interactionRequestId);
       cancelExtensionInteraction(extensionId, interactionRequestId);
     }
     return;
@@ -132,6 +133,16 @@ async function handleHostMessage(
     return;
   }
 
+  if (method === "mocu.agents.list") {
+    await handleAgentsList(extensionId, requestId);
+    return;
+  }
+
+  if (method === "mocu.agents.run") {
+    await handleAgentRun(extensionId, requestId, params);
+    return;
+  }
+
   if (method !== "mocu.llm.generate") {
     if (requestId !== null) {
       await respondExtension(extensionId, requestId, null, {
@@ -142,7 +153,6 @@ async function handleHostMessage(
     }
     return;
   }
-
   try {
     const prompt =
       typeof params.prompt === "string" ? params.prompt.trim() : "";

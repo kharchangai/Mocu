@@ -10,6 +10,10 @@ pub struct ExtensionManifest {
     pub runtime: ExtensionRuntime,
     pub entry: String,
 
+    /// Declared extension capabilities; the UI host checks these for host APIs.
+    #[serde(default)]
+    pub permissions: Vec<String>,
+
     #[serde(default)]
     pub commands: Vec<ExtensionCommand>,
 }
@@ -43,4 +47,40 @@ pub struct ExtensionCommand {
     /// `0` -> no timeout (wait until the extension answers).
     #[serde(default)]
     pub timeout_seconds: Option<u64>,
+}
+
+#[cfg(test)]
+mod tests {
+    use super::ExtensionManifest;
+
+    #[test]
+    fn deserializes_agent_permission() {
+        let manifest: ExtensionManifest = serde_json::from_value(serde_json::json!({
+            "id": "com.example.agent-extension",
+            "name": "Agent extension",
+            "description": "Calls saved agents",
+            "version": "1.0.0",
+            "runtime": "node",
+            "entry": "index.js",
+            "permissions": ["agents.invoke"]
+        }))
+        .expect("manifest should deserialize");
+
+        assert_eq!(manifest.permissions, ["agents.invoke"]);
+    }
+
+    #[test]
+    fn defaults_permissions_for_older_manifests() {
+        let manifest: ExtensionManifest = serde_json::from_value(serde_json::json!({
+            "id": "com.example.legacy-extension",
+            "name": "Legacy extension",
+            "description": "Does not declare permissions",
+            "version": "1.0.0",
+            "runtime": "node",
+            "entry": "index.js"
+        }))
+        .expect("legacy manifest should deserialize");
+
+        assert!(manifest.permissions.is_empty());
+    }
 }

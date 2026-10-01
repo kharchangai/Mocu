@@ -12,7 +12,6 @@ import { saveSpecialistSectionMemoryInBackground } from "../agent/specialist-mem
 import { withShortDescription } from "../agent/tool-summaries";
 import { buildDocsContextPrompt } from "../../../chat/docs";
 import { persistAgentGraphTurn } from "../../../graphStructure/agentTurn";
-import { compactAgentContext } from "../agent/context-compaction";
 
 const FocusMemorySchema = z.object({
   summary: z.string(),
@@ -31,30 +30,6 @@ function messageText(message: BaseMessage): string {
   const content = message.content;
   if (typeof content === "string") return content;
   try { return JSON.stringify(content); } catch { return ""; }
-}
-
-/**
- * Long runs accumulate tool output. When the conversation grows too large,
- * truncate the oldest tool results (keeping the recent tail intact) so the
- * agent can keep working to the goal instead of dying on a context overflow.
- */
-function compactOldToolResults(messages: BaseMessage[]): void {
-  const softLimitChars = 240_000;
-  let size = 0;
-  for (const message of messages) size += messageText(message).length;
-  if (size <= softLimitChars) return;
-  const keepTail = 12;
-  for (let i = 1; i < messages.length - keepTail; i += 1) {
-    if (size <= softLimitChars) break;
-    const message = messages[i];
-    if (message instanceof ToolMessage) {
-      const text = messageText(message);
-      if (text.length > 500) {
-        message.content = `${text.slice(0, 400)}\n…[older tool output truncated to keep the session going]`;
-        size -= text.length - 400;
-      }
-    }
-  }
 }
 
 function historyMessages(entries: Awaited<ReturnType<FocusStore["readSectionHistory"]>>): BaseMessage[] {
@@ -90,6 +65,9 @@ function focusPrompt(state: FocusState, toolDescriptions: string, docsContextPro
 
 FOCUS RULES
 - Work directly on the user's goal.
+- When explicitly asked to create an agent, call create_agent with the user's complete request unchanged.
+- When explicitly asked to edit/update an existing agent, use list_agents and read_agent to inspect the saved definition, then call update_agent with only requested field changes. Preserve every omitted field, and never edit an agent without the user's explicit request.
+- Report a create/update as successful only when the corresponding tool confirms it was saved.
 - Keep working with tools until the user's request is fully completed. Do not stop early with a partial result. There is no limit on tool calls or rounds; use as many as the job actually needs.
 - This is section ${state.currentSectionNumber}. Sections are just lightweight boundaries the user controls, not predefined tasks.
 - Previous sections are represented only by compact memories below. If exact details matter, use read_focus_section_memory or read_focus_section_history; do not assume you remember their full conversations.
@@ -283,7 +261,6 @@ export class FocusExecutor {
     let previousCallSignature = "";
     let repeatedRounds = 0;
     for (let round = 0; round <= maxRounds; round += 1) {
-      compactAgentContext(messages);
       const response: AIMessage = await invokeAgentModelWithTrace({
         chatId: state.chatId,
         model: llmWithTools,
@@ -312,7 +289,6 @@ export class FocusExecutor {
           }));
         }
         messages.push(new HumanMessage("(System note: You are repeating the same tool calls without progress. Stop calling tools and give a final reply that summarizes the work completed so far and what remains.)"));
-        compactAgentContext(messages);
         const final = await invokeAgentModelWithTrace({
           chatId: state.chatId,
           model: await this.options.buildTurnLlm(turn.selectedModel),
@@ -354,10 +330,8 @@ export class FocusExecutor {
          * the follow-up LLM call receives a malformed message history. */
       }
       if (controlUsed) break;
-      compactOldToolResults(messages);
       if (round === maxRounds) {
         messages.push(new HumanMessage("(System note: The configured tool-use ceiling for this turn has been reached. Stop calling tools. Give a final reply that summarizes the work completed so far and what remains.)"));
-        compactAgentContext(messages);
         const final = await invokeAgentModelWithTrace({
           chatId: state.chatId,
           model: await this.options.buildTurnLlm(turn.selectedModel),
@@ -372,7 +346,6 @@ export class FocusExecutor {
 
     if (controlUsed && !reply) {
       messages.push(new HumanMessage("(System note: A Focus control just succeeded. Give only a short acknowledgement/recap. Do not call tools or do more work.)"));
-      compactAgentContext(messages);
       const final = await invokeAgentModelWithTrace({
         chatId: state.chatId,
         model: await this.options.buildTurnLlm(turn.selectedModel),

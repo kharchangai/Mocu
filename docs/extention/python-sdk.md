@@ -60,7 +60,7 @@ if __name__ == "__main__":
 | `extension.llm.generate(prompt, *, system_prompt=None, temperature=None, max_tokens=None)` | Call the Mocu host LLM. Returns `{"text": ...}`. Note the **snake_case** keyword arguments; the SDK converts them to camelCase on the wire. See [llm-calls.md](llm-calls.md). |
 | `extension.decision.ask(*, state, questions)` | Ask typed probabilistic questions via the Jev decision model. See [decision-model.md](decision-model.md). |
 | `extension.embedding.embed(texts)` / `extension.embedding.embed_text(text)` | Create embedding vectors with Mocu's configured embedding model. See [embedding-model.md](embedding-model.md). |
-
+| `extension.agents.list()` / `extension.agents.run(agent_id, input, *, timeout=None, cancel_event=None)` | Discover and run the current user's saved agents sequentially. Add `"agents.invoke"` to `manifest.permissions`. The host runs the agent, so no extension-owned LLM is needed. See [agent-calls.md](agent-calls.md). |
 ### Handler contract
 
 - Handler signature: `handler(input, context, config)`.

@@ -5,11 +5,17 @@
   "version": "0.1.0",
   "runtime": "node",
   "entry": "index.js",
+  "permissions": ["agents.invoke"],
   "commands": [
     {
       "id": "hi",
       "title": "Say hi via LLM",
       "description": "Asks the Mocu LLM to respond to 'hi' and returns its reply."
+    },
+    {
+      "id": "agent-pipeline",
+      "title": "Run Structure then Planning agents",
+      "description": "Runs two saved user agents in sequence and passes the first result to the second."
     }
   ]
 }

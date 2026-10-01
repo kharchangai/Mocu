@@ -27,8 +27,17 @@ import { streamChatModelWithTrace } from '../../services/ai/model-stream';
 import { isAbortError, throwIfAborted } from '../../services/ai/agent/abort';
 import { ToolExecutor } from '../../services/ai/agent/tool-executor';
 import { terminalExecutionTool } from '../../services/ai/tools/terminal_execution_tool';
+import {
+  readFileTool,
+  writeFileTool,
+  editFileTool,
+  findFileTool,
+} from '../../services/ai/tools/filesystem';
+import { docTools } from '../../services/ai/tools/docs_tools';
+import { notesTools } from '../../services/ai/tools/notes_tools';
 import { perplexitySearchTool } from '../../services/ai/tools/perplexity_search_tool';
 import { skillLoaderTool } from '../../services/ai/tools/skill_loader_tool';
+import { AGENT_TOOL_CATALOG, type AgentToolName } from './agent-tool-catalog';
 import { resolveSelectedSkills } from '../components/skills/selected-skill-loader';
 import { loadExtensionAgentTools } from '../../extensions/services/extension-agent-tools';
 import { scanInstalledExtensions } from '../../extensions/services/extension-scanner';
@@ -36,22 +45,25 @@ import {
   scheduleTool,
   type ScheduleActionInput,
 } from '../../schedule/schedule-tool';
-import {
-  loadMcpAgentTools,
-  parseMcpToolReference,
-} from '../../mcp/tool-adapter';
+import { loadMcpAgentTools } from '../../mcp/tool-adapter';
 import { findAvailableAgent, type AvailableAgent } from './agent-loader';
 
-const MAX_TOOL_STEPS = 5;
-const MAX_AGENT_DEPTH = 4;
 type ToolArgs = Record<string, unknown>;
+
+const FILESYSTEM_TOOLS: StructuredToolInterface[] = [
+  readFileTool,
+  writeFileTool,
+  editFileTool,
+  findFileTool,
+];
+const DOCUMENT_TOOLS: StructuredToolInterface[] = [...docTools];
+const NOTE_TOOLS: StructuredToolInterface[] = [...notesTools];
 
 type AgentRunInput = {
   agent: AvailableAgent;
   userMessage: string;
   projectPath: string;
   config?: RunnableConfig;
-  depth?: number;
 };
 
 type AgentState = {
@@ -67,11 +79,7 @@ const AgentGraphState = Annotation.Root({
 
 /**
  * Runs one saved agent through a small LangGraph workflow.
- *
- * The graph intentionally has one orchestration node. The node owns the
- * model/tool loop, while LangGraph owns the lifecycle and leaves room for
- * adding planning, approval, or streaming nodes later without changing the
- * public runner API.
+ * The graph intentionally has one orchestration node that owns the model/tool loop.
  */
 export async function runAgent(input: AgentRunInput): Promise<string> {
   const userMessage = input.userMessage.trim();
@@ -79,16 +87,9 @@ export async function runAgent(input: AgentRunInput): Promise<string> {
     throw new Error('An agent requires a non-empty user message.');
   }
 
-  const depth = input.depth ?? 0;
-  if (depth > MAX_AGENT_DEPTH) {
-    throw new Error('The agent delegation depth limit was reached.');
-  }
-
   const graph = new StateGraph(AgentGraphState)
     .addNode('run_agent', async (state, config) => ({
-      messages: [
-        await runAgentNode(input, state, config),
-      ],
+      messages: [await runAgentNode(input, state, config)],
     }))
     .addEdge(START, 'run_agent')
     .addEdge('run_agent', END)
@@ -114,13 +115,7 @@ export async function runAgentByName(
   if (!agent) {
     throw new Error(`Agent "${name}" was not found in the agents folder.`);
   }
-
-  return runAgent({
-    agent,
-    userMessage,
-    projectPath,
-    config,
-  });
+  return runAgent({ agent, userMessage, projectPath, config });
 }
 
 async function runAgentNode(
@@ -133,7 +128,6 @@ async function runAgentNode(
   throwIfAborted(signal);
 
   const normalizedProjectPath = input.projectPath.trim();
-
   const selectedSkills = await resolveSelectedSkills(
     mergeReferences(
       input.agent.skills,
@@ -151,19 +145,11 @@ async function runAgentNode(
   const extensionTools = await loadExtensionAgentTools(extensionIds);
   throwIfAborted(signal);
 
-  /*
-   * MCP tools are request-scoped. A saved agent must not inherit access just
-   * because an MCP server was connected (or because an old version stored an
-   * mcp:* entry in its tools list). The only way this agent sees MCP tools is
-   * when the user explicitly selects a server with /mcp for this request.
-   */
-  const mcpSelections = getConfigReferences(
-    runnableConfig,
-    'selectedMcpServers',
-  ).map((serverId) => ({ serverId }));
+  /* MCP tools remain request-scoped and are not inherited just from being connected. */
+  const mcpSelections = getConfigReferences(runnableConfig, 'selectedMcpServers')
+    .map((serverId) => ({ serverId }));
   const mcpTools = await loadMcpAgentTools(mcpSelections);
   throwIfAborted(signal);
-
   if (mcpTools.unresolved.length > 0) {
     console.warn(
       '[Agent Runner] Selected MCP servers/tools unavailable (not connected or unknown):',
@@ -175,53 +161,61 @@ async function runAgentNode(
     ...(normalizedProjectPath ? { projectPath: normalizedProjectPath } : {}),
   });
   const childAgents = await createChildAgentTools(input, runnableConfig);
+  const explicitlyConfiguredTools = input.agent.toolSelectionConfigured === true;
+  const selectedBuiltInTools = new Set(input.agent.tools);
+  const includeTool = (name: AgentToolName) =>
+    !explicitlyConfiguredTools || selectedBuiltInTools.has(name);
+  const selectedFilesystemTools = includeTool('filesystem') ? FILESYSTEM_TOOLS : [];
+  const selectedDocumentTools = includeTool('documents') ? DOCUMENT_TOOLS : [];
+  const selectedNoteTools = includeTool('notes') ? NOTE_TOOLS : [];
+
   const bindableTools: StructuredToolInterface[] = [
-    terminalTool,
-    perplexitySearchTool,
-    skillLoaderTool,
-    scheduleTool,
+    ...(includeTool('terminal_executor') ? [terminalTool] : []),
+    ...selectedFilesystemTools,
+    ...selectedDocumentTools,
+    ...selectedNoteTools,
+    ...(includeTool('perplexity_search') ? [perplexitySearchTool] : []),
+    ...(includeTool('load_skill') ? [skillLoaderTool] : []),
+    ...(includeTool('schedule_action') ? [scheduleTool] : []),
     ...extensionTools.tools,
     ...mcpTools.tools,
     ...childAgents.tools,
   ];
 
   const executor = new ToolExecutor();
-  executor.registerTool({
-    name: 'terminal_executor',
-    description: terminalTool.description,
-    execute: (args) =>
-      terminalTool.invoke(
-        args as { command: string },
-        runnableConfig,
-      ),
-  });
-  executor.registerTool({
-    name: 'perplexity_search',
-    description: perplexitySearchTool.description,
-    execute: (args) =>
-      perplexitySearchTool.invoke(
-        args as { query: string },
-        runnableConfig,
-      ),
-  });
-  executor.registerTool({
-    name: 'load_skill',
-    description: skillLoaderTool.description,
-    execute: (args) =>
-      skillLoaderTool.invoke(
-        args as { skillName: string },
-        runnableConfig,
-      ),
-  });
-  executor.registerTool({
-    name: 'schedule_action',
-    description: scheduleTool.description,
-    execute: (args) =>
-      scheduleTool.invoke(
-        args as ScheduleActionInput,
-        runnableConfig,
-      ),
-  });
+  if (includeTool('terminal_executor')) {
+    executor.registerTool({
+      name: 'terminal_executor',
+      description: terminalTool.description,
+      execute: (args) => terminalTool.invoke(args as { command: string }, runnableConfig),
+    });
+  }
+  if (includeTool('perplexity_search')) {
+    executor.registerTool({
+      name: 'perplexity_search',
+      description: perplexitySearchTool.description,
+      execute: (args) => perplexitySearchTool.invoke(args as { query: string }, runnableConfig),
+    });
+  }
+  if (includeTool('load_skill')) {
+    executor.registerTool({
+      name: 'load_skill',
+      description: skillLoaderTool.description,
+      execute: (args) => skillLoaderTool.invoke(args as { skillName: string }, runnableConfig),
+    });
+  }
+  if (includeTool('schedule_action')) {
+    executor.registerTool({
+      name: 'schedule_action',
+      description: scheduleTool.description,
+      execute: (args) => scheduleTool.invoke(args as ScheduleActionInput, runnableConfig),
+    });
+  }
+  registerStructuredTools(
+    executor,
+    [...selectedFilesystemTools, ...selectedDocumentTools, ...selectedNoteTools],
+    runnableConfig,
+  );
   extensionTools.registerAll(executor);
   mcpTools.registerAll(executor);
   childAgents.registerAll(executor);
@@ -234,7 +228,6 @@ async function runAgentNode(
     mcpTools.prompt,
     childAgents.prompt,
   );
-
   const llm = input.agent.llm
     ? await getAsyncLLMByModel(input.agent.llm)
     : await getAsyncLLM('expensive');
@@ -243,10 +236,7 @@ async function runAgentNode(
     new SystemMessage(systemPrompt),
     new HumanMessage(input.userMessage.trim()),
   ];
-  const initialModelTrace = createAgentModelTrace(
-    getChatIdFromConfig(runnableConfig),
-  );
-
+  const initialModelTrace = createAgentModelTrace(getChatIdFromConfig(runnableConfig));
   let response = await streamChatModelWithTrace({
     model: llmWithTools,
     messages,
@@ -257,22 +247,16 @@ async function runAgentNode(
       onText: initialModelTrace.onText,
     },
   });
-
-  initialModelTrace.finish({
-    hasToolCalls: Boolean(response.tool_calls?.length),
-  });
+  initialModelTrace.finish({ hasToolCalls: Boolean(response.tool_calls?.length) });
   const toolResults: string[] = [];
-  let step = 0;
 
-  while (response.tool_calls?.length && step < MAX_TOOL_STEPS) {
+  while (response.tool_calls?.length) {
     throwIfAborted(signal);
     const toolMessages: ToolMessage[] = [];
 
     for (const toolCall of response.tool_calls) {
       const toolCallId = toolCall.id;
-      if (!toolCallId) {
-        throw new Error(`Missing tool call ID for ${toolCall.name}.`);
-      }
+      if (!toolCallId) throw new Error(`Missing tool call ID for ${toolCall.name}.`);
 
       let result = '';
       let toolFailed = false;
@@ -285,7 +269,6 @@ async function runAgentNode(
         status: 'running',
         chatId: ownerChatId,
       });
-
       try {
         result = getToolResultText(
           await executor.execute(
@@ -295,9 +278,7 @@ async function runAgentNode(
           ),
         ).trim();
       } catch (error) {
-        if (isAbortError(error)) {
-          throw error;
-        }
+        if (isAbortError(error)) throw error;
         console.error(`[Agent Runner] Tool ${toolCall.name} failed:`, error);
         toolFailed = true;
         result = `The tool ${toolCall.name} failed.`;
@@ -315,21 +296,15 @@ async function runAgentNode(
         chatId: ownerChatId,
       });
       toolResults.push(`[${toolCall.name}]\n${result}`);
-      toolMessages.push(
-        new ToolMessage({
-          content: result,
-          tool_call_id: toolCallId,
-          name: toolCall.name,
-        }),
-      );
+      toolMessages.push(new ToolMessage({
+        content: result,
+        tool_call_id: toolCallId,
+        name: toolCall.name,
+      }));
     }
 
     messages = [...messages, response, ...toolMessages];
-
-    const stepModelTrace = createAgentModelTrace(
-      getChatIdFromConfig(runnableConfig),
-    );
-
+    const stepModelTrace = createAgentModelTrace(getChatIdFromConfig(runnableConfig));
     response = await streamChatModelWithTrace({
       model: llmWithTools,
       messages,
@@ -340,12 +315,7 @@ async function runAgentNode(
         onText: stepModelTrace.onText,
       },
     });
-
-    stepModelTrace.finish({
-      hasToolCalls: Boolean(response.tool_calls?.length),
-    });
-
-    step += 1;
+    stepModelTrace.finish({ hasToolCalls: Boolean(response.tool_calls?.length) });
   }
 
   if (toolResults.length > 0) {
@@ -356,7 +326,6 @@ async function runAgentNode(
       getChatIdFromConfig(runnableConfig),
       { mode: 'answer' },
     );
-
     response = await streamChatModelWithTrace({
       model: finalLlm,
       messages: [
@@ -372,10 +341,7 @@ async function runAgentNode(
         onText: finalTrace.onText,
       },
     });
-
-    finalTrace.finish({
-      hasToolCalls: false,
-    });
+    finalTrace.finish({ hasToolCalls: false });
   }
 
   throwIfAborted(signal);
@@ -407,15 +373,45 @@ function buildAgentSystemPrompt(
     childAgentsPrompt.trim(),
     '',
     'AVAILABLE TOOLS',
+    getConfiguredToolNames(agent).length > 0
+      ? `Only use the following built-in tools, which are enabled for this agent: ${getConfiguredToolNames(agent).join(', ')}.`
+      : 'No built-in tools were selected for this agent. Use only its configured child agents, selected extension tools, selected MCP tools, or skill-loading support when available.',
+    agent.agents.length > 0 && childAgentsPrompt
+      ? `CONFIGURED CHILD AGENTS: ${agent.agents.join(', ')}`
+      : '',
     mcpToolsPrompt.trim()
-      ? 'terminal_executor, perplexity_search, schedule_action, selected extension tools, selected MCP tools, and configured child agents.'
-      : 'terminal_executor, perplexity_search, schedule_action, selected extension tools, no MCP tools selected, and configured child agents.',
-    agent.tools.filter((tool) => !parseMcpToolReference(tool)).length > 0
-      ? `TOOLS REQUESTED BY THIS AGENT: ${agent.tools
-          .filter((tool) => !parseMcpToolReference(tool))
-          .join(', ')}`
-      : 'No specific tool list was saved; use the available tools only when they help complete the instruction.',
+      ? 'Selected MCP tools are available for this request.'
+      : 'No MCP tools are selected for this request.',
   ].filter((part, index) => index < 8 || part.trim()).join('\n');
+}
+
+function getConfiguredToolNames(agent: AvailableAgent): string[] {
+  const configuredNames = agent.toolSelectionConfigured !== true
+    ? AGENT_TOOL_CATALOG.map((availableTool) => availableTool.name)
+    : agent.tools.filter((name): name is AgentToolName =>
+        AGENT_TOOL_CATALOG.some((availableTool) => availableTool.name === name),
+      );
+
+  return configuredNames.flatMap((name) => {
+    if (name === 'filesystem') return FILESYSTEM_TOOLS.map((item) => item.name);
+    if (name === 'documents') return DOCUMENT_TOOLS.map((item) => item.name);
+    if (name === 'notes') return NOTE_TOOLS.map((item) => item.name);
+    return [name];
+  });
+}
+
+function registerStructuredTools(
+  executor: ToolExecutor,
+  tools: StructuredToolInterface[],
+  config: RunnableConfig,
+): void {
+  for (const agentTool of tools) {
+    executor.registerTool({
+      name: agentTool.name,
+      description: agentTool.description,
+      execute: (args) => agentTool.invoke(args as never, config),
+    });
+  }
 }
 
 function getConfigReferences(config: RunnableConfig, key: string): string[] {
@@ -443,9 +439,7 @@ function mergeReferences(...groups: string[][]): string[] {
 
 async function resolveExtensionIds(references: string[]): Promise<string[]> {
   const normalized = references.map((value) => value.trim()).filter(Boolean);
-  if (normalized.length === 0) {
-    return [];
-  }
+  if (normalized.length === 0) return [];
 
   try {
     const installed = await scanInstalledExtensions();
@@ -493,7 +487,6 @@ async function createChildAgentTools(
             : input.userMessage,
         projectPath: input.projectPath,
         config,
-        depth: (input.depth ?? 0) + 1,
       });
 
     executors.set(toolName, run);

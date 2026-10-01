@@ -2133,11 +2133,13 @@ export const callChatAgent =
      * Save this completed turn into the global user memory in the
      * background (never in a project file).
      */
-    saveUserMemoryInBackground(
-      userText,
-      finalAssistantContent,
-      getChatIdFromConfig(runnableConfig),
-    );
+    if (runnableConfig.configurable?.suppressMemorySave !== true) {
+      saveUserMemoryInBackground(
+        userText,
+        finalAssistantContent,
+        getChatIdFromConfig(runnableConfig),
+      );
+    }
 
     return {
       messages: [

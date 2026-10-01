@@ -73,14 +73,16 @@ class JsonRpcProtocol:
                 if cancel_event.is_set():
                     with self._pending_lock:
                         self._pending.pop(request_id, None)
-                    if method == "mocu.extension.interact":
+                    if method in (
+                        "mocu.extension.interact",
+                        "mocu.agents.run",
+                    ):
                         self._write_message({
                             "jsonrpc": "2.0",
                             "method": "mocu.extension.interaction.cancel",
                             "params": {"requestId": request_id},
                         })
                     raise RuntimeError(f'Request "{method}" was cancelled.')
-
                 wait_seconds = 0.1
                 if deadline is not None:
                     remaining = deadline - time.monotonic()

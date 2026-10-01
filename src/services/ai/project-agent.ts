@@ -127,6 +127,7 @@ import {
 import {
   createAgentTool,
 } from "./tools/create_agent_tool";
+import { agentManagementTools } from "./tools/agent-management-tools";
 
 import {
   docTools,
@@ -663,6 +664,11 @@ const buildProjectAgentSystemPrompt = (
     "- Reply without more tool calls only when the whole request is complete or genuinely needs no tool work.",
     "- In your final answer, report what was done and verified, and state honestly if anything remains.",
     "",
+    "SAVED USER AGENT MANAGEMENT",
+    "- When the user asks to create an agent, use create_agent with their complete request unchanged.",
+    "- When the user asks to edit or update an existing agent, use list_agents/read_agent to identify and inspect it, then update_agent with only the requested fields. Never overwrite fields the user did not ask to change.",
+    "- Do not modify saved agents unless the user explicitly requests it. Report success only after the tool confirms the saved definition.",
+    "",
     "PROJECT PATH",
     projectPath,
 
@@ -849,6 +855,14 @@ const createProjectToolExecutor = (
       );
     },
   });
+
+  for (const agentTool of agentManagementTools) {
+    toolExecutor.registerTool({
+      name: agentTool.name,
+      description: agentTool.description,
+      execute: async (args) => agentTool.invoke(args, config),
+    });
+  }
 
   toolExecutor.registerTool({
     name:
@@ -2050,18 +2064,22 @@ export const callProjectAgent =
     const projectChatId = getChatIdFromConfig(runnableConfig) || "default";
     const readSpecialistHistoryTool = createReadSpecialistSectionHistoryTool(projectChatId);
     const graphRecorder = createGraphRecorder({ agentKind: "project", chatId: projectChatId, projectPath: normalizedProjectPath });
+    const suppressMemorySave = runnableConfig.configurable?.suppressMemorySave === true;
     let recordThisRun = false;
-    try {
-      recordThisRun = await shouldRouteToGraphSystem(userText);
-      if (recordThisRun) graphRecorder.startRun(userText);
-    } catch (error) {
-      console.warn("[Project Agent] JEV recording gate failed; continuing without recording:", error);
+    if (!suppressMemorySave) {
+      try {
+        recordThisRun = await shouldRouteToGraphSystem(userText);
+        if (recordThisRun) graphRecorder.startRun(userText);
+      } catch (error) {
+        console.warn("[Project Agent] JEV recording gate failed; continuing without recording:", error);
+      }
     }
     const graphDigestTool = createGraphDigestTool(normalizedProjectPath);
     const specialistMemoryTool = createFindSpecialistProjectMemoryTool(normalizedProjectPath);
     const llmWithTools = llm.bindTools([
       scheduleTool, desktopVisionTool, terminalTool, perplexitySearchTool,
       textToSpeechTool, speechControlTool, skillLoaderTool, createAgentTool,
+      ...agentManagementTools,
       readFileTool, writeFileTool, editFileTool, findFileTool,
       graphDigestTool.runnable, specialistMemoryTool, readSpecialistHistoryTool,
       ...docTools, ...notesTools, ...extensionTools.tools, ...mcpTools.tools, ...agentTools.tools,
@@ -2091,6 +2109,7 @@ export const callProjectAgent =
     const availableToolNames = [
       "terminal_executor", "schedule_action", "desktop_vision_action", "text_to_speech",
       "speech_control", perplexitySearchTool.name, skillLoaderTool.name, createAgentTool.name,
+      ...agentManagementTools.map((agentTool) => agentTool.name),
       readFileTool.name, writeFileTool.name, editFileTool.name, findFileTool.name,
       graphDigestTool.name, specialistMemoryTool.name, readSpecialistHistoryTool.name,
       ...docTools.map((item) => item.name), ...notesTools.map((item) => item.name),
@@ -2525,12 +2544,14 @@ export const callProjectAgent =
       }
     }
 
-    saveProjectMemoryInBackground(
-      userText,
-      finalAssistantContent,
-      normalizedProjectPath,
-      getChatIdFromConfig(runnableConfig),
-    );
+    if (!suppressMemorySave) {
+      saveProjectMemoryInBackground(
+        userText,
+        finalAssistantContent,
+        normalizedProjectPath,
+        getChatIdFromConfig(runnableConfig),
+      );
+    }
 
     return {
       messages: [

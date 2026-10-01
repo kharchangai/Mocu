@@ -63,6 +63,25 @@ The extension must reply with **exactly one** response per request id:
 The `output` value is what the chat / agent tool receives (normalized to
 text by `extension-agent-loader.ts`).
 
+## Extension → Host: `mocu.agents.list` and `mocu.agents.run` (requests)
+
+Agent methods are available to extensions declaring `"agents.invoke"` in their manifest permissions. The host returns only agent metadata or a run's response; it never sends agent definitions or model credentials to the extension.
+
+```json
+{ "jsonrpc": "2.0", "id": 20, "method": "mocu.agents.list" }
+```
+
+Reply: `{ "jsonrpc": "2.0", "id": 20, "result": [{ "id": "structure", "name": "Structure", "description": "..." }] }`.
+
+```json
+{ "jsonrpc": "2.0", "id": 21, "method": "mocu.agents.run",
+  "params": { "agentId": "structure", "input": "Analyze this project..." } }
+```
+
+The host reply is `{ "jsonrpc": "2.0", "id": 21, "result": { "agentId": "structure", "name": "Structure", "text": "..." } }`. Calls run one agent to completion. An extension can await a result and place its text in a subsequent `mocu.agents.run` input to build sequential workflows. Each run starts with the provided input; previous run context is not implicitly carried over. SDK calls may be cancelled by aborting their request; cancellation is forwarded to the host.
+
+SDK guides and examples: [agent-calls.md](agent-calls.md).
+
 ## Extension → Host: `mocu.llm.generate` (request)
 
 ```json
@@ -132,13 +151,13 @@ this request while their `extension.execute` call is running:
 }
 ```
 
-Mocu displays the interaction in that chat and leaves the request pending. A
-user's text submission replies with `{ "actionId": "__input__", "input": "..." }`;
-a button replies with `{ "actionId": "continue" }`. The extension handles the
-result and may issue another interaction request. A Node SDK interaction may
-be cancelled with a `mocu.extension.interaction.cancel` notification carrying
-the local interaction request id; Mocu then dismisses the card. See
-[chat-interaction.md](chat-interaction.md).
+- `HOST_METHODS.llmGenerate` = `"mocu.llm.generate"` (`llm.ts`)
+- `HOST_METHODS.decisionAsk` = `"mocu.decision.ask"` (`decision.ts`)
+- `HOST_METHODS.embeddingEmbed` = `"mocu.embedding.embed"` (`embedding.ts`)
+- `HOST_METHODS.agentsList` = `"mocu.agents.list"` (`agents.ts`; requires `agents.invoke`)
+- `HOST_METHODS.agentsRun` = `"mocu.agents.run"` (`agents.ts`; requires `agents.invoke`)
+- `HOST_METHODS.extensionInteract` = `"mocu.extension.interact"`
+- `HOST_METHODS.extensionInteractionCancel` = `"mocu.extension.interaction.cancel"`
 
 ## Error responses (JSON-RPC level)
 
@@ -154,6 +173,8 @@ If a request cannot be processed at all, respond with a JSON-RPC error:
 - `HOST_METHODS.llmGenerate` = `"mocu.llm.generate"` (`llm.ts`)
 - `HOST_METHODS.decisionAsk` = `"mocu.decision.ask"` (`decision.ts`)
 - `HOST_METHODS.embeddingEmbed` = `"mocu.embedding.embed"` (`embedding.ts`)
+- `HOST_METHODS.agentsList` = `"mocu.agents.list"` (`agents.ts`; requires `agents.invoke`)
+- `HOST_METHODS.agentsRun` = `"mocu.agents.run"` (`agents.ts`; requires `agents.invoke`)
 - `HOST_METHODS.extensionInteract` = `"mocu.extension.interact"`
 - `HOST_METHODS.extensionInteractionCancel` = `"mocu.extension.interaction.cancel"`
 - Activity method (used by SDKs/examples): `"mocu.extension.activity"`

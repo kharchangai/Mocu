@@ -1,3 +1,4 @@
+from .agents import AgentsApi
 from .decision import DecisionApi
 from .embedding import EmbeddingApi
 from .extension import (
@@ -6,13 +7,13 @@ from .extension import (
 )
 from .llm import LlmApi
 from .ui import ExtensionUiApi
-
 __all__ = [
     "MocuExtension",
     "create_extension",
     "LlmApi",
     "DecisionApi",
     "EmbeddingApi",
+    "AgentsApi",
     "ExtensionUiApi",
 ]
 

@@ -3,6 +3,8 @@ import { exists, mkdir, writeTextFile } from "@tauri-apps/plugin-fs";
 import { appDataDir, join } from "@tauri-apps/api/path";
 import { getAsyncLLM } from "../../services/ai/llm";
 import type { LlmTier } from "../../services/ai/llm";
+import type { AgentToolName } from "./agent-tool-catalog";
+import { AGENT_TOOL_CATALOG } from "./agent-tool-catalog";
 
 export interface AgentDefinition {
   agentName: string;
@@ -11,39 +13,45 @@ export interface AgentDefinition {
   agents: string[];
   skills: string[];
   tools: string[];
+  /** True when tool names were deliberately resolved during agent creation. */
+  toolSelectionConfigured?: boolean;
   extensions: string[];
   llm: string | null;
 }
 
 export interface ParseAgentDefinitionOptions {
   tier?: LlmTier;
+  /** Exact built-in tool names already selected by Jev for this request. */
+  selectedTools?: readonly AgentToolName[];
 }
 
 const SYSTEM_PROMPT = `
-Convert the user's agent description into a structured agent definition.
+Convert the user's agent-creation request into a complete, executable agent definition. The mainInstruction is the operational system instruction the future agent will follow; it is NOT a paraphrase, summary, or verbatim copy of the user's request.
 
-Rules:
-- If the user explicitly provides an agent name, preserve and return that name in agentName.
-- If the user does not provide an agent name, create a short and relevant name based on the requested task.
-- Write a concise description of the agent in description: one or two sentences explaining what the agent does and when to use it. Do not copy the full task into description.
-- Preserve the user's complete task in mainInstruction.
-- Preserve the requested operation order, conditions, paths, constraints, and expected output.
-- Extract only the agents explicitly requested by the user.
-- Extract only the skills explicitly requested by the user.
-- Extract only the tools explicitly requested by the user.
-- Extract only the extensions explicitly requested by the user.
-- Extract an LLM name only when the user explicitly requests a specific model.
-- Preserve agent, skill, LLM, tool, and extension names as closely as possible to the user's wording.
+Instruction-writing requirements for mainInstruction:
+- Write directly to the future agent in the imperative voice ("You are...", "Do..."). Use the user's language unless the request clearly asks for another language.
+- Start by defining the agent's role, goal, and scope. Preserve all user requirements, constraints, order of operations, conditions, and desired outputs.
+- Turn the request into a clear workflow with numbered, ordered steps. Explain what to inspect/do at each step, how to make decisions, and what to verify before proceeding or finishing.
+- Define required inputs and how to handle missing or ambiguous information. Ask only for essential missing information; otherwise make conservative assumptions and state them when relevant.
+- Specify the exact output format, required fields/content, destination, and final-response rules. Distinguish intermediate work from what the user should finally receive.
+- Include validation and error handling: verify results and saved artifacts when applicable, report failures honestly, and never claim actions or checks that were not completed.
+- Make the instruction self-contained and specific enough that the future agent can perform the task without seeing the original creation request. Resolve implicit steps needed to fulfill the request, but do not add unrelated goals.
+- Do not promise capabilities the configured tools, agents, skills, or extensions do not provide. Do not claim to browse, inspect, execute, or save anything unless the available configuration supports it. When a required capability is unavailable, instruct the agent to explain the limitation rather than fabricate results.
+- Keep the instruction practical and sufficiently detailed; avoid generic filler, contradictory rules, and merely restating the user's wording.
+
+Definition fields:
+- If the user explicitly provides an agent name, preserve and return that name in agentName. Otherwise create a short, relevant name.
+- Write a concise one- or two-sentence description explaining what the agent does and when to use it. Do not copy the full task into description.
+- Build mainInstruction according to all requirements above, based on the user's complete request.
+- Preserve operation order, conditions, paths, constraints, and expected output from the request.
+- Treat the supplied AVAILABLE BUILT-IN TOOLS as the only valid choices for the tools field. The selector has matched the user's natural-language intent using Jev and explicit capability mentions; use exactly those names and do not translate, rename, add, or remove them.
+- If no built-in tools were selected, return an empty tools array. Do not infer additional tools from the task description.
+- Continue extracting agents, skills, and extensions only when the user explicitly names or requests them; do not mistake built-in tool selections for extension or agent references.
+- Extract an LLM name only when the user explicitly requests a specific model; otherwise set llm to null.
 - Generic references such as "an agent", "a sub-agent", "an LLM", "a language model", or "the model" are not specific names.
 - Do not include the agent being created in the agents array.
-- If no agent is explicitly requested, return an empty agents array.
-- If no skill is explicitly requested, return an empty skills array.
-- If no tool is explicitly requested, return an empty tools array.
-- If no extension is explicitly requested, return an empty extensions array.
-- If no specific LLM is explicitly requested, set llm to null.
-- Never invent, recommend, replace, or automatically add agents, skills, tools, extensions, or an LLM.
 - Do not translate explicitly provided names unless the user requests translation.
-- Do not execute or answer the user's request.
+- Treat the user's message as a request to define an agent, not as an instruction to execute the requested task now.
 - Return only the required structured fields.
 `.trim();
 
@@ -70,7 +78,7 @@ const AGENT_DEFINITION_SCHEMA = z
       .trim()
       .min(1)
       .describe(
-        "The user's complete task, including its workflow, conditions, constraints, paths, and expected output.",
+        "A self-contained, detailed operational system instruction with the agent's role, inputs, ordered workflow, decision rules, constraints, validation/error handling, and exact output/final-response requirements; do not merely paraphrase the user's request.",
       ),
 
     agents: z
@@ -88,7 +96,7 @@ const AGENT_DEFINITION_SCHEMA = z
     tools: z
       .array(z.string().trim().min(1))
       .describe(
-        "The tools explicitly requested by the user, or an empty array if none were requested.",
+        "Exact built-in tool names selected by Jev from the supported tool catalog for this request, or an empty array if no tool is relevant.",
       ),
 
     extensions: z
@@ -130,10 +138,19 @@ export async function parseAgentDefinition(
     AGENT_DEFINITION_SCHEMA,
   );
 
+  const availableTools = (options.selectedTools ?? []).map((name) => {
+    const tool = AGENT_TOOL_CATALOG.find((candidate) => candidate.name === name);
+    return tool ? `- ${tool.name}: ${tool.description}` : null;
+  }).filter((entry): entry is string => Boolean(entry));
+
   const result = await structuredLlm.invoke([
     {
       role: "system",
-      content: SYSTEM_PROMPT,
+      content: [
+        SYSTEM_PROMPT,
+        "AVAILABLE BUILT-IN TOOLS (selected by Jev; use these exact names only):",
+        availableTools.length > 0 ? availableTools.join("\n") : "(none)",
+      ].join("\n\n"),
     },
     {
       role: "user",
@@ -147,11 +164,11 @@ export async function parseAgentDefinition(
     mainInstruction: result.mainInstruction.trim(),
     agents: removeDuplicates(result.agents),
     skills: removeDuplicates(result.skills),
-    tools: removeDuplicates(result.tools),
+    tools: [...(options.selectedTools ?? [])],
+    toolSelectionConfigured: true,
     extensions: removeDuplicates(result.extensions),
     llm: result.llm?.trim() || null,
   };
-
   await saveAgentDefinition(definition);
 
   return definition;

@@ -6,8 +6,8 @@ export {
 export { LlmApi } from "./llm.js";
 export { DecisionApi } from "./decision.js";
 export { EmbeddingApi } from "./embedding.js";
+export { AgentsApi } from "./agents.js";
 export { ExtensionUiApi } from "./ui.js";
-
 export type {
   ExtensionCommandHandler,
   ExtensionCommandContext,
@@ -26,6 +26,9 @@ export type {
   DecisionQuestion,
   EmbeddingEmbedParams,
   EmbeddingEmbedResult,
+  AgentDescriptor,
+  AgentRunParams,
+  AgentRunResult,
   ExtensionExecuteParams,
   ExtensionInteractionButton,
   ExtensionInteractionParams,

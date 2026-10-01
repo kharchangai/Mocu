@@ -142,6 +142,10 @@ async function readAgentFile(
       agents: readStringArray(value, ['agents', 'Agents']),
       skills: readStringArray(value, ['skills', 'Skills']),
       tools: readStringArray(value, ['tools', 'Tools']),
+      toolSelectionConfigured:
+        typeof value.toolSelectionConfigured === 'boolean'
+          ? value.toolSelectionConfigured
+          : undefined,
       extensions: readStringArray(value, ['extensions', 'Extensions']),
       llm: readNullableString(value, ['llm', 'model', 'LLM']),
       id: agentName.trim(),

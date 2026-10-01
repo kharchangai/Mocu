@@ -26,7 +26,12 @@ const SHORT_TOOL_DESCRIPTIONS: Record<string, string> = {
   schedule_action: "Create, list, update, or remove scheduled tasks.",
   text_to_speech: "Speak text aloud to the user.",
   speech_control: "Pause, resume, or stop speech output.",
-  create_agent: "Create a new specialist agent.",
+  create_agent:
+    "Create a persistent specialist agent when explicitly requested; pass the user's complete request unchanged.",
+  list_agents: "List the user's saved specialist agents by name and summary.",
+  read_agent: "Read one saved agent's full definition before editing it.",
+  update_agent:
+    "Edit an existing saved agent only when the user explicitly requests changes; provide only changed fields and preserve all others.",
   save_note: "Save a user note.",
   read_note: "Read a user note.",
   update_note: "Update a user note.",

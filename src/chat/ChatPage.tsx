@@ -286,6 +286,7 @@ function ChatPage() {
     ensureChat,
     loadProjectConversation,
     appendMessage,
+    replaceMessage,
     renameChat,
     deleteChat,
   } = useChatHistory();
@@ -753,6 +754,7 @@ function ChatPage() {
           onAppendMessage={
             appendMessage
           }
+          onReplaceMessage={replaceMessage}
         />
       </div>
 

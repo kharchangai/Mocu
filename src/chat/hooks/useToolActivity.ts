@@ -222,24 +222,28 @@ export function commitToolActivities(
    */
   setLiveAnswer(chatId, '');
 
-  if (activities.length === 0) {
+  pendingByChat.set(chatId, []);
+  notifyPending(chatId);
+
+  const hadCommittedActivities = Object.prototype.hasOwnProperty.call(
+    committedActivities,
+    messageId,
+  );
+  if (activities.length === 0 && !hadCommittedActivities) {
     return;
   }
 
-  pendingByChat.set(chatId, []);
+  const nextCommittedActivities = { ...committedActivities };
+  if (activities.length > 0) {
+    nextCommittedActivities[messageId] = activities;
+  } else {
+    // Replacing a reply with a run that used no tools must not leave the
+    // previous response's tool trace attached to the new answer.
+    delete nextCommittedActivities[messageId];
+  }
 
-  notifyPending(chatId);
-
-  committedActivities = {
-    ...committedActivities,
-    [messageId]: activities,
-  };
-
-  /*
-   * Persist immediately so the boxes survive an app restart.
-   */
+  committedActivities = nextCommittedActivities;
   saveToolActivities(committedActivities);
-
   notifyCommitted();
 }
 
@@ -248,6 +252,12 @@ export function commitToolActivities(
  * visible (e.g. after Stop or a failure) but stop spinning. A normal
  * finish commits them to the response message instead.
  */
+export function discardToolActivityRequest(chatId: string): void {
+  pendingByChat.set(chatId, []);
+  setLiveAnswer(chatId, '');
+  notifyPending(chatId);
+}
+
 export function finishToolActivities(chatId: string): void {
   const activities = pendingByChat.get(chatId) ?? [];
 
@@ -404,6 +414,9 @@ export function useToolActivity(chatId: string | null) {
       cancelled = false,
     ) => {
       commitToolActivities(requestChatId, messageId, cancelled);
+    }, []),
+    discard: useCallback((requestChatId: string) => {
+      discardToolActivityRequest(requestChatId);
     }, []),
     getForMessage,
   };

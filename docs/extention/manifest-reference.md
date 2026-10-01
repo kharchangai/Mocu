@@ -60,7 +60,7 @@ manifests are rejected at install/scan time.
 |-------|------|---------|
 | `commands` | array | Declared commands. **Required in practice** — the host uses it for timeouts/streaming and the frontend uses it to build agent tools. See below. |
 | `engines` | object | Runtime compatibility hints, e.g. `{ "node": ">=20", "python": ">=3.10", "mocu": ">=0.1" }`. |
-| `permissions` | string[] | Descriptive only (e.g. `"filesystem"`, `"shell"`). They do **not** provide a sandbox in the current implementation. |
+| `permissions` | string[] | Declared extension capabilities. Agent discovery and invocation require `"agents.invoke"`; this permission is checked by Mocu's host bridge. Other entries are currently informational and do not provide a sandbox. |
 | `configuration` | object | Reserved for extension-specific config schema/defaults. |
 | `config` | array | **Inputs the user must fill in** for the extension to work (API keys, base URLs, ...). Rendered as a Settings form on the extension's card in the Extensions page; saved values are delivered to every command as the `config` param. Full field reference and examples: [user-config.md](user-config.md). |
 | `manifestVersion` | number | Must be `1` in the contracts validator. |

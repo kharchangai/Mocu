@@ -307,6 +307,51 @@ export function useChatHistory() {
     [addMessage, createChat],
   );
 
+  const replaceMessage = useCallback(
+    (chatId: string, messageId: string, content: string): void => {
+      const normalizedContent = content.trim();
+
+      if (!normalizedContent) {
+        throw new Error('The message cannot be empty.');
+      }
+
+      const updatedAt = new Date().toISOString();
+
+      setChats((currentChats) => {
+        const existingChat = currentChats.find((chat) => chat.id === chatId);
+        if (!existingChat) {
+          console.error(`[Chat History] Chat not found: ${chatId}`);
+          return currentChats;
+        }
+
+        let didReplace = false;
+        const updatedChat: ChatConversation = {
+          ...existingChat,
+          messages: existingChat.messages.map((message) => {
+            if (message.id !== messageId) return message;
+            didReplace = true;
+            return { ...message, content: normalizedContent };
+          }),
+          updatedAt,
+        };
+
+        if (!didReplace) {
+          console.error(`[Chat History] Message not found: ${messageId}`);
+          return currentChats;
+        }
+
+        if (updatedChat.historyFilePath) {
+          void saveProjectConversationFile(updatedChat);
+        }
+
+        return sortChats(
+          currentChats.map((chat) => chat.id === chatId ? updatedChat : chat),
+        );
+      });
+    },
+    [],
+  );
+
   const addAssistantMessage = useCallback(
     (chatId: string, content: string): ChatMessage => {
       return addMessage(chatId, 'assistant', content);
@@ -552,6 +597,7 @@ export function useChatHistory() {
     ensureChat,
     loadProjectConversation,
     appendMessage,
+    replaceMessage,
     sendUserMessage,
     addMessage,
     addAssistantMessage,
