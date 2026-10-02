@@ -1,7 +1,7 @@
 {
   "id": "plan-code-runner",
   "name": "Plan Code Runner",
-  "description": "Executes an implementation plan step by step: reads a plan JSON file made by a planner agent, hands each step to a coder agent, collects the coder's work report for the next step, and when the coder reports a deviation/error, asks the planner agent to update the plan before continuing.",
+  "description": "Executes a JSON implementation plan step by step with the coder agent. On deviation, asks Implementation Plan Reviser to replan only from the affected step onward, then resumes after it if its intended result was achieved or retries it if incomplete.",
   "version": "0.1.1",
   "runtime": "node",
   "entry": "index.js",
@@ -11,7 +11,7 @@
     {
       "id": "run_plan",
       "title": "Run implementation plan",
-      "description": "Runs a saved implementation plan end to end. Input must be an object: {\"planPath\":\"absolute path to the plan .\", \"coderAgentName\":\"name of the saved coder agent (default 'coder')\", \"plannerAgentName\":\"name of the saved planner agent (default 'Implementation Plan Architect')\", \"startStep\":1, \"maxSteps\":40, \"maxPlanUpdates\":8}. The extension loads the plan file, executes each step through the coder agent, passes every completed step's report (what was done, files created/modified, outputs) as context to the next step, and on a coder deviation/error sends the deviation plus the work already done to the planner agent, writes the updated plan back to planPath, and re-runs the affected step. Returns a JSON run report with per-step reports, plan revisions and final status.",
+      "description": "Runs a saved implementation plan end to end. Input: {\"planPath\":\"absolute path to the plan JSON\", \"coderAgentName\":\"saved coder agent (default: coder)\", \"reviserAgentName\":\"saved reviser agent (default: Implementation Plan Reviser)\", \"startStep\":1, \"maxSteps\":40, \"maxPlanUpdates\":8}. Loads the plan, executes each step through the coder, and passes prior reports as context. On deviation, sends the current plan, affected step, execution outcome, and reports to the reviser, saves a backup and updated plan, then resumes at the next step if the affected step's intended result was achieved or retries the affected step if incomplete. Returns per-step reports, plan revisions, and final status.",
       "streaming": true,
       "timeoutSeconds": 0
     },

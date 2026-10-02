@@ -1,46 +1,29 @@
-﻿/*
- * Plan Code Runner â€” Mocu extension.
+/*
+ * Plan Code Runner — Mocu extension.
  *
- * Reads an implementation-plan JSON file produced by a planner agent
- * (e.g. "Implementation Plan Architect"), executes its steps one at a
- * time through a coder agent, and accumulates every completed step's
- * work report so the next step runs with full context.
- *
- * When the coder reports a deviation or error (it had to change
- * something the plan did not anticipate), the extension sends the
- * deviation plus all work done so far to the planner agent, writes the
- * planner's updated plan back to the plan file, and re-runs the
- * affected step â€” repeating until the run finishes or a safety limit
- * is reached.
+ * Reads a JSON implementation plan, executes each step through the coder
+ * agent, and carries execution reports forward as context. On deviation,
+ * it asks Implementation Plan Reviser to replan only from the affected
+ * step onward. If the affected step's intended result was achieved,
+ * execution resumes at the next step; otherwise that revised step is retried.
  */
 
 import { createExtension } from "@mocu/extension-sdk";
 import { readFileSync, writeFileSync, existsSync } from "node:fs";
 import { resolve } from "node:path";
 
-/* ------------------------------------------------------------------ *
- * Defaults & limits
- * ------------------------------------------------------------------ */
-
 const DEFAULT_CODER_NAME = "coder";
-const DEFAULT_PLANNER_NAME = "Implementation Plan Architect";
+const DEFAULT_PLANNER_NAME = "Implementation Plan Reviser";
 const DEFAULT_MAX_STEPS = 40;
 const DEFAULT_MAX_PLAN_UPDATES = 8;
-const AGENT_TIMEOUT_MS = null; // no SDK-side timeout; command timeout governs
-
-/* ------------------------------------------------------------------ *
- * Small helpers
- * ------------------------------------------------------------------ */
+const AGENT_TIMEOUT_MS = null;
 
 const asPositiveInt = (value, fallback) => {
   const n = Number.parseInt(String(value ?? ""), 10);
   return Number.isFinite(n) && n > 0 ? n : fallback;
 };
 
-/**
- * Pull the first parseable JSON object out of an agent's free-text
- * reply. Handles ```json fences and prose around the object.
- */
+/** Extract the first parseable JSON object from an agent reply. */
 const extractJson = (text) => {
   if (typeof text !== "string") return null;
   const fenced = text.match(/```(?:json)?\s*([\s\S]*?)```/i);
@@ -55,24 +38,22 @@ const extractJson = (text) => {
       const parsed = JSON.parse(candidate.trim());
       if (parsed && typeof parsed === "object") return parsed;
     } catch {
-      /* try next candidate */
+      // Try the next candidate.
     }
   }
   return null;
 };
 
-/** Load and validate the plan file. Returns { plan, steps, error }. */
+/** Load and minimally validate the implementation-plan JSON file. */
 const loadPlan = (planPath) => {
   if (!planPath || typeof planPath !== "string") {
     return { error: "planPath must be a non-empty absolute file path." };
   }
   const abs = resolve(planPath.trim());
-  if (!existsSync(abs)) {
-    return { error: `Plan file not found: ${abs}` };
-  }
+  if (!existsSync(abs)) return { error: `Plan file not found: ${abs}` };
   let plan;
   try {
-    const raw = readFileSync(abs, "utf8").replace(/^\uFEFF/, ""); // strip BOM
+    const raw = readFileSync(abs, "utf8").replace(/^\uFEFF/, "");
     plan = JSON.parse(raw);
   } catch (err) {
     return { error: `Plan file is not valid JSON (${abs}): ${err.message}` };
@@ -83,18 +64,15 @@ const loadPlan = (planPath) => {
         "Plan file must be a JSON object with a `steps` array (each step needs at least a `step` and `title`/`goal`).",
     };
   }
-  if (plan.steps.length === 0) {
-    return { error: "Plan file contains no steps." };
-  }
-  for (const [i, s] of plan.steps.entries()) {
-    if (!s || typeof s !== "object" || s.step === undefined) {
-      return { error: `Plan step at index ${i} is missing its \`step\` number.` };
+  if (plan.steps.length === 0) return { error: "Plan file contains no steps." };
+  for (const [i, step] of plan.steps.entries()) {
+    if (!step || typeof step !== "object" || step.step === undefined) {
+      return { error: `Plan step at index ${i} is missing its step number.` };
     }
   }
   return { plan, steps: plan.steps, path: abs };
 };
 
-/** Compact one completed step's report for the next prompt. */
 const compactReport = (step, report) => {
   const title = step.title ?? step.goal ?? `step ${step.step}`;
   return [
@@ -103,10 +81,6 @@ const compactReport = (step, report) => {
   ].join("\n");
 };
 
-/* ------------------------------------------------------------------ *
- * Agent prompts
- * ------------------------------------------------------------------ */
-
 const buildCoderPrompt = ({ step, plan, history, attempt }) => {
   const summaryBits = [];
   if (plan.project_summary) {
@@ -114,16 +88,17 @@ const buildCoderPrompt = ({ step, plan, history, attempt }) => {
       `Plan project summary:\n${JSON.stringify(plan.project_summary, null, 2)}`,
     );
   }
-  if (Array.isArray(plan.overall_acceptance_criteria) && plan.overall_acceptance_criteria.length) {
+  if (
+    Array.isArray(plan.overall_acceptance_criteria) &&
+    plan.overall_acceptance_criteria.length
+  ) {
     summaryBits.push(
       `Plan acceptance criteria:\n- ${plan.overall_acceptance_criteria.join("\n- ")}`,
     );
   }
-
   const historyBlock = history.length
-    ? `Completed steps and their work reports (treat as done, do not redo):\n\n${history.join("\n\n")}`
-    : "No steps have been completed yet; this is the first step.";
-
+    ? `Earlier execution reports (treat completed work as done; do not redo it):\n\n${history.join("\n\n")}`
+    : "No earlier steps have been completed; this is the first step.";
   const retryNote =
     attempt > 1
       ? "\nIMPORTANT: your previous reply could not be parsed. Respond with ONLY a single valid JSON object, no prose, no markdown fences.\n"
@@ -143,15 +118,16 @@ Do the work for this step using your tools, then reply with ONLY one valid JSON 
 
 {
   "status": "success" | "deviation",
+  "stepOutcome": "completed" | "incomplete",
   "report": {
     "summary": "what you did",
     "files_created": ["..."],
-    "files_modified": [{"path": "...", "change": "..."}],
+    "files_modified": ["..."],
     "outputs": ["key results, commands run, tests, artifacts"],
     "issues": ["anything left open"]
   },
   "deviation": {
-    "present": true|false,
+    "present": true,
     "reason": "why this step could not be done as planned",
     "forced_changes": ["what you had to change or invent that the plan did not contain"],
     "work_already_done": ["what you did before hitting the problem"]
@@ -159,41 +135,45 @@ Do the work for this step using your tools, then reply with ONLY one valid JSON 
 }
 
 Rules:
-- "status" must be "success" only when the step completed as written in the plan.
-- If you had to change, add, or skip anything the plan did not anticipate (including the plan being wrong or impossible as written), use "status": "deviation", fill "deviation" honestly, and still describe all work you actually completed in "report".
-- Be precise about files created and modified â€” the next step and the planner rely on this report.`;
+- Set status to "success" only when the step completed as written; then set stepOutcome to "completed" and omit deviation.
+- For status "deviation", always set stepOutcome. Use "completed" only if the step's intended result/acceptance criteria were achieved despite departing from the planned method. Use "incomplete" if blocked, partially done, or uncertain; never infer completion from partial progress.
+- For deviations, provide deviation honestly and describe all work actually completed in report.
+- Be precise about files created and modified — the next step and the reviser rely on this report.`;
 };
 
-const buildPlannerPrompt = ({ planText, history, deviation, failedStep }) => {
+const buildReviserPrompt = ({ planText, history, deviation, affectedStep, stepOutcome }) => {
   const historyBlock = history.length
-    ? `Completed work reports so far:\n\n${history.join("\n\n")}`
-    : "No steps were completed before this point.";
+    ? `Execution reports for earlier and affected work (use as evidence; do not redo completed work):\n\n${history.join("\n\n")}`
+    : "No earlier work was completed before this step.";
+  const replanInstruction =
+    stepOutcome === "completed"
+      ? "The coder confirms that the intended result of the affected step WAS achieved, despite deviating from the planned method. Preserve every step before this one unchanged; preserve this affected step as completed; replan only steps after it. The runner will resume at the next step. Do not repeat this completed step."
+      : "The coder confirms that the affected step was NOT completed, or completion is uncertain. Preserve every step before this one unchanged. Revise the affected step to make it executable next, and replan later steps only as necessary. The runner will retry the affected step. Do not treat partial work as completion.";
 
-  return `You are the implementation planning agent. The plan below is being executed step by step by a coder agent. The current step failed or deviated: the coder could not follow the plan as written and had to change things the plan did not contain.
+  return `You are Implementation Plan Reviser. Revise the current implementation plan in response to the coder's execution report.
 
-PLAN FILE (current):
+CURRENT PLAN (complete JSON):
 ${planText}
 
-FAILED / DEVIATED STEP:
-${JSON.stringify(failedStep, null, 2)}
+AFFECTED STEP:
+${JSON.stringify(affectedStep, null, 2)}
+
+CODER STEP OUTCOME: ${stepOutcome}
 
 ${historyBlock}
 
-CODER REPORT ON THE DEVIATION:
+CODER DEVIATION REPORT:
 ${JSON.stringify(deviation, null, 2)}
 
-Update the plan so it stays correct and executable given everything that actually happened: incorporate the forced changes the coder made, keep completed work as done, renumber/reorder steps as needed, and make the failed step (or its replacement) executable next.
+${replanInstruction}
 
-Reply with ONLY the complete updated plan as one valid JSON object. It must keep the same overall structure (project_summary, assumptions, steps array, overall_acceptance_criteria) and every step must still carry step/goal/actions/dependencies/files_to_create/files_to_modify/expected_result/verification/handoff_notes fields. Do not drop fields, do not add commentary outside the JSON.`;
+Revise only from the appropriate point onward. Keep all earlier completed steps unchanged, with their original numbers and order. Incorporate only work verified in the supplied reports. Preserve unaffected future steps if still valid; change dependencies, numbering, actions, and verification only as needed. Do not restart the entire plan.
+
+Return ONLY the complete updated plan as one valid JSON object, with no Markdown or prose. Preserve the current plan's top-level structure and metadata (including project_summary, assumptions, steps, overall_acceptance_criteria, and any other supplied fields) and all required per-step fields (step, goal, actions, dependencies, files_to_create, files_to_modify, expected_result, verification, handoff_notes). Keep a non-empty steps array.`;
 };
-
-/* ------------------------------------------------------------------ *
- * Extension
- * ------------------------------------------------------------------ */
 
 const extension = createExtension({
   commands: {
-    /* --- preview: read a plan file without executing -------------- */
     async preview_plan(input) {
       const planPath =
         typeof input === "string"
@@ -201,22 +181,19 @@ const extension = createExtension({
           : (input && typeof input === "object" && input.planPath) || "";
       const loaded = loadPlan(planPath);
       if (loaded.error) return { ok: false, error: loaded.error };
-
       return {
         ok: true,
         planPath: loaded.path,
         stepCount: loaded.steps.length,
-        steps: loaded.steps.map((s) => ({
-          step: s.step,
-          title: s.title ?? null,
-          goal: s.goal ?? null,
+        steps: loaded.steps.map((step) => ({
+          step: step.step,
+          title: step.title ?? null,
+          goal: step.goal ?? null,
         })),
       };
     },
 
-    /* --- run_plan: the full planner <-> coder loop ---------------- */
-    async run_plan(input, context, config) {
-      /* ---- progress notifications into the chat tool card ---- */
+    async run_plan(input, context) {
       let flushTimer = null;
       let buffer = "";
       const notify = (text) => {
@@ -247,17 +224,18 @@ const extension = createExtension({
           buffer = "";
         }
       };
+      const finish = (payload) => {
+        flush();
+        return payload;
+      };
 
-      /* ---- normalize input (object or plain path string) ---- */
       const params =
         input && typeof input === "object" && !Array.isArray(input) ? input : {};
       const planPath =
-        typeof input === "string"
-          ? input
-          : String(params.planPath ?? "").trim();
+        typeof input === "string" ? input : String(params.planPath ?? "").trim();
       const coderName = String(params.coderAgentName ?? DEFAULT_CODER_NAME).trim();
-      const plannerName = String(
-        params.plannerAgentName ?? DEFAULT_PLANNER_NAME,
+      const reviserName = String(
+        params.reviserAgentName ?? DEFAULT_PLANNER_NAME,
       ).trim();
       const startStep = asPositiveInt(params.startStep, 1);
       const maxSteps = asPositiveInt(params.maxSteps, DEFAULT_MAX_STEPS);
@@ -266,12 +244,6 @@ const extension = createExtension({
         DEFAULT_MAX_PLAN_UPDATES,
       );
 
-      const finish = (payload) => {
-        flush();
-        return payload;
-      };
-
-      /* ---- load plan file ---- */
       const loaded = loadPlan(planPath);
       if (loaded.error) {
         notify(`Plan load failed: ${loaded.error}\n`);
@@ -279,12 +251,9 @@ const extension = createExtension({
       }
       let plan = loaded.plan;
       let steps = loaded.steps;
-      let planPathAbs = loaded.path;
-      notify(
-        `Loaded plan: ${planPathAbs}\n${steps.length} step(s) in plan.\n`,
-      );
+      const planPathAbs = loaded.path;
+      notify(`Loaded plan: ${planPathAbs}\n${steps.length} step(s) in plan.\n`);
 
-      /* ---- resolve agents ---- */
       let agents;
       try {
         agents = await extension.agents.list();
@@ -296,38 +265,32 @@ const extension = createExtension({
         });
       }
       const findAgent = (name) =>
-        agents.find((a) => a.name === name) ??
-        agents.find((a) => a.name.toLowerCase() === name.toLowerCase());
-
+        agents.find((agent) => agent.name === name) ??
+        agents.find((agent) => agent.name.toLowerCase() === name.toLowerCase());
       const coder = findAgent(coderName);
       if (!coder) {
         return finish({
           status: "error",
           stage: "find_coder",
-          error: `Coder agent "${coderName}" not found. Saved agents: ${agents
-            .map((a) => a.name)
-            .join(", ")}`,
+          error: `Coder agent "${coderName}" not found. Saved agents: ${agents.map((agent) => agent.name).join(", ")}`,
         });
       }
-      const planner = findAgent(plannerName);
-      if (!planner) {
+      const reviser = findAgent(reviserName);
+      if (!reviser) {
         return finish({
           status: "error",
-          stage: "find_planner",
-          error: `Planner agent "${plannerName}" not found. Saved agents: ${agents
-            .map((a) => a.name)
-            .join(", ")}`,
+          stage: "find_reviser",
+          error: `Plan reviser agent "${reviserName}" not found. Saved agents: ${agents.map((agent) => agent.name).join(", ")}`,
         });
       }
-      notify(`Coder: ${coder.name} | Planner: ${planner.name}\n`);
+      notify(`Coder: ${coder.name} | Plan reviser: ${reviser.name}\n`);
 
-      /* ---- run state ---- */
-      const stepHistory = []; // compact reports of completed steps
-      const stepReports = []; // full report records for the run result
-      const planRevisions = []; // every planner-driven plan update
+      const stepHistory = [];
+      const stepReports = [];
+      const planRevisions = [];
       let planUpdates = 0;
       let executedCount = 0;
-      let idx = steps.findIndex((s) => Number(s.step) >= startStep);
+      let idx = steps.findIndex((step) => Number(step.step) >= startStep);
       if (idx === -1) idx = 0;
 
       const runCoder = async (step, attempt) => {
@@ -339,7 +302,6 @@ const extension = createExtension({
         return result.text ?? "";
       };
 
-      /* ---- main loop ---- */
       while (idx < steps.length) {
         if (executedCount >= maxSteps) {
           notify(`Stopped: maxSteps (${maxSteps}) reached.\n`);
@@ -354,12 +316,9 @@ const extension = createExtension({
         }
 
         const step = steps[idx];
-        const stepLabel = `Step ${step.step}${step.title ? `: ${step.title}` : ""}`;
-
-        notify(`\n>>> ${stepLabel}\nSending step to coder (${coder.name})...\n`);
+        notify(`\n>>> Step ${step.step}${step.title ? `: ${step.title}` : ""}\nSending step to coder (${coder.name})...\n`);
         executedCount += 1;
 
-        /* coder attempt (with one retry on unparseable output) */
         let parsed = null;
         let rawText = "";
         for (let attempt = 1; attempt <= 2 && !parsed; attempt += 1) {
@@ -369,11 +328,7 @@ const extension = createExtension({
             notify("Coder reply was not valid JSON; retrying once...\n");
           }
         }
-
         if (!parsed) {
-          /* coder never produced a structured answer -> treat as error
-             and hand it to the planner as a deviation so the plan can be
-             adjusted (or clarified) before the next attempt. */
           const deviation = {
             present: true,
             reason: "Coder did not return a parseable JSON report after a retry.",
@@ -381,53 +336,55 @@ const extension = createExtension({
             work_already_done: [],
             raw_coder_output: rawText.slice(0, 8000),
           };
-          parsed = { status: "deviation", report: { summary: rawText.slice(0, 2000) }, deviation };
+          parsed = {
+            status: "deviation",
+            stepOutcome: "incomplete",
+            report: { summary: rawText.slice(0, 2000), issues: [deviation.reason] },
+            deviation,
+          };
         }
 
-        const isDeviation = parsed.status !== "success";
-
-        if (!isDeviation) {
+        if (parsed.status === "success") {
           const report = parsed.report ?? { summary: "No report returned." };
           stepReports.push({ step: step.step, title: step.title ?? null, report });
           stepHistory.push(compactReport(step, report));
           const files = [
             ...(Array.isArray(report.files_created) ? report.files_created : []),
             ...(Array.isArray(report.files_modified)
-              ? report.files_modified.map((f) =>
-                  typeof f === "string" ? f : (f?.path ?? ""),
+              ? report.files_modified.map((file) =>
+                  typeof file === "string" ? file : file?.path ?? "",
                 )
               : []),
           ].filter(Boolean);
           notify(
-            `<<< Step ${step.step} completed successfully.` +
-              (files.length ? ` Files: ${files.join(", ")}` : "") +
-              `\n`,
+            `<<< Step ${step.step} completed successfully.${files.length ? ` Files: ${files.join(", ")}` : ""}\n`,
           );
           idx += 1;
           continue;
         }
 
-        /* ---- deviation: planner updates the plan ---- */
         const deviation = parsed.deviation ?? {
           present: true,
           reason: String(parsed.report?.summary ?? "Unspecified deviation."),
           forced_changes: [],
           work_already_done: [],
         };
-
-        /* keep whatever work actually happened in the history either way */
+        const stepOutcome =
+          parsed.stepOutcome === "completed" ? "completed" : "incomplete";
         if (parsed.report) {
           stepHistory.push(
             compactReport(step, {
               ...parsed.report,
-              note: "This step ended in deviation; treat its partial work as done.",
+              stepOutcome,
+              note:
+                stepOutcome === "completed"
+                  ? "The intended result of this step was achieved despite the deviation; do not repeat it."
+                  : "This step is incomplete; revise this step and later steps without assuming partial work is complete.",
             }),
           );
         }
-
         notify(
-          `<<< Step ${step.step} DEVIATION: ${deviation.reason ?? "unspecified"}\n` +
-            `Sending deviation + completed work to planner (${planner.name}) for a plan update...\n`,
+          `<<< Step ${step.step} DEVIATION (${stepOutcome}): ${deviation.reason ?? "unspecified"}\nSending the execution evidence to plan reviser (${reviser.name})...\n`,
         );
 
         if (planUpdates >= maxPlanUpdates) {
@@ -435,13 +392,14 @@ const extension = createExtension({
             step: step.step,
             title: step.title ?? null,
             status: "deviation",
+            stepOutcome,
             deviation,
             unresolved: true,
           });
           return finish({
             status: "error",
             stage: "max_plan_updates",
-            reason: `Planner was asked ${maxPlanUpdates} time(s) to update the plan; limit reached with the step still failing.`,
+            reason: `Plan reviser was asked ${maxPlanUpdates} time(s) to update the plan; limit reached.`,
             planPath: planPathAbs,
             lastDeviation: deviation,
             completed: stepReports,
@@ -450,41 +408,41 @@ const extension = createExtension({
         }
 
         const planText = JSON.stringify(plan, null, 2);
-        const plannerReply = await extension.agents.run(
+        const reviserReply = await extension.agents.run(
           {
-            agentId: planner.id,
-            input: buildPlannerPrompt({
+            agentId: reviser.id,
+            input: buildReviserPrompt({
               planText,
               history: stepHistory,
               deviation,
-              failedStep: step,
+              affectedStep: step,
+              stepOutcome,
             }),
           },
           { timeoutMs: AGENT_TIMEOUT_MS },
         );
-
-        const updatedPlan = extractJson(plannerReply.text ?? "");
+        const updatedPlan = extractJson(reviserReply.text ?? "");
         if (!updatedPlan || !Array.isArray(updatedPlan.steps)) {
           stepReports.push({
             step: step.step,
             title: step.title ?? null,
             status: "deviation",
+            stepOutcome,
             deviation,
             unresolved: true,
-            plannerError: "Planner did not return a valid updated plan JSON.",
+            reviserError: "Plan reviser did not return a valid updated plan JSON.",
           });
           return finish({
             status: "error",
             stage: "plan_update",
-            error: "Planner did not return a valid updated plan JSON.",
-            plannerReply: (plannerReply.text ?? "").slice(0, 4000),
+            error: "Plan reviser did not return a valid updated plan JSON.",
+            reviserReply: (reviserReply.text ?? "").slice(0, 4000),
             planPath: planPathAbs,
             completed: stepReports,
             planRevisions,
           });
         }
 
-        /* backup the previous plan, then overwrite it */
         planUpdates += 1;
         const backupPath = `${planPathAbs}.backup-${planUpdates}`;
         try {
@@ -499,8 +457,6 @@ const extension = createExtension({
             planRevisions,
           });
         }
-
-        /* re-validate from disk so we run exactly what was saved */
         const reloaded = loadPlan(planPathAbs);
         if (reloaded.error) {
           return finish({
@@ -513,28 +469,48 @@ const extension = createExtension({
         }
         plan = reloaded.plan;
         steps = reloaded.steps;
-
         planRevisions.push({
           revision: planUpdates,
           backupPath,
           reason: deviation.reason ?? "deviation",
           forcedChanges: deviation.forced_changes ?? [],
+          stepOutcome,
           stepCount: steps.length,
         });
 
-        notify(
-          `Plan updated and saved (rev ${planUpdates}, backup: ${backupPath}). Re-running step ${step.step} against the updated plan...\n`,
+        const sameStepIndex = steps.findIndex(
+          (candidate) => Number(candidate.step) === Number(step.step),
         );
-
-        /* resume at the updated counterpart of the failed step */
-        let resume = steps.findIndex((s) => Number(s.step) === Number(step.step));
-        if (resume === -1) resume = Math.min(idx, steps.length - 1);
-        if (resume < 0) resume = 0;
-        idx = resume;
-        /* do not increment executedCount here: this retry is caused by the
-           plan update, not by forward progress. Remove the retry from the
-           budget by not counting it twice. */
-        executedCount -= 1;
+        if (stepOutcome === "completed") {
+          if (sameStepIndex !== -1) {
+            idx = sameStepIndex + 1;
+          } else {
+            const nextIndex = steps.findIndex(
+              (candidate) => Number(candidate.step) > Number(step.step),
+            );
+            idx = nextIndex === -1 ? steps.length : nextIndex;
+          }
+          notify(`Plan updated and saved (revision ${planUpdates}). Step ${step.step} was completed; continuing from the next step.\n`);
+        } else {
+          let retryIndex = sameStepIndex;
+          if (retryIndex === -1) {
+            retryIndex = steps.findIndex(
+              (candidate) => Number(candidate.step) >= Number(step.step),
+            );
+          }
+          idx = retryIndex === -1 ? Math.min(idx, steps.length) : retryIndex;
+          executedCount -= 1;
+          notify(`Plan updated and saved (revision ${planUpdates}). Step ${step.step} is incomplete; retrying the revised affected step.\n`);
+        }
+        stepReports.push({
+          step: step.step,
+          title: step.title ?? null,
+          status: "deviation",
+          stepOutcome,
+          report: parsed.report ?? null,
+          deviation,
+          revisedPlan: true,
+        });
       }
 
       notify(`\n=== Plan finished: all ${steps.length} step(s) executed. ===\n`);
