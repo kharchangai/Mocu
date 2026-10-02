@@ -1,0 +1,17 @@
+[
+  {
+    "topic": "create notes.txt containing exactly one line `test manager` (optional conventional final newline)",
+    "matches": [],
+    "relatedFiles": [],
+    "changeImpact": {
+      "filesToRebuildOrUpdate": [
+        {
+          "path": "notes.txt",
+          "reason": "Create this new file in the supplied directory with exactly the single line `test manager`; a final newline is optional. No existing file currently provides this content.",
+          "confidence": "confirmed"
+        }
+      ],
+      "summary": "This is a localized file-creation change. The directory contains no source, build, test, or documentation reference to notes.txt or the requested text, so no rebuild or other file update is evidenced. Existing files in the directory should remain unchanged."
+    }
+  }
+]

@@ -1,0 +1,119 @@
+[
+  {
+    "topic": "In project folder E:\\mocube\\mocu, map UI performance problems described as very laggy, slow, and updates late. Inspect UI/runtime sources, state/event/render/update paths, large lists or expensive operations, and tests/config. Report evidence-backed likely hotspots and direct versus conditional downstream impacts; distinguish confirmed evidence from hypotheses. Save validated JSON impact report in project folder.",
+    "matches": [
+      {
+        "path": "src/chat/components/markdown/StreamingMarkdown.tsx",
+        "role": "Streaming assistant-response renderer and chunking path.",
+        "structure": "buildChunks scans the entire accumulated content with content.split(\"\\n\") and line-by-line processing on each render (lines 68-147). The renderer maps all chunks (lines 195-212), while memoized settled MarkdownChunk and CodeChunk avoid re-parsing unchanged chunks (lines 150-180). The comments explicitly identify full-text markdown plus syntax highlighting on every delta as causing freezes and late updates (lines 3-16)."
+      },
+      {
+        "path": "src/chat/components/markdown/MarkdownRenderer.tsx",
+        "role": "Markdown, GFM, and syntax-highlight rendering implementation.",
+        "structure": "ReactMarkdown is configured with remarkGfm and rehypeHighlight with detect:true (lines 305-315), and renders trimmed content (lines 358-360). The component is memoized because parsing and highlighting are expensive (lines 365-372)."
+      },
+      {
+        "path": "src/chat/components/ChatBox.tsx",
+        "role": "Chat state-to-UI orchestration, message/thread mapping, live activity and answer display path.",
+        "structure": "Imports AssistantMessage, ToolActivityFeed, useToolActivity, and getLiveAgentAnswer (lines 20-24, 79-84). buildWorkflowMessageMapping repeatedly scans and filters messages and user messages for each workflow turn, including content comparisons and Date.parse reductions (lines 333-413). The file is 2,359 lines, indicating a broad component boundary where chat state, workflow mapping, and rendering can be invalidated together."
+      },
+      {
+        "path": "src/chat/hooks/useToolActivity.ts",
+        "role": "External store for streaming answer text and per-chat tool activity updates.",
+        "structure": "Every activity event upserts into an array using findIndex plus either array spread or map (lines 86-100), then synchronously notifies chat listeners (lines 131-139). Every live answer event replaces the full accumulated text and notifies all answer listeners (lines 156-180). React subscribes through useSyncExternalStore for pending activities and live answers (lines 374-402)."
+      },
+      {
+        "path": "src/chat/components/ToolActivityFeed.tsx",
+        "role": "Live and committed tool/thought/note feed renderer.",
+        "structure": "The feed maps every activity entry to a memoized row (lines 291-317). Each tool row derives input text, potentially calling JSON.stringify(args, null, 2), and combines streamLog and result (lines 51-75, 194-216). Memoization limits unchanged-row rerenders, but changing activity objects/arrays still update the affected feed."
+      },
+      {
+        "path": "src/chat/hooks/useChatHistory.ts",
+        "role": "Conversation state, persistence, active-chat lookup, and recent-chat list derivation.",
+        "structure": "The hook stores the complete ChatConversation[] in React state (lines 95-99), saves all chats whenever the array changes (lines 124-126), finds the active chat linearly (lines 128-134), and sorts/copies/maps all chats for recentChats (lines 136-143)."
+      },
+      {
+        "path": "src/App.tsx",
+        "role": "Top-level window/event/state bridge for avatar and chat webviews.",
+        "structure": "Avatar state includes mocuState, current activity, transcript text, and speaker (lines 49-57). Typing events update state and schedule a timeout (lines 389-415); transcript changes trigger window resize (lines 343-351); tool-status events update activity state (lines 353-379). The chat and avatar windows are intentionally separated, and the extension host is limited to the chat window to avoid duplicate requests (lines 292-308)."
+      }
+    ],
+    "relatedFiles": [
+      {
+        "path": "src/chat/services/toolActivity.ts",
+        "relationship": "direct event producer/consumer contract",
+        "evidence": "dispatchAgentToolActivity dispatches mocu_tool_activity CustomEvents (lines 144-168), and dispatchAgentAnswerDelta dispatches mocu_agent_answer with the full accumulated text (lines 176-203); useToolActivity registers listeners for both events (lines 182-190)."
+      },
+      {
+        "path": "src/chat/components/AssistantMessage.tsx",
+        "relationship": "direct downstream renderer",
+        "evidence": "AssistantMessage selects StreamingMarkdown while streaming and MarkdownRenderer otherwise (lines 243-253), and the component is memoized (lines 289-293). Thus live answer frequency and content size directly affect markdown rendering work."
+      },
+      {
+        "path": "src/chat/components/ChatBox.tsx",
+        "relationship": "direct downstream of useChatHistory and useToolActivity",
+        "evidence": "ChatBox imports and consumes the history-facing ChatMessage type and live activity hooks (lines 79-84, 111), and its workflow mapping scans the current messages array (lines 333-413). A live event can therefore invalidate the chat view and rerun mapping before rendering."
+      },
+      {
+        "path": "src/chat/storage/chat-storage.ts",
+        "relationship": "conditional persistence downstream",
+        "evidence": "useChatHistory calls saveChats in an effect for every chats state change (useChatHistory.ts lines 124-126). The storage implementation is therefore on the update path, but it is only a performance impact when message/activity updates also mutate chats or when serialization/storage latency is significant."
+      },
+      {
+        "path": "src/chat/storage/tool-activity-storage.ts",
+        "relationship": "conditional persistence downstream",
+        "evidence": "commitToolActivities replaces committedActivities and calls saveToolActivities (useToolActivity.ts lines 228-247). This affects completed runs, not each live answer delta, unless a change moves persistence into the streaming path."
+      },
+      {
+        "path": "package.json",
+        "relationship": "direct build/test process configuration",
+        "evidence": "The verified scripts are build: tsc && vite build and test: vitest run (lines 6-10). React, react-markdown, rehype-highlight, and Vite are declared dependencies (lines 29-39, 48-51)."
+      },
+      {
+        "path": "vitest.config.ts",
+        "relationship": "conditional test coverage constraint",
+        "evidence": "Vitest includes only src/**/*.test.ts and uses the node environment (lines 3-7). No UI/browser performance test configuration is established here; existing tests may validate chunking or logic but do not directly establish frame latency."
+      },
+      {
+        "path": "src/chat/components/ChatBox.tsx",
+        "relationship": "conditional large-list impact",
+        "evidence": "The inspected mapping uses repeated map/filter passes over messages and userMessages per workflow turn (lines 360-405), and ToolActivityFeed maps all activity entries (ToolActivityFeed.tsx lines 303-316). No virtualization implementation was found in the inspected UI paths, so long conversations or many activities are a plausible scaling concern, not a measured defect."
+      }
+    ],
+    "changeImpact": {
+      "filesToRebuildOrUpdate": [
+        {
+          "path": "src/chat/components/markdown/StreamingMarkdown.tsx",
+          "reason": "Confirmed direct hotspot for late streaming updates: it reparses/splits the full accumulated answer on every render and then maps all chunks. Optimize chunk caching, delta scheduling, or render cadence here when addressing long-response streaming lag.",
+          "confidence": "confirmed"
+        },
+        {
+          "path": "src/chat/components/markdown/MarkdownRenderer.tsx",
+          "reason": "Confirmed expensive operation: react-markdown plus rehypeHighlight with automatic language detection runs for each changed markdown chunk/message. Changes to highlight strategy, code-size limits, or deferred rendering belong here.",
+          "confidence": "confirmed"
+        },
+        {
+          "path": "src/chat/hooks/useToolActivity.ts",
+          "reason": "Confirmed high-frequency update path: full accumulated answer text and activity updates notify subscribers; activity upserts copy/map arrays. Batching, throttling, or reducing notification scope requires changing this store and its event handling.",
+          "confidence": "confirmed"
+        },
+        {
+          "path": "src/chat/components/ChatBox.tsx",
+          "reason": "Confirmed downstream work: workflow-to-message mapping performs repeated scans/filtering/date parsing over the current conversation, so an optimization to prevent mapping on every live update or to index the data requires this component.",
+          "confidence": "confirmed"
+        },
+        {
+          "path": "src/chat/hooks/useChatHistory.ts",
+          "reason": "Conditional action: if profiling shows whole-chat persistence or recent-chat sorting contributes to the lag, this hook is the update point for debouncing saveChats, indexing active-chat lookup, or reducing full-list derivation. The repository evidence establishes the work, not that it is the measured primary bottleneck.",
+          "confidence": "inferred"
+        },
+        {
+          "path": "src/chat/components/ToolActivityFeed.tsx",
+          "reason": "Conditional action: if large tool traces or large streamed args/results are implicated, cap/defer JSON formatting and output rendering or virtualize activity rows here. Current memoization reduces unnecessary work, so the need is not proven without profiling.",
+          "confidence": "inferred"
+        }
+      ],
+      "summary": "The strongest confirmed UI causes are the live event path sending full accumulated answer text, full-content chunk scanning in StreamingMarkdown, and markdown syntax highlighting for changed content. These directly explain slow or late visible updates for long streamed answers. ChatBox also performs repeated message/workflow mapping and the activity feed renders all entries, which can amplify cost as conversations/traces grow. Whole-chat persistence and large-list virtualization are conditional follow-ups rather than confirmed primary causes. Existing memoization, chunked streaming, stable external-store buckets, bounded activity-id scope (toolActivity.ts lines 103-127), and memoized rows are mitigations already present. The verified ordinary rebuild is npm run build (tsc then Vite); tests run with npm test, but Vitest is configured for node tests and no frame-time/browser performance test was found, so hypotheses require profiling or an added browser benchmark before being treated as confirmed."
+    }
+  }
+]

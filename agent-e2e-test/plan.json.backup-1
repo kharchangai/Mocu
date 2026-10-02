@@ -1,0 +1,58 @@
+{
+  "project_summary": {
+    "project": "agent-e2e-test",
+    "goal": "End-to-end test of Plan Code Runner with the saved 'coder' agent and the 'Implementation Plan Architect' planner.",
+    "sandbox": "E:\\mocube\\mocu\\agent-e2e-test"
+  },
+  "assumptions": [
+    "Only files inside E:\\mocube\\mocu\\agent-e2e-test may be created or modified.",
+    "No project source code outside the sandbox may be touched."
+  ],
+  "steps": [
+    {
+      "step": 1,
+      "title": "Create greeting file",
+      "goal": "Create the sandbox greeting file with exact content so the runner can verify file-tool execution.",
+      "inputs_and_context": "Sandbox directory: E:\\mocube\\mocu\\agent-e2e-test (create it if missing). Target file: E:\\mocube\\mocu\\agent-e2e-test\\greeting.txt.",
+      "actions": [
+        "Create the directory E:\\mocube\\mocu\\agent-e2e-test if it does not exist.",
+        "Create greeting.txt containing exactly one line: hello from plan-code-runner e2e",
+        "Read the file back and confirm its content."
+      ],
+      "dependencies": [],
+      "files_to_create": [
+        "E:\\mocube\\mocu\\agent-e2e-test\\greeting.txt"
+      ],
+      "files_to_modify": [],
+      "expected_result": "greeting.txt exists and contains the exact line 'hello from plan-code-runner e2e'.",
+      "verification": "Read greeting.txt and compare its content to the expected line.",
+      "handoff_notes": "greeting.txt is the only artifact; later steps append to it."
+    },
+    {
+      "step": 2,
+      "title": "Wire legacy dependency (blocked on missing pre-existing file)",
+      "goal": "Update the pre-existing legacy module as required by an earlier project phase.",
+      "inputs_and_context": "The file E:\\mocube\\mocu\\agent-e2e-test\\legacy-dep.ts is expected to already exist from a previous phase. HARD CONSTRAINT: it does NOT exist yet and you MUST NOT create it, MUST NOT invent a substitute, and MUST NOT change the plan. If it is missing, report a deviation exactly as your instructions require.",
+      "actions": [
+        "Check whether E:\\mocube\\mocu\\agent-e2e-test\\legacy-dep.ts exists.",
+        "If it exists, export a function version() returning '1.0.0'.",
+        "If it does not exist, do not create anything and report a deviation."
+      ],
+      "dependencies": [
+        1
+      ],
+      "files_to_create": [],
+      "files_to_modify": [
+        "E:\\mocube\\mocu\\agent-e2e-test\\legacy-dep.ts"
+      ],
+      "expected_result": "legacy-dep.ts exports version() or an honest deviation report when the file is missing.",
+      "verification": "Confirm the file state matches the actions above.",
+      "handoff_notes": "If a deviation is reported, the planner must revise this step so the next attempt is executable."
+    }
+  ],
+  "overall_acceptance_criteria": [
+    "greeting.txt exists with the exact expected content",
+    "No files outside E:\\mocube\\mocu\\agent-e2e-test are created or modified",
+    "Every step ends with a valid JSON report from the coder"
+  ]
+}

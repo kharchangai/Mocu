@@ -1,0 +1,52 @@
+{
+  "project_summary": "Create notes.txt inside the specified project folder with exactly the single line test manager.",
+  "assumptions": [
+    "The specified project folder exists and is the sole permitted write boundary.",
+    "Use UTF-8 text without a byte-order mark; a final newline is optional.",
+    "No additional existing files require changes for this localized request."
+  ],
+  "unresolved_questions": [],
+  "impact_overview": {
+    "direct": ["Create or replace only notes.txt with the requested text."],
+    "conditional": [],
+    "downstream": ["No rebuild or dependent-file update is indicated; keep all writes within the specified folder."]
+  },
+  "steps": [
+    {
+      "step": 1,
+      "title": "Create and verify notes.txt",
+      "goal": "Provide the requested one-line file and verify that it contains no extra content.",
+      "inputs_and_context": [
+        "Authorized folder: E:\\mocube\\mocu\\agent-e2e-test\\.",
+        "Target: E:\\mocube\\mocu\\agent-e2e-test\\notes.txt.",
+        "Required content is exactly test manager, allowing only an optional conventional final newline.",
+        "Do not write, modify, or delete anything outside the authorized folder."
+      ],
+      "actions": [
+        "Confirm the authorized folder exists.",
+        "Write UTF-8 text test manager to notes.txt, replacing existing contents if necessary; do not add a byte-order mark or any other text.",
+        "Read the file back and verify its content is exactly test manager, permitting at most one final newline."
+      ],
+      "dependencies": [],
+      "files_to_create": [
+        {"path": "E:\\mocube\\mocu\\agent-e2e-test\\notes.txt", "purpose": "Requested one-line text file."}
+      ],
+      "files_to_modify": [],
+      "impact_and_follow_up": [
+        "No dependent rebuild or other file update is evidenced.",
+        "Ensure all writes remain within E:\\mocube\\mocu\\agent-e2e-test\\."
+      ],
+      "expected_result": "notes.txt contains exactly test manager, with no extra content beyond an optional final newline.",
+      "verification": [
+        "Read back notes.txt and compare against the required text, accepting only an optional final newline.",
+        "Confirm the plan and requested file are both inside the authorized folder."
+      ],
+      "handoff_notes": "Report the verified target path and exact-content result; no further implementation is required."
+    }
+  ],
+  "overall_acceptance_criteria": [
+    "This plan is valid JSON and saved as E:\\mocube\\mocu\\agent-e2e-test\\manager-test-plan.json.",
+    "E:\\mocube\\mocu\\agent-e2e-test\\notes.txt contains exactly one line: test manager (optional final newline only).",
+    "No writes occur outside E:\\mocube\\mocu\\agent-e2e-test\\."
+  ]
+}

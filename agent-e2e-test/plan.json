@@ -1,0 +1,68 @@
+{
+  "project_summary": {
+    "project": "agent-e2e-test",
+    "goal": "End-to-end test of Plan Code Runner with the saved 'coder' agent and the 'Implementation Plan Architect' planner.",
+    "sandbox": "E:\\mocube\\mocu\\agent-e2e-test"
+  },
+  "assumptions": [
+    "Only files inside E:\\mocube\\mocu\\agent-e2e-test may be created or modified.",
+    "No project source code outside the sandbox may be touched.",
+    "Step 1 is complete: the coder reported creating greeting.txt with the exact expected content and reading it back successfully.",
+    "The prior attempt at step 2 made no file changes. The existence of legacy-dep.ts is unknown because the required file-state check returned no usable result."
+  ],
+  "steps": [
+    {
+      "step": 1,
+      "title": "Create greeting file — completed",
+      "goal": "Create the sandbox greeting file with exact content so the runner can verify file-tool execution. This step has already been completed and must not recreate or alter the file.",
+      "inputs_and_context": "Sandbox directory: E:\\mocube\\mocu\\agent-e2e-test. The completed-work report says greeting.txt was created with one line, 'hello from plan-code-runner e2e', and read back successfully.",
+      "actions": [
+        "Treat the completed-work report as the result for this step; do not recreate or modify greeting.txt.",
+        "If the execution environment requires a fresh verification before proceeding, read E:\\mocube\\mocu\\agent-e2e-test\\greeting.txt and compare its content with the exact expected line."
+      ],
+      "dependencies": [],
+      "files_to_create": [],
+      "files_to_modify": [],
+      "impact_and_follow_up": [
+        "The greeting file is a completed sandbox artifact. Preserve it while working on the legacy dependency."
+      ],
+      "expected_result": "Step 1 remains complete, and greeting.txt remains unchanged with the exact expected content.",
+      "verification": "Use the prior coder report as evidence of completion; if a fresh check is required, confirm the file contains exactly 'hello from plan-code-runner e2e'.",
+      "handoff_notes": "The prior report confirms greeting.txt was created and verified. Continue with step 2; do not repeat the creation action."
+    },
+    {
+      "step": 2,
+      "title": "Check and wire the legacy dependency",
+      "goal": "Determine the actual state of the expected legacy module and, only if it exists, update it to export version() returning '1.0.0'. Resolve the prior failed check using an explicit file lookup and a captured result.",
+      "inputs_and_context": "Target path: E:\\mocube\\mocu\\agent-e2e-test\\legacy-dep.ts. The previous attempt did not establish whether this file exists: its terminal result was MISSING, and no file lookup result was available. Do not infer that the file exists or is absent from that attempt. Preserve the original constraint: do not create legacy-dep.ts or invent a substitute if it is absent.",
+      "actions": [
+        "Use an available direct file-inspection or filesystem lookup capability to check whether E:\\mocube\\mocu\\agent-e2e-test\\legacy-dep.ts exists, and capture an explicit result.",
+        "If no direct lookup capability is available, use the terminal to run a Windows PowerShell existence check against the literal path and capture its output, for example: `if (Test-Path -LiteralPath 'E:\\mocube\\mocu\\agent-e2e-test\\legacy-dep.ts' -PathType Leaf) { 'PRESENT' } else { 'ABSENT' }`.",
+        "If the check reports PRESENT, read the file before editing. Preserve unrelated contents and make only the changes needed to export a function named version() that returns the string '1.0.0'.",
+        "If the check reports ABSENT, do not create any file. Record that the expected prior-phase file is absent and report the step as blocked pending provision of that file or authorization to create it.",
+        "If neither lookup method produces a usable result, make no changes and report the step as blocked because file state remains unverified. Do not report the file as absent without an explicit ABSENT result."
+      ],
+      "dependencies": [
+        1
+      ],
+      "files_to_create": [],
+      "files_to_modify": [
+        "E:\\mocube\\mocu\\agent-e2e-test\\legacy-dep.ts, only if an explicit existence check confirms it is present"
+      ],
+      "impact_and_follow_up": [
+        "If the existing module is changed, verify that its export is compatible with the file's existing language and module conventions and that unrelated content remains intact.",
+        "If the file is absent or cannot be checked, no downstream implementation can safely assume that the dependency has been wired; carry the explicit blocked status forward."
+      ],
+      "expected_result": "Either the existing legacy-dep.ts exports version() returning '1.0.0', or the step ends with an honest, evidence-based blocked report and no file changes. The file is never created by this step.",
+      "verification": "For a PRESENT file, read the resulting file and confirm the named export returns '1.0.0' while unrelated content is preserved. For an ABSENT file, confirm the captured existence-check output and confirm no file was created. If lookup produces no usable output, verify that no files were modified and report the state as unverified.",
+      "handoff_notes": "The prior attempt made no changes and did not determine file existence. Report the explicit lookup result, any files modified, and whether the module was successfully wired or remains blocked. Do not claim success without verifying the resulting file."
+    }
+  ],
+  "overall_acceptance_criteria": [
+    "greeting.txt remains present with the exact expected content; step 1 remains complete without unnecessary recreation.",
+    "No files outside E:\\mocube\\mocu\\agent-e2e-test are created or modified.",
+    "legacy-dep.ts is modified only if an explicit check confirms it already exists; it is not created by this plan.",
+    "Step 2 reports either a verified export or a truthful blocked status based on an explicit absence result or an unavailable/unusable file-state check.",
+    "Every executed step ends with a valid JSON report from the coder."
+  ]
+}

@@ -1,0 +1,25 @@
+{
+  "id": "plan-code-runner",
+  "name": "Plan Code Runner",
+  "description": "Executes an implementation plan step by step: reads a plan JSON file made by a planner agent, hands each step to a coder agent, collects the coder's work report for the next step, and when the coder reports a deviation/error, asks the planner agent to update the plan before continuing.",
+  "version": "0.1.1",
+  "runtime": "node",
+  "entry": "index.js",
+  "engines": { "node": ">=20" },
+  "permissions": ["agents.invoke", "filesystem"],
+  "commands": [
+    {
+      "id": "run_plan",
+      "title": "Run implementation plan",
+      "description": "Runs a saved implementation plan end to end. Input must be an object: {\"planPath\":\"absolute path to the plan .\", \"coderAgentName\":\"name of the saved coder agent (default 'coder')\", \"plannerAgentName\":\"name of the saved planner agent (default 'Implementation Plan Architect')\", \"startStep\":1, \"maxSteps\":40, \"maxPlanUpdates\":8}. The extension loads the plan file, executes each step through the coder agent, passes every completed step's report (what was done, files created/modified, outputs) as context to the next step, and on a coder deviation/error sends the deviation plus the work already done to the planner agent, writes the updated plan back to planPath, and re-runs the affected step. Returns a JSON run report with per-step reports, plan revisions and final status.",
+      "streaming": true,
+      "timeoutSeconds": 0
+    },
+    {
+      "id": "preview_plan",
+      "title": "Preview plan steps",
+      "description": "Reads a plan JSON file and returns its step list without executing anything. Input must be an object: {\"planPath\":\"absolute path to the plan .\"} or a plain path string. Use to check that a plan file exists and is well formed before running it.",
+      "timeoutSeconds": 60
+    }
+  ]
+}
