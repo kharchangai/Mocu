@@ -38,7 +38,8 @@ const SHORT_TOOL_DESCRIPTIONS: Record<string, string> = {
   delete_note: "Delete a user note.",
   list_notes: "List user notes.",
   create_knowledge_doc: "Create a knowledge document.",
-  read_knowledge_doc: "Read a knowledge document.",
+  read_knowledge_doc:
+    "Read exactly one knowledge document's full content (prompt refs are metadata only; decide yourself whether to follow descriptive links by reading the linked file yourself — never crawled automatically).",
   update_knowledge_doc: "Update a knowledge document.",
   delete_knowledge_doc: "Delete a knowledge document when explicitly requested.",
   list_knowledge_docs: "List saved knowledge documents.",

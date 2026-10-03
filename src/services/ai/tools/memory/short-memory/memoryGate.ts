@@ -282,7 +282,9 @@ export async function getMemoryForAgent(
 
     if (decision.useRelevantMemorySearch) {
       memoryRequests.push(
-        retrieveRelevantShortMemory(normalizedUserMessage),
+        retrieveRelevantShortMemory(normalizedUserMessage).then(
+          (result) => result.messages,
+        ),
       );
     }
 

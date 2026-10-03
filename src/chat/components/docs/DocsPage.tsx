@@ -27,7 +27,7 @@ type CreateModalState = {
 type EditModalState = {
   open: boolean;
   file: string | null;
-  name: string;
+  title: string;
   description: string;
   keywords: string;
   body: string;
@@ -41,7 +41,7 @@ const EMPTY_CREATE: CreateModalState = {
 const EMPTY_EDIT: EditModalState = {
   open: false,
   file: null,
-  name: '',
+  title: '',
   description: '',
   keywords: '',
   body: '',
@@ -118,7 +118,7 @@ export function DocsPage() {
   const handleDelete = useCallback(
     async (doc: StoredDoc): Promise<void> => {
       const confirmed = await confirm(
-        `Delete "${doc.name}"? This cannot be undone.`,
+        `Delete "${doc.title}"? This cannot be undone.`,
         { title: 'Delete document', kind: 'warning' },
       );
 
@@ -143,7 +143,7 @@ export function DocsPage() {
     setEditModal({
       open: true,
       file: doc.file,
-      name: doc.name,
+      title: doc.title,
       description: doc.description,
       keywords: doc.keywords.join(', '),
       body: doc.body,
@@ -151,7 +151,7 @@ export function DocsPage() {
   }, []);
 
   const handleSaveEdit = useCallback(async (): Promise<void> => {
-    const { file, name, description, keywords, body } = editModal;
+    const { file, title, description, keywords, body } = editModal;
 
     if (!file) {
       return;
@@ -161,7 +161,7 @@ export function DocsPage() {
 
     try {
       await updateDocFields(file, {
-        name: name.trim() || undefined,
+        title: title.trim() || undefined,
         description: description.trim() || undefined,
         keywords: keywords
           .split(',')
@@ -267,7 +267,7 @@ export function DocsPage() {
         {visibleDocs.map((doc) => (
           <article key={doc.file} className="docs-card">
             <div className="docs-card-head">
-              <h3 className="docs-card-title">{doc.name}</h3>
+              <h3 className="docs-card-title">{doc.title}</h3>
               <span className="docs-card-file">{doc.file}</span>
             </div>
 
@@ -362,11 +362,11 @@ export function DocsPage() {
               <span>Title</span>
               <input
                 type="text"
-                value={editModal.name}
+                value={editModal.title}
                 onChange={(event) =>
                   setEditModal((current) => ({
                     ...current,
-                    name: event.target.value,
+                    title: event.target.value,
                   }))
                 }
               />
@@ -453,14 +453,14 @@ function rankedDocs(docs: StoredDoc[], query: string): StoredDoc[] {
   const lowerQuery = queryText.toLowerCase();
 
   const scoreDoc = (doc: StoredDoc): number => {
-    const name = doc.name.toLowerCase();
+    const title = doc.title.toLowerCase();
     const description = doc.description.toLowerCase();
     const keywords = doc.keywords.join(' ').toLowerCase();
     const file = doc.file.toLowerCase();
 
     let score = 0;
 
-    if (name.includes(lowerQuery)) score += 6;
+    if (title.includes(lowerQuery)) score += 6;
     if (keywords.includes(lowerQuery)) score += 5;
     if (description.includes(lowerQuery)) score += 3;
     if (file.includes(lowerQuery)) score += 2;

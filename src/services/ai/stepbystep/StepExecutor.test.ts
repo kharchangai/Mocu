@@ -5,10 +5,15 @@ import { describe, expect, it, vi } from "vitest";
 import { StepExecutor } from "./StepExecutor";
 import type { WorkflowState } from "./types";
 import type { WorkflowStore } from "./workflowStore";
-
-vi.mock("../../../chat/docs", () => ({
+/*
+ * Docs context mock: hoisted so tests can assert what StepExecutor injects.
+ * The default keeps prior behavior (empty hint → block omitted).
+ */
+const docsContextMock = vi.hoisted(() => ({
   buildDocsContextPrompt: vi.fn(async () => ""),
 }));
+
+vi.mock("../../../chat/docs", () => docsContextMock);
 
 describe("StepExecutor tool rounds", () => {
   it("continues beyond ten tool rounds until the model finishes", async () => {
@@ -84,6 +89,132 @@ describe("StepExecutor tool rounds", () => {
     expect(modelCalls).toBe(12);
     expect(result.reply).toBe("The goal is complete.");
     expect(result.status).toBe("active");
+    // Doc context is requested with the actual user message.
+    expect(docsContextMock.buildDocsContextPrompt).toHaveBeenCalledWith(
+      "Complete the task",
+    );
+  });
+
+  it("injects the doc reference block (metadata only) into the system prompt", async () => {
+    const state: WorkflowState = {
+      id: "workflow-doc-context-test",
+      chatId: "chat-doc-context-test",
+      plan: {
+        final_goal: "Complete the requested task",
+        steps: [{
+          step_number: 1,
+          title: "Complete the task",
+          summary: "",
+          goal: "Complete all requested work",
+          tips: [],
+        }],
+      },
+      currentStepIndex: 0,
+      status: "active",
+      memories: {},
+      recentTurns: [],
+    };
+    const store = {
+      load: vi.fn(async () => state),
+      save: vi.fn(async () => undefined),
+      append: vi.fn(async () => ({ id: "log", workflowId: state.id })),
+      readStepHistory: vi.fn(async () => []),
+    } as unknown as WorkflowStore;
+
+    const referenceBlock = [
+      "SAVED DOCS (references only — metadata, never content; max 2):",
+      '- file: "guide.md" | id: guide | title: Guide | description: A guide. | keywords: guide',
+      "Read a doc only when needed with read_knowledge_doc(fileName). Links inside docs are descriptive leads: follow them by calling read_knowledge_doc with the linked file name yourself — their content is never included or fetched automatically.",
+    ].join("\n");
+    docsContextMock.buildDocsContextPrompt.mockResolvedValueOnce(referenceBlock);
+
+    let capturedMessages: unknown[] = [];
+    const modelWithTools = {
+      async *stream(messages: unknown[]) {
+        capturedMessages = messages;
+        yield new AIMessageChunk({ content: "Done." });
+      },
+    };
+    const llm = {
+      bindTools: vi.fn(() => modelWithTools),
+    } as unknown as ChatOpenAI;
+
+    const executor = new StepExecutor(store, {
+      buildTurnLlm: async () => llm,
+      buildSummaryLlm: async () => llm,
+    });
+
+    const result = await executor.send(
+      state.id,
+      { message: "Use the guide" },
+      { tools: [] },
+    );
+
+    const serialized = JSON.stringify(capturedMessages);
+    // Reference + approved metadata + agent-read hint reach the prompt…
+    expect(serialized).toContain("SAVED DOCS (references only");
+    expect(serialized).toContain('file: \\"guide.md\\"');
+    expect(serialized).toContain("title: Guide");
+    expect(serialized).toContain("read_knowledge_doc");
+    expect(serialized).toContain("descriptive leads");
+    expect(result.reply).toBe("Done.");
+    expect(docsContextMock.buildDocsContextPrompt).toHaveBeenCalledWith(
+      "Use the guide",
+    );
+  });
+
+  it("omits the doc block when the context search fails open (empty hint)", async () => {
+    docsContextMock.buildDocsContextPrompt.mockResolvedValueOnce("");
+
+    const state: WorkflowState = {
+      id: "workflow-doc-context-empty-test",
+      chatId: "chat-doc-context-empty-test",
+      plan: {
+        final_goal: "Complete the requested task",
+        steps: [{
+          step_number: 1,
+          title: "Complete the task",
+          summary: "",
+          goal: "Complete all requested work",
+          tips: [],
+        }],
+      },
+      currentStepIndex: 0,
+      status: "active",
+      memories: {},
+      recentTurns: [],
+    };
+    const store = {
+      load: vi.fn(async () => state),
+      save: vi.fn(async () => undefined),
+      append: vi.fn(async () => ({ id: "log", workflowId: state.id })),
+      readStepHistory: vi.fn(async () => []),
+    } as unknown as WorkflowStore;
+
+    let capturedMessages: unknown[] = [];
+    const modelWithTools = {
+      async *stream(messages: unknown[]) {
+        capturedMessages = messages;
+        yield new AIMessageChunk({ content: "Done." });
+      },
+    };
+    const llm = {
+      bindTools: vi.fn(() => modelWithTools),
+    } as unknown as ChatOpenAI;
+
+    const executor = new StepExecutor(store, {
+      buildTurnLlm: async () => llm,
+      buildSummaryLlm: async () => llm,
+    });
+
+    const result = await executor.send(
+      state.id,
+      { message: "No docs here" },
+      { tools: [] },
+    );
+
+    expect(JSON.stringify(capturedMessages)).not.toContain("SAVED DOCS");
+    expect(result.reply).toBe("Done.");
   });
 
   it("retries a transient network failure and recovers", async () => {

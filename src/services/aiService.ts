@@ -183,7 +183,6 @@ export const getAsyncLLM = async (
     configuration: {
       baseURL: normalizeBaseUrl(llmConfig.baseUrl),
     },
-    dangerouslyAllowBrowser: true,
   });
 };
 

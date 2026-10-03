@@ -1,5 +1,9 @@
 import { load, Store } from "@tauri-apps/plugin-store";
-
+import {
+  DOCS_RETRIEVAL_DEFAULTS,
+  validateRangedInt,
+  validateUnitInterval,
+} from "./chat/docs/docs-retrieval-config";
 export type AppSettings = {
   // LLM settings
   apiKey: string;
@@ -34,6 +38,18 @@ export type AppSettings = {
   perplexityModel: string;
   searchDepth: number;
 
+  // Docs retrieval settings (hybrid search: BM25 + keyword + embedding)
+  docsBm25Weight: number;
+  docsKeywordWeight: number;
+  docsEmbeddingWeight: number;
+  docsRelevanceThreshold: number;
+  docsResultCap: number;
+  docsCandidateDepth: number;
+  // Docs Jev relevance refinement (bounded, one call per search)
+  docsJevEnabled: boolean;
+  docsJevCandidateLimit: number;
+  docsJevTimeoutMs: number;
+  docsJevWeight: number;
   // Decision (Jev) settings
   decisionApiKey: string;
   decisionBaseUrl: string;
@@ -45,6 +61,7 @@ let settingsStore: Store | null = null;
 export async function getSettingsStore(): Promise<Store> {
   if (!settingsStore) {
     settingsStore = await load("settings.json", {
+      defaults: {},
       autoSave: false,
     });
   }
@@ -69,10 +86,9 @@ async function reloadStore(store: Store): Promise<void> {
 }
 
 function getValidSearchDepth(value: number | null | undefined): number {
-  if (!Number.isFinite(value)) {
+  if (typeof value !== "number" || !Number.isFinite(value)) {
     return 3;
   }
-
   const depth = Math.floor(value);
 
   if (depth < 1) {
@@ -84,6 +100,10 @@ function getValidSearchDepth(value: number | null | undefined): number {
   }
 
   return depth;
+}
+
+function getValidBoolean(value: unknown, fallback: boolean): boolean {
+  return typeof value === "boolean" ? value : fallback;
 }
 
 export async function readSettings(): Promise<AppSettings> {
@@ -168,6 +188,57 @@ export async function readSettings(): Promise<AppSettings> {
       (await store.get<string>("MOCU_PERPLEXITY_MODEL")) || "sonar"
     ).trim(),
     searchDepth: getValidSearchDepth(rawDepth),
+
+    // Docs retrieval settings (validated: [0,1] weights/threshold,
+    // ranged integer caps — see docs-retrieval-config.ts)
+    docsBm25Weight: validateUnitInterval(
+      await store.get<number>("MOCU_DOCS_BM25_WEIGHT"),
+      DOCS_RETRIEVAL_DEFAULTS.weights.bm25,
+    ),
+    docsKeywordWeight: validateUnitInterval(
+      await store.get<number>("MOCU_DOCS_KEYWORD_WEIGHT"),
+      DOCS_RETRIEVAL_DEFAULTS.weights.keyword,
+    ),
+    docsEmbeddingWeight: validateUnitInterval(
+      await store.get<number>("MOCU_DOCS_EMBEDDING_WEIGHT"),
+      DOCS_RETRIEVAL_DEFAULTS.weights.embedding,
+    ),
+    docsRelevanceThreshold: validateUnitInterval(
+      await store.get<number>("MOCU_DOCS_RELEVANCE_THRESHOLD"),
+      DOCS_RETRIEVAL_DEFAULTS.relevanceThreshold,
+    ),
+    docsResultCap: validateRangedInt(
+      await store.get<number>("MOCU_DOCS_RESULT_CAP"),
+      DOCS_RETRIEVAL_DEFAULTS.resultCap,
+      1,
+      50,
+    ),
+    docsCandidateDepth: validateRangedInt(
+      await store.get<number>("MOCU_DOCS_CANDIDATE_DEPTH"),
+      DOCS_RETRIEVAL_DEFAULTS.candidateDepth,
+      1,
+      200,
+    ),
+    docsJevEnabled: getValidBoolean(
+      await store.get<boolean>("MOCU_DOCS_JEV_ENABLED"),
+      DOCS_RETRIEVAL_DEFAULTS.jev.enabled,
+    ),
+    docsJevCandidateLimit: validateRangedInt(
+      await store.get<number>("MOCU_DOCS_JEV_CANDIDATE_LIMIT"),
+      DOCS_RETRIEVAL_DEFAULTS.jev.candidateLimit,
+      1,
+      20,
+    ),
+    docsJevTimeoutMs: validateRangedInt(
+      await store.get<number>("MOCU_DOCS_JEV_TIMEOUT_MS"),
+      DOCS_RETRIEVAL_DEFAULTS.jev.timeoutMs,
+      500,
+      30_000,
+    ),
+    docsJevWeight: validateUnitInterval(
+      await store.get<number>("MOCU_DOCS_JEV_WEIGHT"),
+      DOCS_RETRIEVAL_DEFAULTS.jev.weight,
+    ),
 
     // Decision (Jev) settings
     decisionApiKey: (
@@ -284,6 +355,85 @@ export async function saveSettings(settings: AppSettings): Promise<void> {
   await store.set(
     "MOCU_SEARCH_DEPTH",
     getValidSearchDepth(settings.searchDepth),
+  );
+
+  // Docs retrieval settings (validated exactly like readSettings)
+  await store.set(
+    "MOCU_DOCS_BM25_WEIGHT",
+    validateUnitInterval(
+      settings.docsBm25Weight,
+      DOCS_RETRIEVAL_DEFAULTS.weights.bm25,
+    ),
+  );
+  await store.set(
+    "MOCU_DOCS_KEYWORD_WEIGHT",
+    validateUnitInterval(
+      settings.docsKeywordWeight,
+      DOCS_RETRIEVAL_DEFAULTS.weights.keyword,
+    ),
+  );
+  await store.set(
+    "MOCU_DOCS_EMBEDDING_WEIGHT",
+    validateUnitInterval(
+      settings.docsEmbeddingWeight,
+      DOCS_RETRIEVAL_DEFAULTS.weights.embedding,
+    ),
+  );
+  await store.set(
+    "MOCU_DOCS_RELEVANCE_THRESHOLD",
+    validateUnitInterval(
+      settings.docsRelevanceThreshold,
+      DOCS_RETRIEVAL_DEFAULTS.relevanceThreshold,
+    ),
+  );
+  await store.set(
+    "MOCU_DOCS_RESULT_CAP",
+    validateRangedInt(
+      settings.docsResultCap,
+      DOCS_RETRIEVAL_DEFAULTS.resultCap,
+      1,
+      50,
+    ),
+  );
+  await store.set(
+    "MOCU_DOCS_CANDIDATE_DEPTH",
+    validateRangedInt(
+      settings.docsCandidateDepth,
+      DOCS_RETRIEVAL_DEFAULTS.candidateDepth,
+      1,
+      200,
+    ),
+  );
+  await store.set(
+    "MOCU_DOCS_JEV_ENABLED",
+    typeof settings.docsJevEnabled === "boolean"
+      ? settings.docsJevEnabled
+      : DOCS_RETRIEVAL_DEFAULTS.jev.enabled,
+  );
+  await store.set(
+    "MOCU_DOCS_JEV_CANDIDATE_LIMIT",
+    validateRangedInt(
+      settings.docsJevCandidateLimit,
+      DOCS_RETRIEVAL_DEFAULTS.jev.candidateLimit,
+      1,
+      20,
+    ),
+  );
+  await store.set(
+    "MOCU_DOCS_JEV_TIMEOUT_MS",
+    validateRangedInt(
+      settings.docsJevTimeoutMs,
+      DOCS_RETRIEVAL_DEFAULTS.jev.timeoutMs,
+      500,
+      30_000,
+    ),
+  );
+  await store.set(
+    "MOCU_DOCS_JEV_WEIGHT",
+    validateUnitInterval(
+      settings.docsJevWeight,
+      DOCS_RETRIEVAL_DEFAULTS.jev.weight,
+    ),
   );
 
   await store.save();

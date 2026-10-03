@@ -122,17 +122,11 @@ export async function enrichAtomicMemory(
     tags,
   });
 
-  /*
-   * Update textSimilarity.embedText to accept signal:
-   *
-   * embedText(text: string, signal?: AbortSignal)
-   */
-  const embedding = await textSimilarity.embedText(
-    embeddingText,
-    signal,
-  );
-
+  // Embedding APIs currently expose no AbortSignal parameter. Check for
+  // cancellation immediately before and after the provider request.
   throwIfAborted(signal);
+  const embedding = await textSimilarity.embedText(embeddingText);
+
 
   return {
     id: crypto.randomUUID(),
@@ -200,21 +194,13 @@ async function synchronizeTags(
     return uniqueModelTags;
   }
 
-  /*
-   * Update textSimilarity.compareListToList to accept signal:
-   *
-   * compareListToList(
-   *   sourceTexts: string[],
-   *   targetTexts: string[],
-   *   signal?: AbortSignal,
-   * )
-   */
-  const similarityResult =
-    await textSimilarity.compareListToList(
-      modelTags,
-      storedTags,
-      signal,
-    );
+  // Tag similarity runs through the shared embedding API, which currently
+  // has no AbortSignal parameter. Bound cancellation around the request.
+  throwIfAborted(signal);
+  const similarityResult = await textSimilarity.compareListToList(
+    modelTags,
+    storedTags,
+  );
 
   throwIfAborted(signal);
 

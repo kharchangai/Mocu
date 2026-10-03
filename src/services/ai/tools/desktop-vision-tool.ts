@@ -19,8 +19,8 @@ export const desktopVisionTool = tool(
       // We prioritize the dedicated Vision settings. If they are empty,
       // we fallback to the general LLM settings as a backup.
       const apiKey = settings.visionApiKey || settings.apiKey;
-      const baseURL = settings.visionBaseUrl || settings.baseUrl;
-      const modelName = settings.visionModel || settings.llmModel || "gpt-4o-mini";
+      const baseURL = settings.visionBaseUrl || settings.mediumBaseUrl;
+      const modelName = settings.visionModel || settings.mediumModel || "gpt-4o-mini";
 
       if (!apiKey) {
         return "Error: No API Key configured. Please set your API Key in the settings menu.";

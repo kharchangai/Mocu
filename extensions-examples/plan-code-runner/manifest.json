@@ -1,8 +1,8 @@
 {
   "id": "plan-code-runner",
   "name": "Plan Code Runner",
-  "description": "Executes a JSON implementation plan step by step with the coder agent. On deviation, asks Implementation Plan Reviser to replan only from the affected step onward, then resumes after it if its intended result was achieved or retries it if incomplete.",
-  "version": "0.1.1",
+  "description": "Runs or resumes implementation plans through the coder agent. Persisted checkpoints recover completed steps, interrupted coder calls, and pending deviation revisions.",
+  "version": "0.3.2",
   "runtime": "node",
   "entry": "index.js",
   "engines": { "node": ">=20" },
@@ -11,14 +11,21 @@
     {
       "id": "run_plan",
       "title": "Run implementation plan",
-      "description": "Runs a saved implementation plan end to end. Input: {\"planPath\":\"absolute path to the plan JSON\", \"coderAgentName\":\"saved coder agent (default: coder)\", \"reviserAgentName\":\"saved reviser agent (default: Implementation Plan Reviser)\", \"startStep\":1, \"maxSteps\":40, \"maxPlanUpdates\":8}. Loads the plan, executes each step through the coder, and passes prior reports as context. On deviation, sends the current plan, affected step, execution outcome, and reports to the reviser, saves a backup and updated plan, then resumes at the next step if the affected step's intended result was achieved or retries the affected step if incomplete. Returns per-step reports, plan revisions, and final status.",
+      "description": "Starts or resumes a plan. Input: {\"planPath\":\"absolute plan JSON path\", optional agent names/limits/timeouts, \"startNew\":false}. Saves checkpoints in <planPath>.run-state.json after every step and before risky transitions. Use resume_plan after stops/errors; unfinished work cannot restart accidentally. startNew:true archives prior state for an intentional restart.",
+      "streaming": true,
+      "timeoutSeconds": 0
+    },
+    {
+      "id": "resume_plan",
+      "title": "Resume implementation plan",
+      "description": "Resumes a paused run from <planPath>.run-state.json. Completed coder steps are skipped. An interrupted coder step is cautiously rechecked; a pending deviation revision resumes by invoking the reviser, without invoking the coder again for that already-reported step.",
       "streaming": true,
       "timeoutSeconds": 0
     },
     {
       "id": "preview_plan",
       "title": "Preview plan steps",
-      "description": "Reads a plan JSON file and returns its step list without executing anything. Input must be an object: {\"planPath\":\"absolute path to the plan .\"} or a plain path string. Use to check that a plan file exists and is well formed before running it.",
+      "description": "Reads and validates a plan JSON file without executing agents, and reports whether a saved run checkpoint is available. Input: {\"planPath\":\"absolute plan JSON path\"} or a plain path string.",
       "timeoutSeconds": 60
     }
   ]

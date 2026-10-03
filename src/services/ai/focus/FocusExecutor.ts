@@ -239,6 +239,8 @@ export class FocusExecutor {
      * tool's bound schema and key behavior lives in the summaries. */
     const llmTools = allTools.map(withShortDescription);
     const descriptions = llmTools.map((item) => `- ${item.name}: ${item.description}`).join("\n");
+    /* Doc context = capped references + metadata only (never content);
+     * fail-open: buildDocsContextPrompt returns "" on no match/failure. */
     const docsContextPrompt = [await buildDocsContextPrompt(userMessage), turn.graphTurn?.graphHint ?? ""]
       .filter((item) => item.trim())
       .join("\n\n");

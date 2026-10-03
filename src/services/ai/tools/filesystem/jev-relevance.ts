@@ -11,7 +11,7 @@
  * MAX_JEV_QUESTIONS excerpts per API call, keyed by "candidate_N".
  *
  * If the Jev model is not configured or the call fails, the caller keeps
- * the unfiltered matches (same fallback philosophy as doc-section-finder).
+ * the unfiltered matches (same fallback philosophy as chat/docs docs-jev.ts).
  */
 import { getJevDecision } from "../decision/Jev_model";
 import { throwIfAborted } from "../../agent/abort";

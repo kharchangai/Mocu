@@ -246,7 +246,7 @@ export async function createMemory(
             relationshipAnalyses,
           ),
         storedLinkCount:
-          memoryToSave.links.length,
+          memoryToSave.links?.length ?? 0,
       },
     );
 
@@ -421,11 +421,7 @@ function createMemoryLinks(
       continue;
     }
 
-    const reason =
-      typeof analysis.reason ===
-        "string"
-        ? analysis.reason.trim()
-        : "";
+    const reason = "Relationship classification only.";
 
     links.push({
       targetId:

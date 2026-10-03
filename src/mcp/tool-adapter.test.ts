@@ -1,5 +1,5 @@
 import { fileURLToPath } from 'node:url';
-import { beforeEach, describe, expect, it } from 'vitest';
+import { describe, expect, it } from 'vitest';
 
 import {
   configureMcpStorage,
@@ -8,7 +8,6 @@ import {
 import {
   configureMcpRuntime,
   importMcpServers,
-  shutdownMcpManager,
 } from './manager';
 import { createNodeStdioSpawnHost } from './runtime-node';
 import {

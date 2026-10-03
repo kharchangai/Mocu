@@ -488,8 +488,10 @@ const addAgentToolsToChatSystemPrompt = (
 /*
  * Adds the saved-docs context block to the system prompt.
  *
- * The block is empty when no saved doc matches the user's message, so this
- * is a no-op in that case.
+ * The block only contains capped doc REFERENCES (file name + approved
+ * metadata: id/title/description/keywords) — never doc bodies or snippets.
+ * It is empty when no saved doc matches the user's message, so this is a
+ * no-op in that case.
  */
 const addDocsContextToChatSystemPrompt = (
   baseSystemPrompt: string,
@@ -1077,14 +1079,33 @@ const createToolExecutor = (
       const toolArgs =
         args as ToolArgs;
 
+      const fileName =
+        getStringArg(
+          toolArgs,
+          "fileName",
+        );
+
+      const path =
+        getStringArg(
+          toolArgs,
+          "path",
+        );
+
+      if (!fileName && !path) {
+        throw new Error(
+          `${readDocTool.name} requires a non-empty "fileName" (or "path") argument.`,
+        );
+      }
+
       return readDocTool.invoke(
         {
-          fileName:
-            requireStringArg(
+          fileName: fileName || undefined,
+          path: path || undefined,
+          currentDoc:
+            getStringArg(
               toolArgs,
-              "fileName",
-              readDocTool.name,
-            ),
+              "currentDoc",
+            ) || undefined,
         },
         config,
       );
@@ -1754,7 +1775,8 @@ export const callChatAgent =
 
     /*
      * Search the user's saved docs and notes for this message and inject
-     * one-line hints into the system prompt. Failures never block the agent.
+     * capped doc references (metadata only, never content) plus notes hints
+     * into the system prompt. Failures never block the agent.
      */
     let docsContextPrompt = "";
 

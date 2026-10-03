@@ -41,18 +41,16 @@ async function ensureMemoryReady(): Promise<void> {
 
 export const getAsyncLLM = async () => {
   const config = await readSettings();
-
-  const apiKey = config.apiKey || "";
-  const baseUrl = config.baseUrl || "";
-  const llmModel = config.llmModel || "";
+  const baseUrl =
+    config.mediumBaseUrl || config.cheapBaseUrl || config.expensiveBaseUrl;
+  const llmModel = config.mediumModel || config.cheapModel || config.expensiveModel;
 
   return new ChatOpenAI({
-    apiKey: apiKey,
+    apiKey: config.apiKey || "",
     model: llmModel,
-    configuration: { 
-      baseURL: baseUrl.trim().replace(/\/+$/, "")
+    configuration: {
+      baseURL: baseUrl.trim().replace(/\/+$/, ""),
     },
-    dangerouslyAllowBrowser: true,
   });
 };
 

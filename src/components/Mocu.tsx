@@ -1,6 +1,7 @@
 // src/components/Mocu.tsx
 import React, { useEffect, useState } from 'react';
 import { motion } from 'framer-motion';
+import type { Variants } from 'framer-motion';
 import { StatusBubble } from './StatusBubble';
 import {
   MocuTranscript,
@@ -158,7 +159,7 @@ export const Mocu: React.FC<MocuProps> = ({
     mass: 0.9,
   };
 
-  const eyeVariants = {
+  const eyeVariants: Variants = {
     idle: {
       scaleY: isBlinking ? 0.05 : 1,
       scaleX: 1,
@@ -216,7 +217,7 @@ export const Mocu: React.FC<MocuProps> = ({
     },
   };
 
-  const mouthVariants = {
+  const mouthVariants: Variants = {
     idle: {
       height: 4,
       width: 20,
@@ -269,7 +270,7 @@ export const Mocu: React.FC<MocuProps> = ({
     },
   };
 
-  const bodyVariants = {
+  const bodyVariants: Variants = {
     idle: {
       y: [0, -10, 0],
       scaleX: [1, 0.98, 1.02, 1],
@@ -364,7 +365,8 @@ export const Mocu: React.FC<MocuProps> = ({
             `,
             border: '1px solid rgba(255, 255, 255, 0.05)',
           }}
-          animate={bodyVariants[bodyAnimation]}
+          animate={bodyAnimation}
+          variants={bodyVariants}
           whileHover={{
             scale: 1.05,
             rotate: -2,

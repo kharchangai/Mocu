@@ -49,7 +49,6 @@ type ComparableMemory = {
   context?: string;
   key?: string | string[];
   tags?: string[];
-  time?: MemoryNode["time"];
 };
 
 /**
@@ -326,9 +325,6 @@ function toComparableMemory(
     comparableMemory.tags = tags;
   }
 
-  if (hasMeaningfulValue(memory.time)) {
-    comparableMemory.time = memory.time;
-  }
 
   return comparableMemory;
 }
@@ -412,30 +408,6 @@ function normalizeSimilarity(
   return clamp(similarity, 0, 1);
 }
 
-function hasMeaningfulValue(
-  value: unknown,
-): boolean {
-  if (
-    value === null ||
-    value === undefined
-  ) {
-    return false;
-  }
-
-  if (typeof value === "string") {
-    return value.trim().length > 0;
-  }
-
-  if (Array.isArray(value)) {
-    return value.length > 0;
-  }
-
-  if (typeof value === "object") {
-    return Object.keys(value).length > 0;
-  }
-
-  return true;
-}
 
 function clamp(
   value: number,

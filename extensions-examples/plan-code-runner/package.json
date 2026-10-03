@@ -1,13 +1,10 @@
 {
   "name": "plan-code-runner",
-  "version": "0.1.0",
+  "version": "0.3.2",
   "private": true,
   "type": "module",
-  "description": "Mocu extension that executes an implementation plan step by step through planner and coder agents.",
-  "engines": {
-    "node": ">=20"
-  },
-  "dependencies": {
-    "@mocu/extension-sdk": "file:./vendor/extension-sdk"
-  }
+  "description": "Mocu extension that executes and resumes implementation plans through the coder agent.",
+  "engines": { "node": ">=20" },
+  "scripts": { "test": "node smoke-test.mjs" },
+  "dependencies": { "@mocu/extension-sdk": "file:./vendor/extension-sdk" }
 }

@@ -30,7 +30,12 @@ function parseAtomicMemories(content: unknown): string[] {
       return [];
     }
 
-    return (parsed as AtomicMemoriesResponse).memories.filter(
+    const memories = (parsed as AtomicMemoriesResponse).memories;
+    if (!Array.isArray(memories)) {
+      return [];
+    }
+
+    return memories.filter(
       (memory): memory is string =>
         typeof memory === "string" && memory.trim().length > 0,
     );

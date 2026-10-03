@@ -4,6 +4,11 @@
  * BM25 score for query term t in document d:
  *
  *   idf(t) * (tf * (k1 + 1)) / (tf + k1 * (1 - b + b * |d| / avgdl))
+ *
+ * Docs retrieval note: the primary saved-docs search is the SQLite hybrid
+ * pipeline in doc-search.ts (FTS5 BM25 + keyword + embeddings). This module
+ * stays as its lexical fallback (used when the index is unavailable) and
+ * for small in-memory sets such as notes.
  */
 
 const DEFAULT_K1 = 1.5;

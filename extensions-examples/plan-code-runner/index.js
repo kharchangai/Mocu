@@ -1,529 +1,300 @@
-/*
- * Plan Code Runner — Mocu extension.
- *
- * Reads a JSON implementation plan, executes each step through the coder
- * agent, and carries execution reports forward as context. On deviation,
- * it asks Implementation Plan Reviser to replan only from the affected
- * step onward. If the affected step's intended result was achieved,
- * execution resumes at the next step; otherwise that revised step is retried.
- */
-
+/* Plan Code Runner: execute and resume bounded JSON implementation plans. */
 import { createExtension } from "@mocu/extension-sdk";
-import { readFileSync, writeFileSync, existsSync } from "node:fs";
+import { readFileSync, writeFileSync, existsSync, renameSync } from "node:fs";
+import { createHash } from "node:crypto";
 import { resolve } from "node:path";
 
-const DEFAULT_CODER_NAME = "coder";
-const DEFAULT_PLANNER_NAME = "Implementation Plan Reviser";
-const DEFAULT_MAX_STEPS = 40;
-const DEFAULT_MAX_PLAN_UPDATES = 8;
-const AGENT_TIMEOUT_MS = null;
-
-const asPositiveInt = (value, fallback) => {
+const DEFAULT_CODER = "coder";
+const DEFAULT_REVISER = "Implementation Plan Reviser";
+const DEFAULT_MAX_STEPS = 20;
+const MAX_STEPS = 40;
+const DEFAULT_MAX_UPDATES = 2;
+const MAX_UPDATES = 4;
+const CODER_TIMEOUT = 600000;
+const REVISER_TIMEOUT = 180000;
+const MAX_TIMEOUT = 1800000;
+const STATE_VERSION = 1;
+const statePathFor = (path) => `${path}.run-state.json`;
+const positiveInt = (value, fallback, max) => {
   const n = Number.parseInt(String(value ?? ""), 10);
-  return Number.isFinite(n) && n > 0 ? n : fallback;
+  return Number.isFinite(n) && n > 0 ? Math.min(n, max) : fallback;
 };
+const isObject = (x) => x !== null && typeof x === "object" && !Array.isArray(x);
+const stringArray = (x) => Array.isArray(x) && x.every((v) => typeof v === "string");
+const planHash = (plan) => createHash("sha256").update(JSON.stringify(plan)).digest("hex");
 
-/** Extract the first parseable JSON object from an agent reply. */
-const extractJson = (text) => {
-  if (typeof text !== "string") return null;
-  const fenced = text.match(/```(?:json)?\s*([\s\S]*?)```/i);
-  const candidates = [];
-  if (fenced) candidates.push(fenced[1]);
-  const start = text.indexOf("{");
-  const end = text.lastIndexOf("}");
-  if (start !== -1 && end > start) candidates.push(text.slice(start, end + 1));
-  candidates.push(text);
-  for (const candidate of candidates) {
-    try {
-      const parsed = JSON.parse(candidate.trim());
-      if (parsed && typeof parsed === "object") return parsed;
-    } catch {
-      // Try the next candidate.
-    }
+const validatePlan = (plan) => {
+  if (!isObject(plan) || !Array.isArray(plan.steps) || plan.steps.length === 0) return "Plan must contain a non-empty steps array.";
+  let last = 0;
+  for (const [i, step] of plan.steps.entries()) {
+    if (!isObject(step) || !Number.isSafeInteger(step.step) || step.step <= last) return `Step ${i + 1} must have a unique increasing positive integer number.`;
+    last = step.step;
   }
   return null;
 };
-
-/** Load and minimally validate the implementation-plan JSON file. */
-const loadPlan = (planPath) => {
-  if (!planPath || typeof planPath !== "string") {
-    return { error: "planPath must be a non-empty absolute file path." };
+const validateReport = (x) => {
+  if (!isObject(x) || !["success", "deviation"].includes(x.status)) return "status must be success or deviation.";
+  if (!["completed", "incomplete"].includes(x.stepOutcome)) return "stepOutcome must be completed or incomplete.";
+  const r = x.report;
+  if (!isObject(r) || typeof r.summary !== "string" || !stringArray(r.files_created) || !stringArray(r.files_modified) || !stringArray(r.outputs) || !stringArray(r.issues)) return "report fields are invalid.";
+  if (x.status === "success" && x.stepOutcome !== "completed") return "success requires completed outcome.";
+  if (x.status === "deviation") {
+    const d = x.deviation;
+    if (!isObject(d) || typeof d.reason !== "string" || !stringArray(d.forced_changes) || !stringArray(d.work_already_done)) return "deviation fields are invalid.";
   }
-  const abs = resolve(planPath.trim());
-  if (!existsSync(abs)) return { error: `Plan file not found: ${abs}` };
+  return null;
+};
+const validateState = (state, planPath, plan) => {
+  if (!isObject(state) || state.version !== STATE_VERSION || state.planPath !== planPath) return "Checkpoint path/version mismatch.";
+  if (!Array.isArray(state.completed) || !Array.isArray(state.history) || !Array.isArray(state.planRevisions)) return "Checkpoint progress arrays are invalid.";
+  if (!Number.isSafeInteger(state.nextIndex) || state.nextIndex < 0 || state.nextIndex > plan.steps.length) return "Checkpoint nextIndex is invalid.";
+  if (!Number.isSafeInteger(state.executedSteps) || state.executedSteps < 0 || !Number.isSafeInteger(state.planUpdates) || state.planUpdates < 0) return "Checkpoint counters are invalid.";
+  if (state.planHash !== planHash(plan)) return "Plan changed since checkpoint; refusing stale resume.";
+  if (state.inProgressStep != null && !plan.steps.some((s) => s.step === state.inProgressStep)) return "Checkpoint in-progress step is absent from plan.";
+  if (state.completed.some((x) => !isObject(x) || !Number.isSafeInteger(x.step) || !plan.steps.some((s) => s.step === x.step))) return "Checkpoint completed-step record is invalid.";
+  if (state.pendingDeviation != null && (!isObject(state.pendingDeviation) || !Number.isSafeInteger(state.pendingDeviation.step))) return "Checkpoint pending deviation is invalid.";
+  return null;
+};
+const saveState = (file, state) => {
+  const temp = `${file}.tmp`;
+  writeFileSync(temp, JSON.stringify({ ...state, updatedAt: new Date().toISOString() }, null, 2), "utf8");
+  renameSync(temp, file);
+};
+const readState = (file, path, plan) => {
+  if (!existsSync(file)) return { error: `No checkpoint exists for ${path}.` };
+  let state;
+  try { state = JSON.parse(readFileSync(file, "utf8").replace(/^\uFEFF/, "")); }
+  catch (e) { return { error: `Checkpoint JSON invalid: ${e.message}` }; }
+  const error = validateState(state, path, plan);
+  return error ? { error } : { state };
+};
+const loadPlan = (path) => {
+  if (typeof path !== "string" || !path.trim()) return { error: "planPath is required." };
+  const abs = resolve(path.trim());
+  if (!existsSync(abs)) return { error: `Plan not found: ${abs}` };
   let plan;
-  try {
-    const raw = readFileSync(abs, "utf8").replace(/^\uFEFF/, "");
-    plan = JSON.parse(raw);
-  } catch (err) {
-    return { error: `Plan file is not valid JSON (${abs}): ${err.message}` };
-  }
-  if (!plan || typeof plan !== "object" || !Array.isArray(plan.steps)) {
-    return {
-      error:
-        "Plan file must be a JSON object with a `steps` array (each step needs at least a `step` and `title`/`goal`).",
-    };
-  }
-  if (plan.steps.length === 0) return { error: "Plan file contains no steps." };
-  for (const [i, step] of plan.steps.entries()) {
-    if (!step || typeof step !== "object" || step.step === undefined) {
-      return { error: `Plan step at index ${i} is missing its step number.` };
-    }
-  }
-  return { plan, steps: plan.steps, path: abs };
+  try { plan = JSON.parse(readFileSync(abs, "utf8").replace(/^\uFEFF/, "")); }
+  catch (e) { return { error: `Invalid plan JSON: ${e.message}` }; }
+  const error = validatePlan(plan);
+  return error ? { error } : { path: abs, plan, steps: plan.steps };
 };
-
-const compactReport = (step, report) => {
-  const title = step.title ?? step.goal ?? `step ${step.step}`;
-  return [
-    `### Step ${step.step}: ${title}`,
-    typeof report === "string" ? report : JSON.stringify(report, null, 2),
-  ].join("\n");
+const extractJson = (text) => {
+  if (typeof text !== "string") return null;
+  const fence = text.match(/```(?:json)?\s*([\s\S]*?)```/i);
+  const candidates = [];
+  if (fence) candidates.push(fence[1]);
+  const first = text.indexOf("{"); const last = text.lastIndexOf("}");
+  if (first >= 0 && last > first) candidates.push(text.slice(first, last + 1));
+  candidates.push(text);
+  for (const candidate of candidates) {
+    try { const parsed = JSON.parse(candidate.trim()); if (isObject(parsed)) return parsed; } catch { /* try next */ }
+  }
+  return null;
 };
-
-const buildCoderPrompt = ({ step, plan, history, attempt }) => {
-  const summaryBits = [];
-  if (plan.project_summary) {
-    summaryBits.push(
-      `Plan project summary:\n${JSON.stringify(plan.project_summary, null, 2)}`,
-    );
-  }
-  if (
-    Array.isArray(plan.overall_acceptance_criteria) &&
-    plan.overall_acceptance_criteria.length
-  ) {
-    summaryBits.push(
-      `Plan acceptance criteria:\n- ${plan.overall_acceptance_criteria.join("\n- ")}`,
-    );
-  }
-  const historyBlock = history.length
-    ? `Earlier execution reports (treat completed work as done; do not redo it):\n\n${history.join("\n\n")}`
-    : "No earlier steps have been completed; this is the first step.";
-  const retryNote =
-    attempt > 1
-      ? "\nIMPORTANT: your previous reply could not be parsed. Respond with ONLY a single valid JSON object, no prose, no markdown fences.\n"
-      : "";
-
-  return `You are the coding agent executing ONE step of an implementation plan.
-
-${summaryBits.join("\n\n") || "No plan summary available."}
-
-${historyBlock}
-
-CURRENT STEP TO EXECUTE:
-${JSON.stringify(step, null, 2)}
-
-${retryNote}
-Do the work for this step using your tools, then reply with ONLY one valid JSON object:
-
-{
-  "status": "success" | "deviation",
-  "stepOutcome": "completed" | "incomplete",
-  "report": {
-    "summary": "what you did",
-    "files_created": ["..."],
-    "files_modified": ["..."],
-    "outputs": ["key results, commands run, tests, artifacts"],
-    "issues": ["anything left open"]
-  },
-  "deviation": {
-    "present": true,
-    "reason": "why this step could not be done as planned",
-    "forced_changes": ["what you had to change or invent that the plan did not contain"],
-    "work_already_done": ["what you did before hitting the problem"]
-  }
-}
-
-Rules:
-- Set status to "success" only when the step completed as written; then set stepOutcome to "completed" and omit deviation.
-- For status "deviation", always set stepOutcome. Use "completed" only if the step's intended result/acceptance criteria were achieved despite departing from the planned method. Use "incomplete" if blocked, partially done, or uncertain; never infer completion from partial progress.
-- For deviations, provide deviation honestly and describe all work actually completed in report.
-- Be precise about files created and modified — the next step and the reviser rely on this report.`;
+const bounded = (x, max) => {
+  const text = typeof x === "string" ? x : JSON.stringify(x, null, 2);
+  return text.length <= max ? text : `${text.slice(0, max)}\n[truncated]`;
 };
-
-const buildReviserPrompt = ({ planText, history, deviation, affectedStep, stepOutcome }) => {
-  const historyBlock = history.length
-    ? `Execution reports for earlier and affected work (use as evidence; do not redo completed work):\n\n${history.join("\n\n")}`
-    : "No earlier work was completed before this step.";
-  const replanInstruction =
-    stepOutcome === "completed"
-      ? "The coder confirms that the intended result of the affected step WAS achieved, despite deviating from the planned method. Preserve every step before this one unchanged; preserve this affected step as completed; replan only steps after it. The runner will resume at the next step. Do not repeat this completed step."
-      : "The coder confirms that the affected step was NOT completed, or completion is uncertain. Preserve every step before this one unchanged. Revise the affected step to make it executable next, and replan later steps only as necessary. The runner will retry the affected step. Do not treat partial work as completion.";
-
-  return `You are Implementation Plan Reviser. Revise the current implementation plan in response to the coder's execution report.
-
-CURRENT PLAN (complete JSON):
-${planText}
-
-AFFECTED STEP:
-${JSON.stringify(affectedStep, null, 2)}
-
-CODER STEP OUTCOME: ${stepOutcome}
-
-${historyBlock}
-
-CODER DEVIATION REPORT:
-${JSON.stringify(deviation, null, 2)}
-
-${replanInstruction}
-
-Revise only from the appropriate point onward. Keep all earlier completed steps unchanged, with their original numbers and order. Incorporate only work verified in the supplied reports. Preserve unaffected future steps if still valid; change dependencies, numbering, actions, and verification only as needed. Do not restart the entire plan.
-
-Return ONLY the complete updated plan as one valid JSON object, with no Markdown or prose. Preserve the current plan's top-level structure and metadata (including project_summary, assumptions, steps, overall_acceptance_criteria, and any other supplied fields) and all required per-step fields (step, goal, actions, dependencies, files_to_create, files_to_modify, expected_result, verification, handoff_notes). Keep a non-empty steps array.`;
+const reportText = (step, report) => `### Step ${step.step}: ${step.title ?? step.goal ?? step.step}\n${bounded(report, 4000)}`;
+const coderPrompt = ({ step, plan, history, retry, recovery }) => {
+  const context = [];
+  if (plan.project_summary) context.push(`Project summary:\n${bounded(plan.project_summary, 2500)}`);
+  if (Array.isArray(plan.overall_acceptance_criteria)) context.push(`Acceptance criteria:\n- ${plan.overall_acceptance_criteria.slice(0, 16).join("\n- ")}`);
+  const recover = recovery ? "RECOVERY: this step was in progress when execution stopped. Inspect only relevant current files, compare against expected_result, and perform only remaining work; do not blindly repeat non-idempotent actions." : "";
+  const previous = history.length ? `Earlier reports (completed work is done; do not redo):\n${history.slice(-5).join("\n\n")}` : "No earlier steps completed.";
+  return `Execute ONLY the current plan step. Make minimal in-scope changes; preserve unrelated code; run focused checks only; report honestly.\n\n${recover}\n\n${context.join("\n\n")}\n\n${previous}\n\nCURRENT STEP:\n${JSON.stringify(step, null, 2)}\n\n${retry ? "Previous response had invalid JSON schema. Return corrected JSON only; do not repeat work.\n" : ""}Return one JSON object: status success|deviation, stepOutcome completed|incomplete, report {summary,files_created[],files_modified[],outputs[],issues[]}, and on deviation deviation {reason,forced_changes[],work_already_done[]}. Success requires completed and omits deviation. Deviation is completed only if intended result was achieved.`;
+};
+const reviserPrompt = ({ plan, history, step, outcome, deviation }) => {
+  const rule = outcome === "completed" ? "Intended result achieved: preserve this and earlier steps unchanged; revise only later steps." : "Affected step incomplete or uncertain: preserve earlier completed steps and revise the affected step for another attempt; never infer completion from partial work.";
+  return `Revise only as needed from the supplied evidence. Do no project work; invent no facts.\n\nPLAN:\n${JSON.stringify(plan, null, 2)}\n\nAFFECTED STEP:\n${JSON.stringify(step, null, 2)}\nOUTCOME: ${outcome}\nHISTORY:\n${history.slice(-6).join("\n\n")}\nDEVIATION:\n${bounded(deviation, 4000)}\n\n${rule} Preserve unaffected metadata and steps, keep the same step schema and unique increasing numbers. Return only the complete valid JSON plan.`;
 };
 
 const extension = createExtension({
   commands: {
     async preview_plan(input) {
-      const planPath =
-        typeof input === "string"
-          ? input
-          : (input && typeof input === "object" && input.planPath) || "";
-      const loaded = loadPlan(planPath);
+      const loaded = loadPlan(typeof input === "string" ? input : input?.planPath ?? "");
       if (loaded.error) return { ok: false, error: loaded.error };
-      return {
-        ok: true,
-        planPath: loaded.path,
-        stepCount: loaded.steps.length,
-        steps: loaded.steps.map((step) => ({
-          step: step.step,
-          title: step.title ?? null,
-          goal: step.goal ?? null,
-        })),
-      };
+      const stateFile = statePathFor(loaded.path);
+      const saved = existsSync(stateFile) ? readState(stateFile, loaded.path, loaded.plan) : null;
+      return { ok: true, planPath: loaded.path, stepCount: loaded.steps.length, runStatePath: stateFile,
+        resumeAvailable: Boolean(saved?.state && saved.state.status !== "completed"),
+        steps: loaded.steps.map((s) => ({ step: s.step, title: s.title ?? null, goal: s.goal ?? s.actions ?? null })) };
     },
-
-    async run_plan(input, context) {
-      let flushTimer = null;
-      let buffer = "";
-      const notify = (text) => {
-        buffer += text;
-        if (flushTimer) return;
-        flushTimer = setTimeout(() => {
-          const chunk = buffer;
-          buffer = "";
-          flushTimer = null;
-          extension.notify("mocu.extension.activity", {
-            toolCallId: context?.toolCallId,
-            toolName: context?.toolName,
-            text: chunk,
-          });
-        }, 300);
-      };
-      const flush = () => {
-        if (flushTimer) {
-          clearTimeout(flushTimer);
-          flushTimer = null;
-        }
-        if (buffer) {
-          extension.notify("mocu.extension.activity", {
-            toolCallId: context?.toolCallId,
-            toolName: context?.toolName,
-            text: buffer,
-          });
-          buffer = "";
-        }
-      };
-      const finish = (payload) => {
-        flush();
-        return payload;
-      };
-
-      const params =
-        input && typeof input === "object" && !Array.isArray(input) ? input : {};
-      const planPath =
-        typeof input === "string" ? input : String(params.planPath ?? "").trim();
-      const coderName = String(params.coderAgentName ?? DEFAULT_CODER_NAME).trim();
-      const reviserName = String(
-        params.reviserAgentName ?? DEFAULT_PLANNER_NAME,
-      ).trim();
-      const startStep = asPositiveInt(params.startStep, 1);
-      const maxSteps = asPositiveInt(params.maxSteps, DEFAULT_MAX_STEPS);
-      const maxPlanUpdates = asPositiveInt(
-        params.maxPlanUpdates,
-        DEFAULT_MAX_PLAN_UPDATES,
-      );
-
-      const loaded = loadPlan(planPath);
-      if (loaded.error) {
-        notify(`Plan load failed: ${loaded.error}\n`);
-        return finish({ status: "error", stage: "load_plan", error: loaded.error });
-      }
-      let plan = loaded.plan;
-      let steps = loaded.steps;
-      const planPathAbs = loaded.path;
-      notify(`Loaded plan: ${planPathAbs}\n${steps.length} step(s) in plan.\n`);
-
-      let agents;
-      try {
-        agents = await extension.agents.list();
-      } catch (err) {
-        return finish({
-          status: "error",
-          stage: "list_agents",
-          error: `Could not list agents (is "agents.invoke" declared?): ${err.message}`,
-        });
-      }
-      const findAgent = (name) =>
-        agents.find((agent) => agent.name === name) ??
-        agents.find((agent) => agent.name.toLowerCase() === name.toLowerCase());
-      const coder = findAgent(coderName);
-      if (!coder) {
-        return finish({
-          status: "error",
-          stage: "find_coder",
-          error: `Coder agent "${coderName}" not found. Saved agents: ${agents.map((agent) => agent.name).join(", ")}`,
-        });
-      }
-      const reviser = findAgent(reviserName);
-      if (!reviser) {
-        return finish({
-          status: "error",
-          stage: "find_reviser",
-          error: `Plan reviser agent "${reviserName}" not found. Saved agents: ${agents.map((agent) => agent.name).join(", ")}`,
-        });
-      }
-      notify(`Coder: ${coder.name} | Plan reviser: ${reviser.name}\n`);
-
-      const stepHistory = [];
-      const stepReports = [];
-      const planRevisions = [];
-      let planUpdates = 0;
-      let executedCount = 0;
-      let idx = steps.findIndex((step) => Number(step.step) >= startStep);
-      if (idx === -1) idx = 0;
-
-      const runCoder = async (step, attempt) => {
-        const prompt = buildCoderPrompt({ step, plan, history: stepHistory, attempt });
-        const result = await extension.agents.run(
-          { agentId: coder.id, input: prompt },
-          { timeoutMs: AGENT_TIMEOUT_MS },
-        );
-        return result.text ?? "";
-      };
-
-      while (idx < steps.length) {
-        if (executedCount >= maxSteps) {
-          notify(`Stopped: maxSteps (${maxSteps}) reached.\n`);
-          return finish({
-            status: "stopped_limit",
-            reason: `maxSteps (${maxSteps}) reached at plan step ${steps[idx]?.step}.`,
-            planPath: planPathAbs,
-            currentIndex: idx,
-            completed: stepReports,
-            planRevisions,
-          });
-        }
-
-        const step = steps[idx];
-        notify(`\n>>> Step ${step.step}${step.title ? `: ${step.title}` : ""}\nSending step to coder (${coder.name})...\n`);
-        executedCount += 1;
-
-        let parsed = null;
-        let rawText = "";
-        for (let attempt = 1; attempt <= 2 && !parsed; attempt += 1) {
-          rawText = await runCoder(step, attempt);
-          parsed = extractJson(rawText);
-          if (!parsed && attempt === 1) {
-            notify("Coder reply was not valid JSON; retrying once...\n");
-          }
-        }
-        if (!parsed) {
-          const deviation = {
-            present: true,
-            reason: "Coder did not return a parseable JSON report after a retry.",
-            forced_changes: [],
-            work_already_done: [],
-            raw_coder_output: rawText.slice(0, 8000),
-          };
-          parsed = {
-            status: "deviation",
-            stepOutcome: "incomplete",
-            report: { summary: rawText.slice(0, 2000), issues: [deviation.reason] },
-            deviation,
-          };
-        }
-
-        if (parsed.status === "success") {
-          const report = parsed.report ?? { summary: "No report returned." };
-          stepReports.push({ step: step.step, title: step.title ?? null, report });
-          stepHistory.push(compactReport(step, report));
-          const files = [
-            ...(Array.isArray(report.files_created) ? report.files_created : []),
-            ...(Array.isArray(report.files_modified)
-              ? report.files_modified.map((file) =>
-                  typeof file === "string" ? file : file?.path ?? "",
-                )
-              : []),
-          ].filter(Boolean);
-          notify(
-            `<<< Step ${step.step} completed successfully.${files.length ? ` Files: ${files.join(", ")}` : ""}\n`,
-          );
-          idx += 1;
-          continue;
-        }
-
-        const deviation = parsed.deviation ?? {
-          present: true,
-          reason: String(parsed.report?.summary ?? "Unspecified deviation."),
-          forced_changes: [],
-          work_already_done: [],
-        };
-        const stepOutcome =
-          parsed.stepOutcome === "completed" ? "completed" : "incomplete";
-        if (parsed.report) {
-          stepHistory.push(
-            compactReport(step, {
-              ...parsed.report,
-              stepOutcome,
-              note:
-                stepOutcome === "completed"
-                  ? "The intended result of this step was achieved despite the deviation; do not repeat it."
-                  : "This step is incomplete; revise this step and later steps without assuming partial work is complete.",
-            }),
-          );
-        }
-        notify(
-          `<<< Step ${step.step} DEVIATION (${stepOutcome}): ${deviation.reason ?? "unspecified"}\nSending the execution evidence to plan reviser (${reviser.name})...\n`,
-        );
-
-        if (planUpdates >= maxPlanUpdates) {
-          stepReports.push({
-            step: step.step,
-            title: step.title ?? null,
-            status: "deviation",
-            stepOutcome,
-            deviation,
-            unresolved: true,
-          });
-          return finish({
-            status: "error",
-            stage: "max_plan_updates",
-            reason: `Plan reviser was asked ${maxPlanUpdates} time(s) to update the plan; limit reached.`,
-            planPath: planPathAbs,
-            lastDeviation: deviation,
-            completed: stepReports,
-            planRevisions,
-          });
-        }
-
-        const planText = JSON.stringify(plan, null, 2);
-        const reviserReply = await extension.agents.run(
-          {
-            agentId: reviser.id,
-            input: buildReviserPrompt({
-              planText,
-              history: stepHistory,
-              deviation,
-              affectedStep: step,
-              stepOutcome,
-            }),
-          },
-          { timeoutMs: AGENT_TIMEOUT_MS },
-        );
-        const updatedPlan = extractJson(reviserReply.text ?? "");
-        if (!updatedPlan || !Array.isArray(updatedPlan.steps)) {
-          stepReports.push({
-            step: step.step,
-            title: step.title ?? null,
-            status: "deviation",
-            stepOutcome,
-            deviation,
-            unresolved: true,
-            reviserError: "Plan reviser did not return a valid updated plan JSON.",
-          });
-          return finish({
-            status: "error",
-            stage: "plan_update",
-            error: "Plan reviser did not return a valid updated plan JSON.",
-            reviserReply: (reviserReply.text ?? "").slice(0, 4000),
-            planPath: planPathAbs,
-            completed: stepReports,
-            planRevisions,
-          });
-        }
-
-        planUpdates += 1;
-        const backupPath = `${planPathAbs}.backup-${planUpdates}`;
-        try {
-          writeFileSync(backupPath, planText, "utf8");
-          writeFileSync(planPathAbs, JSON.stringify(updatedPlan, null, 2), "utf8");
-        } catch (err) {
-          return finish({
-            status: "error",
-            stage: "write_plan",
-            error: `Could not write updated plan back to ${planPathAbs}: ${err.message}`,
-            completed: stepReports,
-            planRevisions,
-          });
-        }
-        const reloaded = loadPlan(planPathAbs);
-        if (reloaded.error) {
-          return finish({
-            status: "error",
-            stage: "reload_plan",
-            error: `Updated plan failed validation: ${reloaded.error}`,
-            completed: stepReports,
-            planRevisions,
-          });
-        }
-        plan = reloaded.plan;
-        steps = reloaded.steps;
-        planRevisions.push({
-          revision: planUpdates,
-          backupPath,
-          reason: deviation.reason ?? "deviation",
-          forcedChanges: deviation.forced_changes ?? [],
-          stepOutcome,
-          stepCount: steps.length,
-        });
-
-        const sameStepIndex = steps.findIndex(
-          (candidate) => Number(candidate.step) === Number(step.step),
-        );
-        if (stepOutcome === "completed") {
-          if (sameStepIndex !== -1) {
-            idx = sameStepIndex + 1;
-          } else {
-            const nextIndex = steps.findIndex(
-              (candidate) => Number(candidate.step) > Number(step.step),
-            );
-            idx = nextIndex === -1 ? steps.length : nextIndex;
-          }
-          notify(`Plan updated and saved (revision ${planUpdates}). Step ${step.step} was completed; continuing from the next step.\n`);
-        } else {
-          let retryIndex = sameStepIndex;
-          if (retryIndex === -1) {
-            retryIndex = steps.findIndex(
-              (candidate) => Number(candidate.step) >= Number(step.step),
-            );
-          }
-          idx = retryIndex === -1 ? Math.min(idx, steps.length) : retryIndex;
-          executedCount -= 1;
-          notify(`Plan updated and saved (revision ${planUpdates}). Step ${step.step} is incomplete; retrying the revised affected step.\n`);
-        }
-        stepReports.push({
-          step: step.step,
-          title: step.title ?? null,
-          status: "deviation",
-          stepOutcome,
-          report: parsed.report ?? null,
-          deviation,
-          revisedPlan: true,
-        });
-      }
-
-      notify(`\n=== Plan finished: all ${steps.length} step(s) executed. ===\n`);
-      return finish({
-        status: "completed",
-        planPath: planPathAbs,
-        executedSteps: executedCount,
-        planUpdates,
-        completed: stepReports,
-        planRevisions,
-      });
-    },
+    async run_plan(input, context) { return executePlan(input, context, false); },
+    async resume_plan(input, context) { return executePlan(input, context, true); },
   },
 });
+
+async function executePlan(input, context, isResume) {
+  let activity = ""; let timer = null;
+  const notify = (text) => {
+    activity += text;
+    if (!timer) timer = setTimeout(() => {
+      const chunk = activity; activity = ""; timer = null;
+      extension.notify("mocu.extension.activity", { toolCallId: context?.toolCallId, toolName: context?.toolName, text: chunk });
+    }, 300);
+  };
+  const finish = (value) => {
+    if (timer) { clearTimeout(timer); timer = null; }
+    if (activity) extension.notify("mocu.extension.activity", { toolCallId: context?.toolCallId, toolName: context?.toolName, text: activity });
+    activity = ""; return value;
+  };
+  const args = isObject(input) ? input : {};
+  const rawPath = typeof input === "string" ? input : String(args.planPath ?? "").trim();
+  const loaded = loadPlan(rawPath);
+  if (loaded.error) return finish({ status: "error", stage: "load_plan", error: loaded.error });
+  const planPath = loaded.path; const stateFile = statePathFor(planPath);
+  let plan = loaded.plan; let steps = loaded.steps; let state;
+  const coderName = String(args.coderAgentName ?? DEFAULT_CODER).trim();
+  const reviserName = String(args.reviserAgentName ?? DEFAULT_REVISER).trim();
+  const maxSteps = positiveInt(args.maxSteps, DEFAULT_MAX_STEPS, MAX_STEPS);
+  const maxUpdates = positiveInt(args.maxPlanUpdates, DEFAULT_MAX_UPDATES, MAX_UPDATES);
+  const coderTimeout = positiveInt(args.coderTimeoutMs, CODER_TIMEOUT, MAX_TIMEOUT);
+  const reviserTimeout = positiveInt(args.reviserTimeoutMs, REVISER_TIMEOUT, MAX_TIMEOUT);
+
+  if (isResume) {
+    const saved = readState(stateFile, planPath, plan);
+    if (saved.error) return finish({ status: "error", stage: "resume_state", error: saved.error, runStatePath: stateFile });
+    state = saved.state;
+    if (state.status === "completed") return finish({ status: "error", stage: "resume_state", error: "This run is complete; use run_plan with startNew:true for a new run.", runStatePath: stateFile });
+    notify(`Resuming saved run; ${state.completed.length} completed step(s).\n`);
+  } else {
+    if (existsSync(stateFile)) {
+      if (args.startNew === true) {
+        try { renameSync(stateFile, `${stateFile}.archived-${Date.now()}`); }
+        catch (e) { return finish({ status: "error", stage: "archive_state", error: e.message, runStatePath: stateFile }); }
+      } else {
+        const saved = readState(stateFile, planPath, plan);
+        if (saved.error) return finish({ status: "error", stage: "existing_run", error: `${saved.error} Use startNew:true only for an intentional restart.`, runStatePath: stateFile });
+        if (saved.state.status !== "completed") return finish({ status: "error", stage: "existing_run", error: `Unfinished run exists. Use resume_plan: ${stateFile}`, runStatePath: stateFile });
+      }
+    }
+    const firstStep = positiveInt(args.startStep, 1, MAX_STEPS);
+    const startIndex = steps.findIndex((s) => s.step >= firstStep);
+    if (startIndex < 0) return finish({ status: "error", stage: "start_step", error: `No step >= ${firstStep}.` });
+    state = { version: STATE_VERSION, planPath, planHash: planHash(plan), status: "running", nextIndex: startIndex,
+      inProgressStep: null, pendingDeviation: null, completed: [], history: [], planRevisions: [], planUpdates: 0,
+      executedSteps: 0, lastError: null, createdAt: new Date().toISOString() };
+    try { saveState(stateFile, state); }
+    catch (e) { return finish({ status: "error", stage: "save_state", error: e.message, runStatePath: stateFile }); }
+  }
+
+  const pause = (reason, extra = {}) => {
+    state.status = "paused"; state.lastError = reason;
+    try { saveState(stateFile, state); }
+    catch (e) { return finish({ status: "error", stage: "save_state", error: `${reason}; could not save checkpoint: ${e.message}`, runStatePath: stateFile }); }
+    return finish({ status: "paused", reason, planPath, runStatePath: stateFile,
+      currentStep: state.pendingDeviation?.step ?? state.inProgressStep ?? steps[state.nextIndex]?.step ?? null,
+      completed: state.completed, planRevisions: state.planRevisions, ...extra });
+  };
+  let agents;
+  try { agents = await extension.agents.list(); }
+  catch (e) { return pause(`Could not list agents: ${e.message}`, { stage: "list_agents" }); }
+  const findAgent = (name) => agents.find((a) => a.name === name) ?? agents.find((a) => a.name.toLowerCase() === name.toLowerCase());
+  const coder = findAgent(coderName); const reviser = findAgent(reviserName);
+  if (!coder) return pause(`Coder '${coderName}' not found.`, { stage: "find_coder" });
+  if (!reviser) return pause(`Reviser '${reviserName}' not found.`, { stage: "find_reviser" });
+
+  let index = state.pendingDeviation ? steps.findIndex((s) => s.step === state.pendingDeviation.step)
+    : state.inProgressStep != null ? steps.findIndex((s) => s.step === state.inProgressStep) : state.nextIndex;
+  if (index < 0 || index >= steps.length) {
+    if (state.nextIndex === steps.length && state.inProgressStep == null && !state.pendingDeviation) {
+      state.status = "completed";
+      try { saveState(stateFile, state); } catch (e) { return finish({ status: "error", stage: "save_state", error: e.message, runStatePath: stateFile }); }
+      return finish({ status: "completed", planPath, runStatePath: stateFile, completed: state.completed, planRevisions: state.planRevisions });
+    }
+    return pause("Checkpoint does not match the plan.", { stage: "resume_state" });
+  }
+
+  let executedThisCall = 0;
+  const revisePending = async () => {
+    const pending = state.pendingDeviation;
+    const step = steps.find((s) => s.step === pending?.step);
+    if (!step) return pause("Pending deviation step missing from plan.", { stage: "resume_state" });
+    if (state.planUpdates >= maxUpdates) return pause(`Plan update limit (${maxUpdates}) reached.`, { stage: "max_plan_updates" });
+    let response;
+    try { response = await extension.agents.run({ agentId: reviser.id, input: reviserPrompt({ plan, history: state.history, step, outcome: pending.outcome, deviation: pending.deviation }) }, { timeoutMs: reviserTimeout }); }
+    catch (e) { return pause(`Plan reviser invocation failed: ${e.message}`, { stage: "plan_update" }); }
+    const revised = extractJson(response.text ?? "");
+    const issue = validatePlan(revised);
+    if (issue) return pause(`Reviser returned invalid plan: ${issue}`, { stage: "plan_update", reviserReply: bounded(response.text ?? "", 3000) });
+    const original = JSON.stringify(plan, null, 2);
+    const backup = `${planPath}.backup-${state.planUpdates + 1}`;
+    try { writeFileSync(backup, original, "utf8"); writeFileSync(planPath, JSON.stringify(revised, null, 2), "utf8"); }
+    catch (e) { return pause(`Could not save revised plan: ${e.message}`, { stage: "write_plan" }); }
+    const reloaded = loadPlan(planPath);
+    if (reloaded.error) {
+      try { writeFileSync(planPath, original, "utf8"); } catch { /* best effort */ }
+      return pause(`Revised plan invalid; original restore attempted: ${reloaded.error}`, { stage: "reload_plan" });
+    }
+    plan = reloaded.plan; steps = reloaded.steps; state.planHash = planHash(plan); state.planUpdates += 1;
+    state.planRevisions.push({ revision: state.planUpdates, backupPath: backup, reason: pending.deviation.reason, stepOutcome: pending.outcome });
+    const current = steps.findIndex((s) => s.step === pending.step);
+    index = pending.outcome === "completed" ? (current >= 0 ? current + 1 : steps.findIndex((s) => s.step > pending.step)) : (current >= 0 ? current : steps.findIndex((s) => s.step >= pending.step));
+    if (index < 0) index = steps.length;
+    state.completed.push({ step: pending.step, status: "deviation", stepOutcome: pending.outcome, report: pending.report, deviation: pending.deviation, revisedPlan: true });
+    state.pendingDeviation = null; state.inProgressStep = null; state.nextIndex = index; state.status = index >= steps.length ? "completed" : "running";
+    try { saveState(stateFile, state); }
+    catch (e) { state.pendingDeviation = pending; return pause(`Plan revised but checkpoint save failed: ${e.message}`, { stage: "save_checkpoint" }); }
+    return null;
+  };
+
+  while (index < steps.length || state.pendingDeviation) {
+    if (state.pendingDeviation) {
+      const stopped = await revisePending();
+      if (stopped) return stopped;
+      index = state.nextIndex;
+      continue;
+    }
+    if (executedThisCall >= maxSteps && !(isResume && state.inProgressStep != null && state.inProgressStep === steps[index]?.step && executedThisCall === 0)) {
+      state.status = "paused"; state.nextIndex = index; state.inProgressStep = null;
+      try { saveState(stateFile, state); } catch (e) { return finish({ status: "error", stage: "save_state", error: e.message, runStatePath: stateFile }); }
+      return finish({ status: "paused", reason: `maxSteps (${maxSteps}) reached; use resume_plan.`, planPath, runStatePath: stateFile, currentStep: steps[index]?.step, completed: state.completed, planRevisions: state.planRevisions });
+    }
+    const step = steps[index];
+    const recovering = isResume && state.inProgressStep === step.step;
+    state.status = "running"; state.nextIndex = index; state.inProgressStep = step.step; state.lastError = null;
+    state.executedSteps += 1; executedThisCall += 1;
+    try { saveState(stateFile, state); }
+    catch (e) { return finish({ status: "error", stage: "save_checkpoint", error: e.message, runStatePath: stateFile }); }
+    notify(`\n>>> Step ${step.step}${step.title ? `: ${step.title}` : ""}\n`);
+    let result = null; let raw = ""; let schemaError = "";
+    for (let attempt = 0; attempt < 2 && !result; attempt += 1) {
+      try {
+        const reply = await extension.agents.run({ agentId: coder.id, input: coderPrompt({ step, plan, history: state.history, retry: attempt === 1, recovery: recovering }) }, { timeoutMs: coderTimeout });
+        raw = reply.text ?? "";
+      } catch (e) { return pause(`Coder invocation failed: ${e.message}`, { stage: "coder", currentStep: step.step }); }
+      const candidate = extractJson(raw);
+      schemaError = validateReport(candidate) ?? "";
+      if (!schemaError) result = candidate;
+      else if (attempt === 0) notify(`Invalid coder report (${schemaError}); one format retry requested.\n`);
+    }
+    if (!result) {
+      const reason = `Invalid coder report after one format retry: ${schemaError || "unparseable JSON"}`;
+      result = { status: "deviation", stepOutcome: "incomplete", report: { summary: bounded(raw, 1500), files_created: [], files_modified: [], outputs: [], issues: [reason] }, deviation: { reason, forced_changes: [], work_already_done: [] } };
+    }
+    if (result.status === "success") {
+      state.completed.push({ step: step.step, title: step.title ?? null, report: result.report });
+      state.history.push(reportText(step, result.report));
+      index += 1; state.nextIndex = index; state.inProgressStep = null;
+      try { saveState(stateFile, state); }
+      catch (e) { state.inProgressStep = step.step; return pause(`Step completed but checkpoint failed: ${e.message}`, { stage: "save_checkpoint" }); }
+      notify(`<<< Step ${step.step} completed and checkpointed.\n`);
+      continue;
+    }
+    const pending = { step: step.step, outcome: result.stepOutcome, report: result.report, deviation: result.deviation };
+    state.history.push(reportText(step, { ...result.report, stepOutcome: result.stepOutcome }));
+    state.pendingDeviation = pending; state.inProgressStep = step.step; state.nextIndex = index; state.status = "paused"; state.lastError = result.deviation.reason;
+    try { saveState(stateFile, state); }
+    catch (e) { return finish({ status: "error", stage: "save_state", error: `Deviation checkpoint failed: ${e.message}`, runStatePath: stateFile }); }
+    const stopped = await revisePending();
+    if (stopped) return stopped;
+    index = state.nextIndex;
+  }
+  state.status = "completed"; state.nextIndex = steps.length; state.inProgressStep = null;
+  try { saveState(stateFile, state); }
+  catch (e) { return finish({ status: "error", stage: "save_state", error: e.message, runStatePath: stateFile }); }
+  return finish({ status: "completed", planPath, runStatePath: stateFile, executedSteps: state.executedSteps, planUpdates: state.planUpdates, completed: state.completed, planRevisions: state.planRevisions });
+}
 
 extension.start();

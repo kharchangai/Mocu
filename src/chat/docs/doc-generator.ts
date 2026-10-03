@@ -1,22 +1,23 @@
 import { getAsyncLLM } from "../../services/ai/llm";
-import { parseDoc } from "./doc-frontmatter";
+import { normalizeDocId, parseDoc } from "./doc-frontmatter";
 import type { DocFrontmatter } from "./doc-frontmatter";
 import { readDoc, saveDoc, writeDocFile } from "./doc-storage";
 
 /**
  * Asks the LLM to turn raw user text into a complete, searchable markdown
  * document. The model must answer with a single markdown file that starts
- * with YAML frontmatter (name / description / keywords) followed by a body
- * that fully explains the input text.
+ * with YAML frontmatter (title / description / keywords) followed by a body
+ * that fully explains the input text. The stable `id` is assigned by the
+ * generator, not by the model.
  */
 const DOC_CREATION_SYSTEM_PROMPT = `You create searchable knowledge documents for an agent's retrieval system.
 
 You receive raw text (notes, an idea, a conversation snippet, a request the user made, ...). Your job is to turn it into ONE complete markdown document so that, later, an LLM agent can find this document with keyword/BM25 search and understand EXACTLY what the user meant.
 
-Answer with the markdown document ONLY. No explanations before or after. IMPORTANT: in the frontmatter, the keywords field MUST be a YAML list (one "- item" per line), never a comma-separated string. The document must have this exact shape:
+Answer with the markdown document ONLY. No explanations before or after. IMPORTANT: the frontmatter must contain EXACTLY three fields — title, description, keywords — and nothing else (never an "id" field; the system assigns a stable id automatically). The keywords field MUST be a YAML list (one "- item" per line), never a comma-separated string. The document must have this exact shape:
 
 ---
-name: <short title, 2-6 words, Title Case>
+title: <short title, 2-6 words, Title Case>
 description: <1-2 sentences: what this document explains AND when an agent should retrieve it>
 keywords:
   - <keyword 1>
@@ -31,6 +32,7 @@ Then the body, which must:
 - Be self-contained: a reader who never saw the original input must understand everything.
 - Use short markdown sections and bullet points (## headings) where useful.
 - Include concrete details (names, values, constraints, steps) from the input instead of vague statements.
+- Keep any descriptive markdown links ("[label](target)") that appear in the input as plain body text.
 - End with a short "## When to use this document" section describing the situations/requests it should be retrieved for.
 
 Write the document in the same language as the input text.`;
@@ -84,7 +86,7 @@ export async function updateDocFromText(
       "human",
       [
         "Update the existing knowledge document below using the new text.",
-        "Keep the same YAML frontmatter shape (name, description, keywords as a YAML list).",
+        "Keep the same YAML frontmatter shape (title, description, keywords as a YAML list).",
         "Merge the new information into the document; keep existing details that are still correct.",
         "",
         `EXISTING DOCUMENT "${existing.file}":`,
@@ -99,13 +101,17 @@ export async function updateDocFromText(
   const raw = extractText(response.content);
   const { meta, body } = splitGeneratedDoc(raw, trimmedInput);
 
-  await writeDocFile(existing.file, meta, body);
+  // The id is the document's stable identity: never let a regeneration
+  // change it (the title may change; the id must not).
+  const metaToSave: DocFrontmatter = { ...meta, id: existing.id };
 
-  return { ...meta, file: existing.file, body };
+  await writeDocFile(existing.file, metaToSave, body);
+
+  return { ...metaToSave, file: existing.file, body };
 }
 
 export type DocFieldUpdates = {
-  name?: string;
+  title?: string;
   description?: string;
   keywords?: string[];
   body?: string;
@@ -114,6 +120,7 @@ export type DocFieldUpdates = {
 /**
  * Direct field edit of an existing doc (no LLM call). Used by the docs UI
  * editor and the agent update tool when exact values are already known.
+ * The id is never editable — it stays stable across renames.
  */
 export async function updateDocFields(
   fileName: string,
@@ -126,7 +133,8 @@ export async function updateDocFields(
   }
 
   const meta: DocFrontmatter = {
-    name: updates.name?.trim() || existing.name,
+    id: existing.id,
+    title: updates.title?.trim() || existing.title,
     description: updates.description?.trim() || existing.description,
     keywords:
       updates.keywords === undefined
@@ -142,14 +150,16 @@ export async function updateDocFields(
 }
 
 function serializeExistingDoc(doc: {
-  name: string;
+  id: string;
+  title: string;
   description: string;
   keywords: string[];
   body: string;
 }): string {
   return [
     "---",
-    `name: ${doc.name}`,
+    `id: ${doc.id}`,
+    `title: ${doc.title}`,
     `description: ${doc.description}`,
     `keywords:\n${doc.keywords.map((k) => `  - ${k}`).join("\n")}`,
     "---",
@@ -204,9 +214,10 @@ function extractText(content: string | Array<unknown>): string {
 }
 
 /**
- * Extracts name / description / keywords and the body from the generated
- * markdown. Falls back to derived metadata when the LLM answers without
- * valid frontmatter, so a useful document is still saved.
+ * Extracts id / title / description / keywords and the body from the
+ * generated markdown. Falls back to derived metadata when the LLM answers
+ * without valid frontmatter, so a useful document is still saved.
+ * Legacy `name`-shaped output is accepted too (mapped to title).
  */
 function splitGeneratedDoc(
   raw: string,
@@ -221,7 +232,8 @@ function splitGeneratedDoc(
     if (parsed) {
       return {
         meta: {
-          name: parsed.name,
+          id: parsed.id,
+          title: parsed.title,
           description: parsed.description,
           keywords: parsed.keywords,
         },
@@ -246,8 +258,11 @@ function fallbackMeta(inputText: string): DocFrontmatter {
       .map((line) => line.trim())
       .find(Boolean) ?? "Saved text";
 
+  const title = firstLine.slice(0, 60);
+
   return {
-    name: firstLine.slice(0, 60),
+    id: normalizeDocId(title),
+    title,
     description: firstLine.slice(0, 200),
     keywords: tokenizeKeywords(inputText).slice(0, 10),
   };

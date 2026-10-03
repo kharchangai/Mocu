@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from "react";
 import { getCurrentWebviewWindow } from "@tauri-apps/api/webviewWindow";
 import { readSettings, saveSettings } from "../store";
+import { DOCS_RETRIEVAL_DEFAULTS } from "../chat/docs/docs-retrieval-config";
 
 import "./Settings.css";
 
@@ -112,6 +113,38 @@ export const Settings: React.FC<SettingsProps> = ({
   const [decisionBaseUrl, setDecisionBaseUrl] = useState("");
   const [decisionModel, setDecisionModel] = useState("");
 
+  // Docs retrieval settings (hybrid search)
+  const [docsBm25Weight, setDocsBm25Weight] = useState(
+    DOCS_RETRIEVAL_DEFAULTS.weights.bm25,
+  );
+  const [docsKeywordWeight, setDocsKeywordWeight] = useState(
+    DOCS_RETRIEVAL_DEFAULTS.weights.keyword,
+  );
+  const [docsEmbeddingWeight, setDocsEmbeddingWeight] = useState(
+    DOCS_RETRIEVAL_DEFAULTS.weights.embedding,
+  );
+  const [docsRelevanceThreshold, setDocsRelevanceThreshold] = useState(
+    DOCS_RETRIEVAL_DEFAULTS.relevanceThreshold,
+  );
+  const [docsResultCap, setDocsResultCap] = useState(
+    DOCS_RETRIEVAL_DEFAULTS.resultCap,
+  );
+  const [docsCandidateDepth, setDocsCandidateDepth] = useState(
+    DOCS_RETRIEVAL_DEFAULTS.candidateDepth,
+  );
+  const [docsJevEnabled, setDocsJevEnabled] = useState(
+    DOCS_RETRIEVAL_DEFAULTS.jev.enabled,
+  );
+  const [docsJevCandidateLimit, setDocsJevCandidateLimit] = useState(
+    DOCS_RETRIEVAL_DEFAULTS.jev.candidateLimit,
+  );
+  const [docsJevTimeoutMs, setDocsJevTimeoutMs] = useState(
+    DOCS_RETRIEVAL_DEFAULTS.jev.timeoutMs,
+  );
+  const [docsJevWeight, setDocsJevWeight] = useState(
+    DOCS_RETRIEVAL_DEFAULTS.jev.weight,
+  );
+
   const [isLoading, setIsLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
 
@@ -165,6 +198,18 @@ export const Settings: React.FC<SettingsProps> = ({
         setDecisionApiKey(settings.decisionApiKey);
         setDecisionBaseUrl(settings.decisionBaseUrl);
         setDecisionModel(settings.decisionModel);
+
+        // Docs retrieval settings
+        setDocsBm25Weight(settings.docsBm25Weight);
+        setDocsKeywordWeight(settings.docsKeywordWeight);
+        setDocsEmbeddingWeight(settings.docsEmbeddingWeight);
+        setDocsRelevanceThreshold(settings.docsRelevanceThreshold);
+        setDocsResultCap(settings.docsResultCap);
+        setDocsCandidateDepth(settings.docsCandidateDepth);
+        setDocsJevEnabled(settings.docsJevEnabled);
+        setDocsJevCandidateLimit(settings.docsJevCandidateLimit);
+        setDocsJevTimeoutMs(settings.docsJevTimeoutMs);
+        setDocsJevWeight(settings.docsJevWeight);
       } catch (error) {
         console.error("Failed to load settings:", error);
       } finally {
@@ -227,6 +272,18 @@ export const Settings: React.FC<SettingsProps> = ({
         decisionApiKey,
         decisionBaseUrl,
         decisionModel,
+
+        // Docs retrieval settings
+        docsBm25Weight,
+        docsKeywordWeight,
+        docsEmbeddingWeight,
+        docsRelevanceThreshold,
+        docsResultCap,
+        docsCandidateDepth,
+        docsJevEnabled,
+        docsJevCandidateLimit,
+        docsJevTimeoutMs,
+        docsJevWeight,
       });
 
       /*
@@ -572,6 +629,242 @@ export const Settings: React.FC<SettingsProps> = ({
                 placeholder="~typesafe/jev-latest"
                 className="settings-input"
               />
+            </div>
+          </div>
+        </section>
+        {/* ---------- Docs search ---------- */}
+        <section className="settings-section">
+          <h5 className="settings-section-label">Docs Search</h5>
+
+          <div className="settings-card">
+            <div className="settings-card-header">
+              <h4 className="settings-card-title">Hybrid Retrieval</h4>
+              <p className="settings-card-description">
+                Saved docs are ranked by combining BM25, keyword and embedding
+                scores with these weights. Signals that are unavailable for a
+                query are dropped and the remaining weights are re-normalized.
+              </p>
+            </div>
+
+            <div className="settings-grid-2">
+              <div className="settings-field">
+                <label className="settings-label">BM25 Weight (0–1)</label>
+                <input
+                  type="number"
+                  min="0"
+                  max="1"
+                  step="0.05"
+                  value={docsBm25Weight}
+                  disabled={isSaving}
+                  onChange={(event) => {
+                    const nextValue = Number(event.target.value);
+                    setDocsBm25Weight(
+                      Number.isFinite(nextValue)
+                        ? nextValue
+                        : DOCS_RETRIEVAL_DEFAULTS.weights.bm25,
+                    );
+                  }}
+                  className="settings-input"
+                />
+              </div>
+
+              <div className="settings-field">
+                <label className="settings-label">Keyword Weight (0–1)</label>
+                <input
+                  type="number"
+                  min="0"
+                  max="1"
+                  step="0.05"
+                  value={docsKeywordWeight}
+                  disabled={isSaving}
+                  onChange={(event) => {
+                    const nextValue = Number(event.target.value);
+                    setDocsKeywordWeight(
+                      Number.isFinite(nextValue)
+                        ? nextValue
+                        : DOCS_RETRIEVAL_DEFAULTS.weights.keyword,
+                    );
+                  }}
+                  className="settings-input"
+                />
+              </div>
+
+              <div className="settings-field">
+                <label className="settings-label">Embedding Weight (0–1)</label>
+                <input
+                  type="number"
+                  min="0"
+                  max="1"
+                  step="0.05"
+                  value={docsEmbeddingWeight}
+                  disabled={isSaving}
+                  onChange={(event) => {
+                    const nextValue = Number(event.target.value);
+                    setDocsEmbeddingWeight(
+                      Number.isFinite(nextValue)
+                        ? nextValue
+                        : DOCS_RETRIEVAL_DEFAULTS.weights.embedding,
+                    );
+                  }}
+                  className="settings-input"
+                />
+              </div>
+
+              <div className="settings-field">
+                <label className="settings-label">Relevance Threshold (0–1)</label>
+                <input
+                  type="number"
+                  min="0"
+                  max="1"
+                  step="0.05"
+                  value={docsRelevanceThreshold}
+                  disabled={isSaving}
+                  onChange={(event) => {
+                    const nextValue = Number(event.target.value);
+                    setDocsRelevanceThreshold(
+                      Number.isFinite(nextValue)
+                        ? nextValue
+                        : DOCS_RETRIEVAL_DEFAULTS.relevanceThreshold,
+                    );
+                  }}
+                  className="settings-input"
+                />
+              </div>
+
+              <div className="settings-field">
+                <label className="settings-label">Result Cap (1–50)</label>
+                <input
+                  type="number"
+                  min="1"
+                  max="50"
+                  value={docsResultCap}
+                  disabled={isSaving}
+                  onChange={(event) => {
+                    const nextValue = Number(event.target.value);
+                    setDocsResultCap(
+                      Number.isFinite(nextValue)
+                        ? nextValue
+                        : DOCS_RETRIEVAL_DEFAULTS.resultCap,
+                    );
+                  }}
+                  className="settings-input"
+                />
+              </div>
+
+              <div className="settings-field">
+                <label className="settings-label">Candidate Depth (1–200)</label>
+                <input
+                  type="number"
+                  min="1"
+                  max="200"
+                  value={docsCandidateDepth}
+                  disabled={isSaving}
+                  onChange={(event) => {
+                    const nextValue = Number(event.target.value);
+                    setDocsCandidateDepth(
+                      Number.isFinite(nextValue)
+                        ? nextValue
+                        : DOCS_RETRIEVAL_DEFAULTS.candidateDepth,
+                    );
+                  }}
+                  className="settings-input"
+                />
+              </div>
+            </div>
+          </div>
+
+          <div className="settings-card">
+            <div className="settings-card-header">
+              <h4 className="settings-card-title">Jev Relevance (bounded)</h4>
+              <p className="settings-card-description">
+                Optional: one bounded Jev call per search evaluates the top
+                candidates (compact id/title/description only, short timeout).
+                Its probability gates and refines the hybrid score; on
+                failure search falls back to the deterministic hybrid score.
+                The relevance threshold applies to the final score, then the
+                result cap — two distinct controls.
+              </p>
+            </div>
+
+            <div className="settings-grid-2">
+              <div className="settings-field">
+                <label className="settings-label">Enable Jev Refinement</label>
+                <select
+                  value={docsJevEnabled ? "on" : "off"}
+                  disabled={isSaving}
+                  onChange={(event) =>
+                    setDocsJevEnabled(event.target.value === "on")
+                  }
+                  className="settings-input"
+                >
+                  <option value="off">Off (deterministic hybrid only)</option>
+                  <option value="on">On (one bounded Jev call per search)</option>
+                </select>
+              </div>
+
+              <div className="settings-field">
+                <label className="settings-label">
+                  Jev Candidate Limit (1–20)
+                </label>
+                <input
+                  type="number"
+                  min="1"
+                  max="20"
+                  value={docsJevCandidateLimit}
+                  disabled={isSaving}
+                  onChange={(event) => {
+                    const nextValue = Number(event.target.value);
+                    setDocsJevCandidateLimit(
+                      Number.isFinite(nextValue)
+                        ? nextValue
+                        : DOCS_RETRIEVAL_DEFAULTS.jev.candidateLimit,
+                    );
+                  }}
+                  className="settings-input"
+                />
+              </div>
+
+              <div className="settings-field">
+                <label className="settings-label">Jev Timeout (ms, 500–30000)</label>
+                <input
+                  type="number"
+                  min="500"
+                  max="30000"
+                  step="100"
+                  value={docsJevTimeoutMs}
+                  disabled={isSaving}
+                  onChange={(event) => {
+                    const nextValue = Number(event.target.value);
+                    setDocsJevTimeoutMs(
+                      Number.isFinite(nextValue)
+                        ? nextValue
+                        : DOCS_RETRIEVAL_DEFAULTS.jev.timeoutMs,
+                    );
+                  }}
+                  className="settings-input"
+                />
+              </div>
+
+              <div className="settings-field">
+                <label className="settings-label">Jev Weight (0–1)</label>
+                <input
+                  type="number"
+                  min="0"
+                  max="1"
+                  step="0.05"
+                  value={docsJevWeight}
+                  disabled={isSaving}
+                  onChange={(event) => {
+                    const nextValue = Number(event.target.value);
+                    setDocsJevWeight(
+                      Number.isFinite(nextValue)
+                        ? nextValue
+                        : DOCS_RETRIEVAL_DEFAULTS.jev.weight,
+                    );
+                  }}
+                  className="settings-input"
+                />
+              </div>
             </div>
           </div>
         </section>

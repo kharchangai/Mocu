@@ -665,6 +665,8 @@ export class StepExecutor {
       .map((item) => `- ${item.name}: ${item.description}`)
       .join("\n");
 
+    // Doc context = capped references + metadata only (never content);
+    // fail-open: buildDocsContextPrompt returns "" on no match/failure.
     const docsContextPrompt = await buildDocsContextPrompt(message);
     const llm = await this.options.buildTurnLlm(turn.selectedModel);
     const llmWithTools =

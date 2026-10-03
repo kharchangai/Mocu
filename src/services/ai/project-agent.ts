@@ -1158,13 +1158,33 @@ const createProjectToolExecutor = (
       const toolArgs =
         args as ToolArgs;
 
+      const fileName =
+        getStringArg(
+          toolArgs,
+          "fileName",
+        );
+
+      const path =
+        getStringArg(
+          toolArgs,
+          "path",
+        );
+
+      if (!fileName && !path) {
+        throw new Error(
+          `${readDocTool.name} requires a non-empty "fileName" (or "path") argument.`,
+        );
+      }
+
       return readDocTool.invoke(
         {
-          fileName:
+          fileName: fileName || undefined,
+          path: path || undefined,
+          currentDoc:
             getStringArg(
               toolArgs,
-              "fileName",
-            ),
+              "currentDoc",
+            ) || undefined,
         },
         config,
       );
@@ -1863,7 +1883,8 @@ export const callProjectAgent =
 
     /*
      * Search the user's saved docs and notes for this message and inject
-     * one-line hints into the system prompt. Failures never block the agent.
+     * capped doc references (metadata only, never content) plus notes hints
+     * into the system prompt. Failures never block the agent.
      */
     let docsContextPrompt = "";
 

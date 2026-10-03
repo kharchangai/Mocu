@@ -81,8 +81,8 @@ export type ConditionCandidateScope = {
 export type ConditionCandidate = z.infer<
   typeof LlmOutputSchema
 > & {
-  mainAgentPolicies:
-    CreateMainAgentPoliciesResult;
+  scope: ConditionCandidateScope;
+  mainAgentPolicies: CreateMainAgentPoliciesResult;
 };
 
 function normalizeOptionalString(
@@ -484,13 +484,11 @@ ${JSON.stringify(promptInput, null, 2)}
     ),
   );
 
-  const conditionCandidate:
-    ConditionCandidate = {
-      activationDescription:
-        activationResult.activationDescription,
-
-      mainAgentPolicies,
-    };
+  const conditionCandidate: ConditionCandidate = {
+    activationDescription: activationResult.activationDescription,
+    scope,
+    mainAgentPolicies,
+  };
 
   console.log(
     "Final condition candidate:",

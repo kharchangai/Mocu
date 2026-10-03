@@ -6,7 +6,7 @@ import {
   updateDocFields,
   deleteDoc,
   listDocs,
-  readDoc,
+  readDocOrReject,
 } from "../../../chat/docs";
 
 /**
@@ -14,10 +14,15 @@ import {
  *
  * Lets the agents manage the user's saved searchable knowledge documents
  * (the global docs folder: BaseDirectory.AppData/docs). Before the agent
- * answers, the saved docs are BM25-searched and only a short HINT (file
- * name / name / description / keywords) is injected into the prompt. When
- * the agent needs the actual content, it calls read_knowledge_doc to read
- * the complete document.
+ * answers, the saved docs are hybrid-searched and only capped REFERENCES
+ * (file name + approved metadata: id/title/description/keywords) are
+ * injected into the prompt — never doc bodies or snippets. When the agent
+ * needs the actual content, it calls read_knowledge_doc to read the
+ * complete document itself.
+ *
+ * Markdown links inside a doc are DESCRIPTIVE LEADS only: they are never
+ * crawled or auto-fetched. The agent follows a link by calling
+ * read_knowledge_doc with the linked file name, one explicit read at a time.
  */
 
 const DOC_TOOL_RESULT_LIMIT = 2_000;
@@ -33,41 +38,71 @@ function truncateResult(
 }
 
 export const readDocTool = tool(
-  async ({ fileName }) => {
-    console.log(`[Docs Tool] Reading knowledge doc: "${fileName}".`);
+  async ({ fileName, path, currentDoc }) => {
+    const reference =
+      (fileName && fileName.trim()) || (path && path.trim()) || "";
+
+    console.log(
+      `[Docs Tool] Reading knowledge doc: "${reference}"` +
+        (currentDoc ? ` (linked from "${currentDoc}")` : "") +
+        ".",
+    );
 
     try {
-      const doc = await readDoc(fileName);
-
-      if (!doc) {
-        return `Error: No knowledge document named "${fileName}" exists. Call list_knowledge_docs to see the available documents.`;
-      }
+      // Exactly ONE canonical global markdown file per call. The reference
+      // is resolved against the docs root (or against currentDoc's folder
+      // for relative links); traversal / absolute paths / out-of-root
+      // references are rejected inside readDocOrReject.
+      const doc = await readDocOrReject(
+        reference,
+        currentDoc?.trim() || undefined,
+      );
 
       return truncateResult(
         [
           `Knowledge document "${doc.file}":`,
-          `Name: ${doc.name}`,
+          `id: ${doc.id}`,
+          `Title: ${doc.title}`,
           `Description: ${doc.description}`,
+          `Keywords: ${doc.keywords.join(", ")}`,
           "",
           doc.body,
         ].join("\n"),
         DOC_READ_RESULT_LIMIT,
       );
     } catch (error) {
-      console.error("[Docs Tool] Failed to read doc:", error);
-
-      return `Error: The document could not be read. Details: ${error}`;
+      const message = error instanceof Error ? error.message : String(error);
+      console.error("[Docs Tool] Failed to read doc:", message);
+      return message.startsWith("Error:")
+        ? message
+        : `Error: The document could not be read. Details: ${message}`;
     }
   },
   {
     name: "read_knowledge_doc",
     description:
-      "Reads a saved knowledge document completely (full content) by its file name. " +
-      "Use when a doc hint appears in the prompt and you need to know what the doc says before answering.",
+      "Reads exactly ONE saved knowledge document (full metadata + body) from the global docs folder. " +
+      "Pass either a plain file name/path (from a doc reference or list_knowledge_docs) or a markdown link target with currentDoc set to the document that contains the link. " +
+      "Doc references in the prompt carry metadata only; this tool is the only way to get content. " +
+      "Markdown links inside a document are descriptive leads for YOU to follow: decide yourself whether to call this tool again for the linked file — links are never resolved, read or fetched automatically, and this tool never crawls links or consults another model. " +
+      "Traversal, absolute paths and anything outside the global docs folder are rejected.",
     schema: z.object({
       fileName: z
         .string()
-        .describe("Exact file name of the doc, e.g. 'my-idea.md' (from the doc hint or list_knowledge_docs)"),
+        .optional()
+        .describe(
+          "Document reference: exact file name or docs-relative path, e.g. 'my-idea.md' or 'guides/setup.md' (from a doc reference, list_knowledge_docs, or a markdown link target)",
+        ),
+      path: z
+        .string()
+        .optional()
+        .describe("Alias for fileName; give either fileName or path."),
+      currentDoc: z
+        .string()
+        .optional()
+        .describe(
+          "Docs-relative path of the document containing the link you are following, e.g. 'guides/setup.md'. Relative link targets are resolved against this document's folder; omit it when reading a document by plain name.",
+        ),
     }),
   },
 );
@@ -81,7 +116,7 @@ export const createDocTool = tool(
 
       return [
         `Knowledge document created and saved as "${doc.file}".`,
-        `Name: ${doc.name}`,
+        `Title: ${doc.title}`,
         `Description: ${doc.description}`,
         `Keywords: ${doc.keywords.join(", ")}`,
       ].join("\n");
@@ -116,7 +151,7 @@ export const updateDocTool = tool(
 
         return [
           `Knowledge document "${doc.file}" updated.`,
-          `Name: ${doc.name}`,
+          `Title: ${doc.title}`,
           `Description: ${doc.description}`,
         ].join("\n");
       }
@@ -133,7 +168,7 @@ export const updateDocTool = tool(
 
       return [
         `Knowledge document "${doc.file}" updated.`,
-        `Name: ${doc.name}`,
+        `Title: ${doc.title}`,
         `Description: ${doc.description}`,
         `Keywords: ${doc.keywords.join(", ")}`,
       ].join("\n");
@@ -208,7 +243,7 @@ export const listDocsTool = tool(
         docs
           .map(
             (doc) =>
-              `- ${doc.file} | ${doc.name} | ${doc.description} | keywords: ${doc.keywords.join(", ")}`,
+              `- ${doc.file} | ${doc.title} | ${doc.description} | keywords: ${doc.keywords.join(", ")}`,
           )
           .join("\n"),
       );
