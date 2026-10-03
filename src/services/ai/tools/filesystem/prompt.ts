@@ -16,6 +16,5 @@ Paths are absolute; line numbers are 1-based as shown by read_file.
 - edit_file replaces startLine..endLine inclusive; endLine = startLine - 1 inserts without deleting; empty text deletes the range. A trailing newline in text is a line terminator, not an extra blank line (a lone '\n' blanks exactly one line). Verify the before/after context it returns.
 - write_file creates a file; use overwrite=true only for a deliberate full rewrite.
 - Backticked absolute paths in the user's message are references: inspect them and do not modify them unless asked.
-- Do not use terminal_executor for ordinary file reading, writing, editing, or searching.
 - Never claim a file operation succeeded unless its result says so; report tool errors accurately.
 `.trim();

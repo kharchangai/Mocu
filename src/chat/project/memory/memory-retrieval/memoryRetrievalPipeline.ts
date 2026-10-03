@@ -10,8 +10,8 @@
  *    current user message and decides ONLY whether stored memory is
  *    required for the current message.
  *
- *    - not required  -> both memory retrievers are skipped and no
- *                       retrieved memory context is returned.
+ *    - not required  -> skip both retrievers and return no stored memory
+ *                       context; the chat agent uses the current user message.
  *    - required      -> BOTH memory retrievers run concurrently:
  *
  *       TEMPORAL RETRIEVER — hierarchical Episode/Window/Turn search
@@ -30,7 +30,7 @@
  *
  *   user message + previous live turn
  *     -> memory gate LLM       (memoryRequired yes/no)
- *     -> temporal + graph retrieval (concurrent)
+ *     -> temporal + graph retrieval (concurrent, only when required)
  *     -> evidence selector LLM (select + dedupe + combine)
  *     -> final memory context for the agent system prompt
  *
@@ -49,7 +49,6 @@ import {
 
 import {
   findBestTurnEvidence,
-  findLastTurnEvidence,
   type TurnEvidenceSearchOptions,
   type TurnEvidenceSearchResult,
 } from "./turnEvidenceSearchEngine";
@@ -585,70 +584,27 @@ async function retrieveProjectMemoryInternal(
     );
 
   /*
-   * Memory NOT required: skip both retrievers, but still return the
-   * last stored Turn of the database so the agent keeps the
-   * continuity of the most recent exchange.
+   * Memory NOT required: skip both retrievers. The caller will answer
+   * using the current user message, without injecting an unrelated
+   * previously stored turn into the prompt.
    */
   if (!gateDecision.memoryRequired) {
     console.log(
-      "[Memory Retrieval] Memory not required, returning the last stored turn.",
+      "[Memory Retrieval] Memory not required; skipping retrieval.",
     );
-
-    let lastTurnMemory:
-      | RelatedMemory
-      | null = null;
-
-    try {
-      lastTurnMemory =
-        await findLastTurnEvidence(
-          databasePath,
-        );
-    } catch (
-      error: unknown
-    ) {
-      console.error(
-        "[Memory Retrieval] Last turn retrieval failed:",
-        error,
-      );
-    }
-
-    const memoryContext =
-      lastTurnMemory?.contextText.trim() ?? "";
-
-    if (memoryContext) {
-      console.log(
-        "[Memory Retrieval] Last turn memory found:",
-        {
-          turnIndex:
-            lastTurnMemory?.turns[0]?.turnIndex ??
-            null,
-
-          estimatedTokens:
-            estimateTokens(
-              memoryContext,
-            ),
-        },
-      );
-    } else {
-      console.log(
-        "[Memory Retrieval] No stored turn available.",
-      );
-    }
 
     return {
       memoryRequired: false,
 
       gateDecision,
 
-      temporalMemory: lastTurnMemory,
+      temporalMemory: null,
 
       graphMemoryContext: "",
 
-      memoryContext,
+      memoryContext: "",
 
-      estimatedTokens: estimateTokens(
-        memoryContext,
-      ),
+      estimatedTokens: 0,
     };
   }
 

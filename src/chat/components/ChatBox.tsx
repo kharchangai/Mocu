@@ -1292,9 +1292,13 @@ export function ChatBox({
      */
     toolActivity.beginRequest(requestChatId);
 
+    /*
+     * Use the messages belonging to the selected chat directly. The ref may
+     * still hold the previous chat for a render while switching conversations.
+     */
     const currentHistory =
       chatId === requestChatId
-        ? messagesRef.current
+        ? convertToLangChainMessages(messages)
         : [];
 
     const existingUserTexts =

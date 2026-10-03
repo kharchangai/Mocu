@@ -1,6 +1,7 @@
 // src/chat-agent.ts
 
 import {
+  AIMessage,
   BaseMessage,
   HumanMessage,
   SystemMessage,
@@ -37,8 +38,9 @@ import {
 } from "../ai/model-stream";
 
 import {
+  buildUserMemoryPrompt,
   getPreviousConversationTurn,
-  retrieveUserMemoryPrompt,
+  retrieveUserMemory,
   saveUserMemoryInBackground,
 } from "./agent/user-memory";
 
@@ -412,27 +414,17 @@ const getCurrentUserText = (
 };
 
 const buildChatMessagesForCurrentRequest = (
-  messages: BaseMessage[],
   userText: string,
+  previousTurn: ReturnType<typeof getPreviousConversationTurn> = null,
 ): BaseMessage[] => {
-  if (
-    messages.length === 0
-  ) {
-    return [
-      new HumanMessage(
-        userText,
-      ),
-    ];
-  }
-
   return [
-    ...messages.slice(
-      0,
-      -1,
-    ),
-    new HumanMessage(
-      userText,
-    ),
+    ...(previousTurn
+      ? [
+          new HumanMessage(previousTurn.userMessage),
+          new AIMessage(previousTurn.agentResponse),
+        ]
+      : []),
+    new HumanMessage(userText),
   ];
 };
 
@@ -1562,36 +1554,28 @@ export const callChatAgent =
       );
     }
 
-    const chatMessages =
-      buildChatMessagesForCurrentRequest(
-        state.messages,
-        userText,
-      );
-
     /*
-     * Retrieve the global user memory for the current message. This is
-     * the same memory system the project agent uses, but it is stored in
-     * the global application storage (never in a project file). Retrieval
-     * failures and timeouts never block the agent.
+     * Retrieve global user memory for the current message. The previous live
+     * turn is taken from this chat's isolated history and passed to the memory
+     * gate. If stored memory is not required, include that same-chat turn in
+     * the actual model messages so the reply can use local conversation context.
      */
-    const previousTurn =
-      getPreviousConversationTurn(
-        state.messages,
-      );
+    const previousTurn = getPreviousConversationTurn(state.messages);
 
-    const relatedMemoryPrompt =
-      await waitForOptionalContext(
-        (contextSignal) =>
-          retrieveUserMemoryPrompt(
-            userText,
-            previousTurn,
-            contextSignal,
-          ),
-        "",
-        "user memory",
-        signal,
-        LONG_TERM_MEMORY_TIMEOUT_MS,
-      );
+    const userMemory = await waitForOptionalContext(
+      (contextSignal) =>
+        retrieveUserMemory(userText, previousTurn, contextSignal),
+      null,
+      "user memory",
+      signal,
+      LONG_TERM_MEMORY_TIMEOUT_MS,
+    );
+    const relatedMemoryPrompt = buildUserMemoryPrompt(userMemory);
+
+    const chatMessages = buildChatMessagesForCurrentRequest(
+      userText,
+      userMemory?.memoryRequired === false ? previousTurn : null,
+    );
 
     throwIfAborted(
       signal,
@@ -2077,7 +2061,6 @@ export const callChatAgent =
           new SystemMessage(
             systemPrompt,
           ),
-          ...chatMessages,
           new HumanMessage(
             summaryPrompt,
           ),
@@ -2098,7 +2081,6 @@ export const callChatAgent =
         getChatIdFromConfig(runnableConfig),
         { mode: "answer" },
       );
-
       const finalResponse =
         await invokeChatModel(
           (config) =>
