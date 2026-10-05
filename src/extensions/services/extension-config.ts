@@ -47,6 +47,8 @@ async function writeConfigStore(
   const settingsStore = await getSettingsStore();
 
   await settingsStore.set(SETTINGS_KEY, store);
+  // Settings store uses autoSave: false; explicitly flush the update to disk.
+  await settingsStore.save();
 }
 
 /** Saved values for one extension (without defaults applied). */
