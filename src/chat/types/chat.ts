@@ -1,3 +1,5 @@
+import type { ChatImageAttachment } from './imageAttachment';
+
 export type ChatRole = 'user' | 'assistant' | 'system';
 
 export type ChatMessage = {
@@ -5,6 +7,7 @@ export type ChatMessage = {
   role: ChatRole;
   content: string;
   createdAt: string;
+  attachments?: ChatImageAttachment[];
 };
 
 export type ChatConversation = {

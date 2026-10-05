@@ -44,6 +44,7 @@ export {
 } from "./jev-relevance";
 
 export {
+  detectLineEnding,
   formatNumberedLines,
   splitLines,
   joinLines,

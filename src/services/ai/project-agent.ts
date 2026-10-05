@@ -1,6 +1,7 @@
 // src/project-agent.ts
 
 import {
+  AIMessage,
   BaseMessage,
   HumanMessage,
   SystemMessage,
@@ -18,7 +19,8 @@ import {
   isAbortError,
   throwIfAborted,
 } from "./agent/abort";
-
+import { assertImageModelSupport, buildHumanMessageFromRequest, getImageRequestText, hasImageInput } from './agent/image-content';
+import { isFileToolError } from "./agent/file-tool-recovery";
 import {
   dispatchAgentActivity,
   getTextContent,
@@ -59,7 +61,7 @@ import {
 } from "./focus/focusManager";
 
 import { runSpecialistSlashCommand } from "./specialistCommands";
-
+import { parseSpecialistSlashCommand } from '../../chat/services/specialistSlashCommands';
 import {
   CHAT_EMPTY_RESPONSE,
   CHAT_EMPTY_TOOL_RESULT,
@@ -395,9 +397,7 @@ const getCurrentUserText = (
     return "";
   }
 
-  return getTextContent(
-    lastMessage.content,
-  ).trim();
+  return getImageRequestText(lastMessage);
 };
 
 /*
@@ -1425,6 +1425,7 @@ const executeProjectToolCall = async ({
       toolResult ||
       CHAT_EMPTY_TOOL_RESULT;
 
+    executionFailed ||= isFileToolError(normalizedToolResult);
     dispatchAgentToolActivity({
       id: toolCallId,
       tool: toolName,
@@ -1432,7 +1433,7 @@ const executeProjectToolCall = async ({
       result: normalizedToolResult,
       status:
         normalizedToolResult ===
-        CHAT_TOOL_FAILURE_RESULT
+        CHAT_TOOL_FAILURE_RESULT || executionFailed
           ? "error"
           : "done",
       chatId,
@@ -1726,6 +1727,7 @@ export const callProjectAgent =
       );
     }
 
+    const currentUserMessage = state.messages[state.messages.length - 1];
     const rawUserText =
       getCurrentUserText(
         state.messages,
@@ -1744,6 +1746,13 @@ export const callProjectAgent =
     );
 
     const focusChatId = getChatIdFromConfig(runnableConfig) || "default";
+    // Specialist executors are text-only; never silently discard user images.
+    if (hasImageInput(currentUserMessage) && (
+      parseSpecialistSlashCommand(rawUserText) || parseFocusStartGoal(rawUserText) ||
+      await hasActiveFocusSession(focusChatId) || await hasActiveStepWorkflow(focusChatId)
+    )) {
+      throw new Error('Image attachments are supported in regular project chat, not Focus or Step-by-Step. Exit the specialist session or remove the images.');
+    }
     const specialistResponse = await runSpecialistSlashCommand({
       chatId: focusChatId,
       userText: rawUserText,
@@ -1986,7 +1995,7 @@ export const callProjectAgent =
         selectedModel,
         { reasoningEffort },
       );
-
+    await assertImageModelSupport(llm.model, currentUserMessage);
     throwIfAborted(
       signal,
     );
@@ -2167,9 +2176,14 @@ export const callProjectAgent =
           systemPrompt,
         ),
 
-        new HumanMessage(
-          userText,
-        ),
+        ...(memoryResult?.memoryRequired === false && previousTurn
+          ? [
+              new HumanMessage(previousTurn.userMessage),
+              new AIMessage(previousTurn.agentResponse),
+            ]
+          : []),
+
+        buildHumanMessageFromRequest(userText, currentUserMessage),
       ];
 
     const toolResultsSummary: string[] = [];
@@ -2404,7 +2418,7 @@ export const callProjectAgent =
         await getMainAgentLlm(
           selectedModel,
           {},
-          "medium",
+          hasImageInput(currentUserMessage) ? "expensive" : "medium",
         );
 
       throwIfAborted(
@@ -2476,16 +2490,14 @@ export const callProjectAgent =
             systemPrompt,
           ),
 
-          new HumanMessage(
-            summaryPrompt,
-          ),
+          buildHumanMessageFromRequest(summaryPrompt, currentUserMessage),
         ];
 
       const plainLlm =
         await getMainAgentLlm(
           selectedModel,
           {},
-          "medium",
+          hasImageInput(currentUserMessage) ? "expensive" : "medium",
         );
 
       throwIfAborted(

@@ -1112,3 +1112,21 @@
     border-color: #aaa69e;
   }
 }
+
+.user-message-images {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+
+.user-message-images img {
+  width: 112px;
+  height: 90px;
+  max-width: 100%;
+  object-fit: contain;
+  border: 1px solid #e5e7eb;
+  border-radius: 10px;
+  background: #f9fafb;
+}

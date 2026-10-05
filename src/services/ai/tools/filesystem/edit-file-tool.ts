@@ -23,6 +23,7 @@ import { isAbortError, throwIfAborted } from "../../agent/abort";
 
 import {
   applyLineEdits,
+  detectLineEnding,
   editLineDelta,
   formatNumberedLines,
   isReplacementRange,
@@ -160,6 +161,7 @@ export const editFileTool = tool(
 
       const content = await readText(filePath);
       const before = splitLines(content);
+      const lineEnding = detectLineEnding(content);
 
       const parsed: LineEdit[] = edits.map((edit) => ({
         startLine: edit.startLine,
@@ -169,7 +171,12 @@ export const editFileTool = tool(
 
       const after = applyLineEdits(before, parsed);
 
-      await writeText(filePath, joinLines(after));
+      const updated = joinLines(after, lineEnding);
+      if (updated === content) {
+        return `No changes needed: ${filePath}. The requested text already matches. Do not repeat this edit; verify or continue.`;
+      }
+      throwIfAborted(signal);
+      await writeText(filePath, updated);
 
       throwIfAborted(signal);
 
@@ -189,6 +196,7 @@ export const editFileTool = tool(
       return [
         `Edited file: ${filePath}`,
         `Applied ${parsed.length} edit(s): ${before.length} -> ${after.length} lines.`,
+        "Next edit: use the AFTER line numbers below, or read_file again; old numbers may have shifted.",
         "",
         previews.join("\n\n"),
       ].join("\n");
@@ -204,12 +212,11 @@ export const editFileTool = tool(
   {
     name: "edit_file",
     description:
-      "Edits specific lines of an existing text file by line number. " +
-      "Each edit replaces the inclusive line range [startLine, endLine] with text (use '' to delete lines, " +
-      "or endLine = startLine - 1 to insert before startLine without removing anything). " +
-      "Line numbers are the numbers shown by read_file. " +
-      "All edits in one call are applied in a single pass and must not overlap. " +
-      "Returns before/after context around every change.",
+      "Edit existing files using CURRENT read_file line numbers. " +
+      "Replace startLine..endLine inclusive; text='' deletes; endLine=startLine-1 inserts before startLine. " +
+      "Batch edits use the same original numbering and must not overlap. " +
+      "Returns BEFORE/AFTER lines: verify AFTER and refresh numbers before another edit. " +
+      "On failure change arguments/approach, or use terminal_executor if available; never repeat unchanged failed calls.",
     schema: editFileInputSchema,
   },
 );

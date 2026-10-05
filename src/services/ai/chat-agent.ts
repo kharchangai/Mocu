@@ -17,7 +17,8 @@ import {
   isAbortError,
   throwIfAborted,
 } from "./agent/abort";
-
+import { assertImageModelSupport, buildHumanMessageFromRequest, getImageRequestText, hasImageInput } from './agent/image-content';
+import { isFileToolError } from "./agent/file-tool-recovery";
 import {
   dispatchAgentActivity,
   getTextContent,
@@ -167,7 +168,7 @@ import {
   runStepWorkflowTurn,
 } from "./stepbystep/workflowManager";
 import { runSpecialistSlashCommand } from "./specialistCommands";
-
+import { parseSpecialistSlashCommand } from '../../chat/services/specialistSlashCommands';
 const MAX_TOOL_STEPS = 5;
 const OPTIONAL_CONTEXT_TIMEOUT_MS = 10_000;
 const LONG_TERM_MEMORY_TIMEOUT_MS = 30_000;
@@ -408,14 +409,13 @@ const getCurrentUserText = (
     return "";
   }
 
-  return getTextContent(
-    lastMessage.content,
-  ).trim();
+  return getImageRequestText(lastMessage);
 };
 
 const buildChatMessagesForCurrentRequest = (
   userText: string,
   previousTurn: ReturnType<typeof getPreviousConversationTurn> = null,
+  source?: BaseMessage,
 ): BaseMessage[] => {
   return [
     ...(previousTurn
@@ -424,7 +424,7 @@ const buildChatMessagesForCurrentRequest = (
           new AIMessage(previousTurn.agentResponse),
         ]
       : []),
-    new HumanMessage(userText),
+    buildHumanMessageFromRequest(userText, source),
   ];
 };
 
@@ -1314,7 +1314,7 @@ const executeToolCall =
         await toolExecutor.execute(
           toolName,
           toolArgs,
-          { toolCallId, toolName, chatId },
+          { toolCallId, toolName, chatId, signal },
         );
 
       throwIfAborted(
@@ -1360,7 +1360,7 @@ const executeToolCall =
       result: normalizedToolResult,
       status:
         normalizedToolResult ===
-        CHAT_TOOL_FAILURE_RESULT
+        CHAT_TOOL_FAILURE_RESULT || isFileToolError(normalizedToolResult)
           ? "error"
           : "done",
       chatId,
@@ -1405,6 +1405,7 @@ export const callChatAgent =
       signal,
     );
 
+    const currentUserMessage = state.messages[state.messages.length - 1];
     const rawUserText =
       getCurrentUserText(
         state.messages,
@@ -1423,6 +1424,13 @@ export const callChatAgent =
     );
 
     const focusChatId = getChatIdFromConfig(runnableConfig) || "default";
+    // Specialist executors are text-only; never silently discard user images.
+    if (hasImageInput(currentUserMessage) && (
+      parseSpecialistSlashCommand(rawUserText) || parseFocusStartGoal(rawUserText) ||
+      await hasActiveFocusSession(focusChatId) || await hasActiveStepWorkflow(focusChatId)
+    )) {
+      throw new Error('Image attachments are supported in regular chat, not Focus or Step-by-Step. Exit the specialist session or remove the images.');
+    }
     const specialistResponse = await runSpecialistSlashCommand({
       chatId: focusChatId,
       userText: rawUserText,
@@ -1575,6 +1583,7 @@ export const callChatAgent =
     const chatMessages = buildChatMessagesForCurrentRequest(
       userText,
       userMemory?.memoryRequired === false ? previousTurn : null,
+      currentUserMessage,
     );
 
     throwIfAborted(
@@ -1598,7 +1607,7 @@ export const callChatAgent =
         selectedModel,
         { reasoningEffort },
       );
-
+    await assertImageModelSupport(llm.model, currentUserMessage);
     throwIfAborted(
       signal,
     );
@@ -1994,7 +2003,7 @@ export const callChatAgent =
         await getMainAgentLlm(
           selectedModel,
           {},
-          "medium",
+          hasImageInput(currentUserMessage) ? "expensive" : "medium",
         );
 
       throwIfAborted(
@@ -2061,16 +2070,14 @@ export const callChatAgent =
           new SystemMessage(
             systemPrompt,
           ),
-          new HumanMessage(
-            summaryPrompt,
-          ),
+          buildHumanMessageFromRequest(summaryPrompt, currentUserMessage),
         ];
 
       const plainLlm =
         await getMainAgentLlm(
           selectedModel,
           {},
-          "medium",
+          hasImageInput(currentUserMessage) ? "expensive" : "medium",
         );
 
       throwIfAborted(

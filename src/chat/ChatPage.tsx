@@ -345,26 +345,21 @@ function ChatPage() {
   /*
    * Conversations without a project folder are displayed under Chats.
    */
-  const regularChats =
-    useMemo<RecentChat[]>(
-      () =>
-        chats
-          .filter(
-            (chat) =>
-              !chat.projectPath ||
-              chat.projectPath.trim() === '',
-          )
-          .sort(
-            (firstChat, secondChat) =>
-              new Date(secondChat.updatedAt).getTime() -
-              new Date(firstChat.updatedAt).getTime(),
-          )
-          .map((chat) => ({
-            id: chat.id,
-            title: chat.title,
-          })),
-      [chats],
-    );
+  const regularChats = useMemo<RecentChat[]>(() => {
+    const seenChatIds = new Set<string>();
+
+    return chats
+      .filter((chat) => {
+        const isRegularChat = !chat.projectPath || chat.projectPath.trim() === '';
+        if (!isRegularChat || seenChatIds.has(chat.id)) return false;
+        seenChatIds.add(chat.id);
+        return true;
+      })
+      .sort((firstChat, secondChat) =>
+        new Date(secondChat.updatedAt).getTime() - new Date(firstChat.updatedAt).getTime(),
+      )
+      .map((chat) => ({ id: chat.id, title: chat.title }));
+  }, [chats]);
 
   /*
    * An existing chat uses its own project path.
@@ -674,6 +669,7 @@ function ChatPage() {
         firstMessage: string,
         projectPath: string,
         initialHistory?: ChatMessage[],
+        attachments?: ChatMessage['attachments'],
       ): Promise<EnsureChatResult> => {
         /*
          * Use exactly the project path resolved by the caller.
@@ -690,9 +686,8 @@ function ChatPage() {
             firstMessage,
             effectiveProjectPath,
             initialHistory ?? [],
+            attachments ?? [],
           );
-
-        setActiveItem('new-chat');
 
         return result;
       },

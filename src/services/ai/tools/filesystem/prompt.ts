@@ -8,13 +8,12 @@
 export const FILE_TOOLS_SYSTEM_PROMPT = `
 FILE TOOLS RULES
 
-Paths are absolute; line numbers are 1-based as shown by read_file.
-
-- find_file: root is the absolute directory to search (project chats: the PROJECT PATH unless the user names another location; otherwise use a user-provided or trusted location and ask instead of guessing). query is the user's exact goal in natural language (the word, phrase, line, or behavior to find), never a vague summary. patterns are short candidate hints only (literal terms, synonyms, identifiers); Jev ranks candidates against query, so add synonyms that query's keywords alone would miss. Use contentPattern only for a direct regex content search and namePattern for file names. Regexes are case-insensitive JavaScript: no (?i) flags, no sentences inside patterns.
-- Content results include path, line number, text, and Jev relevance; read those lines before editing.
-- read_file output ("  12 | text") shows the numbers edit_file expects; always read (or find) a file before editing so the numbers are current.
-- edit_file replaces startLine..endLine inclusive; endLine = startLine - 1 inserts without deleting; empty text deletes the range. A trailing newline in text is a line terminator, not an extra blank line (a lone '\n' blanks exactly one line). Verify the before/after context it returns.
-- write_file creates a file; use overwrite=true only for a deliberate full rewrite.
-- Backticked absolute paths in the user's message are references: inspect them and do not modify them unless asked.
-- Never claim a file operation succeeded unless its result says so; report tool errors accurately.
+- Use absolute paths. Search inside PROJECT PATH unless the user specifies another location; never guess paths.
+- Know the file? read_file directly. Otherwise find_file: namePattern for filenames, contentPattern for exact text/JavaScript regex, or query (actual search goal) + short patterns for meaning. No sentences in regex fields.
+- Read the target region before editing. Use the displayed 1-based numbers, but never copy the "12 |" prefixes into code.
+- edit_file: replace = startLine..endLine inclusive; delete = text ""; insert before N = startLine N, endLine N-1. Example: {startLine: 8, endLine: 7, text: "new code"}.
+- Batch edits use the SAME original numbering and must not overlap. After any edit, old numbers may shift: use the returned AFTER numbers or read again before the next edit.
+- write_file creates files; overwrite=true replaces the ENTIRE file, not a patch. Preserve unrelated code.
+- On error, use the actual reason to change arguments/approach; never repeat an unchanged failed call. If file tools cannot do the job reliably, use terminal_executor when available with the host shell (Windows: PowerShell). Do not bypass permissions or safety checks. Inspect the file/diff after terminal edits.
+- Paths mentioned by the user are references, not permission to change them. Modify only what the task requires; verify changes/tests and claim success only from tool results.
 `.trim();

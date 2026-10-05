@@ -20,6 +20,7 @@ import { dispatchAgentToolActivity } from "../../../chat/services/toolActivity";
 import { invokeAgentModelWithTrace } from "../../../chat/services/agentTrace";
 import { saveSpecialistSectionMemoryInBackground } from "../agent/specialist-memory";
 import { withShortDescription } from "../agent/tool-summaries";
+import { FileToolRecovery, isFileToolError } from "../agent/file-tool-recovery";
 import { buildDocsContextPrompt } from "../../../chat/docs";
 import {
   createStepToolCallFailureMessage,
@@ -204,6 +205,7 @@ function errorMessage(error: unknown): string {
 }
 
 function isToolErrorResult(result: string): boolean {
+  if (isFileToolError(result)) return true;
   try {
     const parsed: unknown = JSON.parse(result);
 
@@ -660,6 +662,7 @@ export class StepExecutor {
     for (const item of allTools) {
       toolMap.set(item.name, item);
     }
+    const fileRecovery = new FileToolRecovery();
 
     const toolsDescription = llmTools
       .map((item) => `- ${item.name}: ${item.description}`)
@@ -775,9 +778,10 @@ export class StepExecutor {
             planUpdateRequested = true;
           }
 
-          const output = await selectedTool.invoke(
-            toolCall.args ?? {},
-            turn.config,
+          const output = await fileRecovery.execute(
+            toolCall.name, toolArgs,
+            async () => selectedTool.invoke(toolArgs, turn.config),
+            toolMap.has("terminal_executor"), turn.config?.signal as AbortSignal | undefined,
           );
 
           resultText = typeof output === "string" ? output : JSON.stringify(output);

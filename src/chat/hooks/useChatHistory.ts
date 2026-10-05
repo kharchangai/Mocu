@@ -52,12 +52,14 @@ function createTitle(content: string): string {
 function createMessage(
   role: ChatRole,
   content: string,
+  attachments: ChatMessage['attachments'] = [],
 ): ChatMessage {
   return {
     id: createId('message'),
     role,
     content: content.trim(),
     createdAt: new Date().toISOString(),
+    ...(attachments.length ? { attachments } : {}),
   };
 }
 
@@ -165,17 +167,17 @@ export function useChatHistory() {
       firstUserMessage: string,
       projectPath = '',
       initialMessages: ChatMessage[] = [],
+      attachments: ChatMessage['attachments'] = [],
     ): AddMessageResult => {
       const normalizedMessage = firstUserMessage.trim();
 
-      if (!normalizedMessage) {
+      if (!normalizedMessage && attachments.length === 0) {
         throw new Error('The first message cannot be empty.');
       }
 
       const now = new Date().toISOString();
       const chatId = createId('chat');
-      const message = createMessage('user', normalizedMessage);
-
+      const message = createMessage('user', normalizedMessage, attachments);
       const normalizedProjectPath = projectPath.trim();
 
       /*
@@ -222,16 +224,16 @@ export function useChatHistory() {
       chatId: string,
       role: ChatRole,
       content: string,
+      attachments: ChatMessage['attachments'] = [],
     ): ChatMessage => {
       const normalizedContent = content.trim();
 
-      if (!normalizedContent) {
+      if (!normalizedContent && attachments.length === 0) {
         throw new Error('The message cannot be empty.');
       }
 
-      const message = createMessage(role, normalizedContent);
+      const message = createMessage(role, normalizedContent, attachments);
       const updatedAt = new Date().toISOString();
-
       /*
        * Resolve the target conversation from the latest chats state
        * inside the updater. Looking it up from the closure could miss
@@ -242,7 +244,6 @@ export function useChatHistory() {
         const existingChat = currentChats.find(
           (chat) => chat.id === chatId,
         );
-
         if (!existingChat) {
           console.error(
             `[Chat History] Chat not found: ${chatId}`,
@@ -460,10 +461,11 @@ export function useChatHistory() {
       firstUserMessage: string,
       projectPath = '',
       initialHistory: ChatMessage[] = [],
+      attachments: ChatMessage['attachments'] = [],
     ): Promise<EnsureChatResult> => {
       const normalizedMessage = firstUserMessage.trim();
 
-      if (!normalizedMessage) {
+      if (!normalizedMessage && attachments.length === 0) {
         throw new Error('The first message cannot be empty.');
       }
 
@@ -515,8 +517,8 @@ export function useChatHistory() {
         normalizedMessage,
         normalizedProjectPath,
         initialHistory,
+        attachments,
       );
-
       return {
         chatId,
         wasCreated: true,
@@ -526,8 +528,12 @@ export function useChatHistory() {
   );
 
   const appendMessage = useCallback(
-    (chatId: string, role: ChatRole, content: string): ChatMessage =>
-      addMessage(chatId, role, content),
+    (
+      chatId: string,
+      role: ChatRole,
+      content: string,
+      attachments?: ChatMessage['attachments'],
+    ): ChatMessage => addMessage(chatId, role, content, attachments),
     [addMessage],
   );
 

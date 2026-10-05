@@ -16,6 +16,44 @@ const docsContextMock = vi.hoisted(() => ({
 vi.mock("../../../chat/docs", () => docsContextMock);
 
 describe("StepExecutor tool rounds", () => {
+  it("skips an identical failed edit, then continues using terminal fallback", async () => {
+    const state: WorkflowState = {
+      id: "workflow-file-recovery", chatId: "chat-file-recovery",
+      plan: { final_goal: "Fix code", steps: [{ step_number: 1, title: "Fix", summary: "", goal: "Fix", tips: [] }] },
+      currentStepIndex: 0, status: "active", memories: {}, recentTurns: [],
+    };
+    const store = {
+      load: vi.fn(async () => state), save: vi.fn(async () => undefined),
+      append: vi.fn(async () => ({ id: "log", workflowId: state.id })),
+      readStepHistory: vi.fn(async () => []),
+    } as unknown as WorkflowStore;
+    let rounds = 0;
+    const captured: string[] = [];
+    const llm = {
+      bindTools: vi.fn(() => ({
+        async *stream(messages: unknown[]) {
+          captured.push(JSON.stringify(messages));
+          rounds++;
+          if (rounds <= 3) {
+            yield new AIMessageChunk({ content: "", tool_calls: [{
+              id: `call-${rounds}`, type: "tool_call",
+              name: rounds <= 2 ? "edit_file" : "terminal_executor",
+              args: rounds <= 2 ? { path: "E:\\project\\file.ts", edits: [] } : { command: "repair" },
+            }] });
+          } else yield new AIMessageChunk({ content: "Fixed and verified." });
+        },
+      })),
+    } as unknown as ChatOpenAI;
+    const edit = { name: "edit_file", description: "edit", invoke: vi.fn(async () => { throw new Error("edits must not be empty"); }) };
+    const terminal = { name: "terminal_executor", description: "shell", invoke: vi.fn(async () => "Repaired and verified") };
+    const executor = new StepExecutor(store, { buildTurnLlm: async () => llm, buildSummaryLlm: async () => llm });
+    const result = await executor.send(state.id, { message: "Fix code" }, { tools: [edit, terminal] });
+    expect(edit.invoke).toHaveBeenCalledOnce();
+    expect(terminal.invoke).toHaveBeenCalledOnce();
+    expect(captured[1]).toContain("edits must not be empty");
+    expect(captured[2]).toContain("NOT executed again");
+    expect(result.reply).toBe("Fixed and verified.");
+  });
   it("continues beyond ten tool rounds until the model finishes", async () => {
     const state: WorkflowState = {
       id: "workflow-test",

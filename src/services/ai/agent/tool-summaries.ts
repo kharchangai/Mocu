@@ -12,15 +12,15 @@ const SHORT_TOOL_DESCRIPTIONS: Record<string, string> = {
   // Task tools (shared with the project agent).
   desktop_vision_action: "Inspect the user's screen when requested.",
   terminal_executor:
-    "Run a shell command in the selected project. Do NOT use it for ordinary file reads, writes, edits, or searches; use the file tools.",
+    "Run host-shell commands (Windows: PowerShell). Prefer file tools; if they fail or cannot edit reliably, use this for files, preserve unrelated code and verify the diff. Never repeat unchanged failed calls or bypass safety checks.",
   perplexity_search: "Search the web for current information.",
   load_skill: "Load instructions for a selected skill.",
   read_file:
-    "Read a file (1-based line numbers). Read (or find) before editing so line numbers are current.",
+    "Read current 1-based lines before editing. Do not copy number prefixes into code; old numbers may shift after edits.",
   write_file:
     "Create a file or fully rewrite it; pass overwrite=true only for a deliberate full rewrite.",
   edit_file:
-    "Replace lines startLine..endLine inclusive (endLine = startLine - 1 inserts, empty text deletes); verify the returned diff.",
+    "Replace startLine..endLine inclusive; endLine=startLine-1 inserts, empty text deletes. Batch ranges use original numbers, no overlaps. Verify AFTER lines; on error change arguments or use terminal_executor if available.",
   find_file:
     "Find files/lines by natural-language query or regex (query = exact goal, patterns = hints). Read matched lines before editing.",
   schedule_action: "Create, list, update, or remove scheduled tasks.",

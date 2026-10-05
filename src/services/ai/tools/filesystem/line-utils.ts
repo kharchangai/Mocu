@@ -18,8 +18,27 @@ export function splitLines(content: string): string[] {
   return normalizeContent(content).split("\n");
 }
 
-export function joinLines(lines: string[]): string {
-  return lines.join("\n");
+export function detectLineEnding(content: string): "\n" | "\r\n" | "\r" {
+  const counts = new Map<string, number>();
+  let firstSeen: string | undefined;
+
+  for (const match of content.matchAll(/\r\n|\r|\n/g)) {
+    const ending = match[0];
+    firstSeen ??= ending;
+    counts.set(ending, (counts.get(ending) ?? 0) + 1);
+  }
+
+  if (!firstSeen) {
+    return "\n";
+  }
+
+  return [...counts.entries()].reduce((mostCommon, current) =>
+    current[1] > mostCommon[1] ? current : mostCommon,
+  )[0] as "\n" | "\r\n" | "\r";
+}
+
+export function joinLines(lines: string[], lineEnding = "\n"): string {
+  return lines.join(lineEnding);
 }
 
 /*

@@ -13,6 +13,26 @@
   margin-bottom: 28px;
 }
 
+.agents-page-header-actions { display: flex; align-items: center; gap: 9px; }
+.agents-install-button, .agents-cancel-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  min-height: 36px;
+  padding: 0 12px;
+  border: 1px solid #d97757;
+  border-radius: 8px;
+  color: #fff;
+  background: #d97757;
+  font: inherit;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+}
+.agents-install-button:hover:not(:disabled) { background: #c66749; }
+.agents-install-button:disabled { cursor: wait; opacity: .55; }
+
 .agents-page-eyebrow {
   margin: 0 0 7px;
   color: #d97757;
@@ -65,6 +85,7 @@
 }
 
 .agents-message-error { color: #b42318; }
+.agents-message-success { color: #37804b; }
 
 .agents-empty-state {
   display: flex;
@@ -106,13 +127,81 @@
   place-items: center;
 }
 
-.agent-card-content { min-width: 0; }
+.agent-card-content { min-width: 0; flex: 1; }
 .agent-card h2 { margin: 1px 0 7px; color: #2f2d28; font-size: 14px; }
 .agent-card p { margin: 0; color: #77746c; font-size: 12px; line-height: 1.5; }
 .agent-card-meta { display: flex; flex-wrap: wrap; gap: 5px 9px; margin-top: 14px; color: #a29f96; font-size: 10px; }
+.agent-card-actions { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 14px; }
+.agent-card-actions button {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  min-height: 28px;
+  padding: 0 8px;
+  color: #625f57;
+  background: #faf9f7;
+  border: 1px solid #e7e5df;
+  border-radius: 6px;
+  font: inherit;
+  font-size: 11px;
+  cursor: pointer;
+}
+.agent-card-actions button:hover:not(:disabled) { background: #f1efeb; }
+.agent-card-actions .agent-delete-button { color: #b42318; }
+.agent-card-actions .agent-export-button { color: #64607c; }
+
+.agents-modal-backdrop {
+  position: fixed;
+  z-index: 1000;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  padding: 20px;
+  background: rgba(28, 27, 24, .38);
+}
+.agents-edit-modal {
+  display: flex;
+  flex-direction: column;
+  gap: 13px;
+  width: min(100%, 620px);
+  max-height: min(88vh, 820px);
+  padding: 22px;
+  overflow-y: auto;
+  background: #fff;
+  border: 1px solid #e9e8e3;
+  border-radius: 14px;
+  box-shadow: 0 18px 70px rgba(20, 19, 17, .22);
+}
+.agents-edit-modal > header, .agents-edit-modal > footer { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.agents-edit-modal > header { margin-bottom: 2px; }
+.agents-edit-modal > header h2 { margin: 0; color: #2f2d28; font-size: 20px; }
+.agents-edit-modal label { display: flex; flex-direction: column; gap: 6px; color: #55524b; font-size: 12px; font-weight: 600; }
+.agents-edit-modal input, .agents-edit-modal textarea {
+  width: 100%;
+  box-sizing: border-box;
+  padding: 9px 10px;
+  color: #302e29;
+  background: #fff;
+  border: 1px solid #dedcd6;
+  border-radius: 7px;
+  font: inherit;
+  font-size: 13px;
+  font-weight: 400;
+}
+.agents-edit-modal textarea { resize: vertical; line-height: 1.5; }
+.agents-edit-modal input:focus, .agents-edit-modal textarea:focus { outline: 2px solid rgba(217, 119, 87, .2); border-color: #d97757; }
+.agents-edit-fields { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
+.agents-edit-fields label:last-child { grid-column: 1 / -1; }
+.agents-modal-close { display: grid; width: 32px; height: 32px; padding: 0; color: #77746c; background: transparent; border: 0; border-radius: 6px; place-items: center; cursor: pointer; }
+.agents-cancel-button { color: #625f57; background: #fff; border-color: #dedcd6; }
+.agents-cancel-button:hover:not(:disabled) { background: #f7f6f3; }
+.agents-edit-modal > footer { justify-content: flex-end; margin-top: 3px; }
 
 @keyframes agents-spin { to { transform: rotate(360deg); } }
-
 @media (max-width: 640px) {
   .agents-page { padding: 28px 18px; }
+  .agents-page-header { align-items: flex-start; }
+  .agents-page-header-actions { flex-direction: column-reverse; align-items: flex-end; }
+  .agents-edit-fields { grid-template-columns: 1fr; }
+  .agents-edit-fields label:last-child { grid-column: auto; }
 }

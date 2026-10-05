@@ -12,7 +12,6 @@ import { createPortal } from 'react-dom';
 
 import type { RecentChat } from '../types/chat';
 import type { ProjectWorkspace } from '../services/projectWorkspaces';
-import { listAvailableAgents, type AvailableAgent } from '../agent/agent-loader';
 import { useRunningChatIds } from '../services/chatRuns';
 import { ChatDeleteDialog } from './ChatDeleteDialog';
 
@@ -522,17 +521,6 @@ export function ChatSidebar({
   onDeleteChat,
   onRenameChat,
 }: ChatSidebarProps) {
-  const [availableAgents, setAvailableAgents] = useState<AvailableAgent[]>([]);
-
-  useEffect(() => {
-    void listAvailableAgents()
-      .then(setAvailableAgents)
-      .catch((error) => {
-        console.error('[Chat Sidebar] Failed to load agents:', error);
-        setAvailableAgents([]);
-      });
-  }, []);
-
   /*
    * Deleting a chat opens the custom confirmation dialog instead of
    * the native Tauri confirm box, so destructive actions share the
@@ -944,20 +932,6 @@ export function ChatSidebar({
           }
         />
 
-        {activeItem === 'agents' ? (
-          <div className="chat-sidebar-agent-list" aria-label="Available agents">
-            {availableAgents.length === 0 ? (
-              <p className="chat-sidebar-chats-empty">No saved agents</p>
-            ) : (
-              availableAgents.map((agent) => (
-                <div className="chat-sidebar-agent-item" key={agent.path} title={agent.description}>
-                  <span className="chat-sidebar-agent-dot" aria-hidden="true" />
-                  <span>{agent.agentName}</span>
-                </div>
-              ))
-            )}
-          </div>
-        ) : null}
       </nav>
 
       <div className="chat-sidebar-footer">

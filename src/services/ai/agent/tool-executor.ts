@@ -1,5 +1,5 @@
 // tool-executor.ts
-
+import { FileToolRecovery, isFileToolError } from "./file-tool-recovery";
 export interface ToolDefinition<
   TArgs = Record<string, unknown>,
   TResult = unknown,
@@ -27,6 +27,7 @@ export interface ToolExecutionResult {
 }
 
 export class ToolExecutor {
+  private readonly fileRecovery = new FileToolRecovery();
   private readonly tools = new Map<
     string,
     ToolDefinition
@@ -101,9 +102,12 @@ export class ToolExecutor {
       );
     }
 
-    return await tool.execute(
-      args as Record<string, unknown>,
-      context,
+    return this.fileRecovery.execute(
+      toolName,
+      args,
+      async () => tool.execute(args as Record<string, unknown>, context),
+      this.hasTool("terminal_executor"),
+      context?.signal as AbortSignal | undefined,
     );
   }
 
@@ -119,7 +123,7 @@ export class ToolExecutor {
       return {
         toolCallId: toolCall.id,
         toolName: toolCall.name,
-        success: true,
+        success: !isFileToolError(result),
         result,
       };
     } catch (error) {

@@ -18,6 +18,26 @@ export type GatewayModel = {
 
   /** Effort levels advertised by the gateway for this model. */
   supportedReasoningEfforts?: GatewayReasoningEffort[];
+
+  /** Whether the gateway explicitly advertises image input support. */
+  supportsImages?: boolean;
+};
+
+/** Explicit gateway metadata wins; only known vision families are inferred. */
+export const modelSupportsImageInput = (
+  modelId: string,
+  models: GatewayModel[] = [],
+): boolean => {
+  const advertised = models.find((model) => model.id === modelId)?.supportsImages;
+  if (advertised !== undefined) return advertised;
+  const id = modelId.toLowerCase().split('/').pop() ?? '';
+  if (/(?:transcribe|tts|audio|realtime|image-generation)/.test(id)) return false;
+  return /^(gpt-4o|chatgpt-4o|gpt-4\.1|gpt-4\.5|gpt-5)(?:[-.]|$)/.test(id) ||
+    /^gpt-4-(?:vision-preview|turbo(?:-2024-04-09)?)$/.test(id) ||
+    /^(?:o1|o3|o4-mini)(?:-|$)/.test(id) && !/^o[13]-(?:mini|preview)(?:-|$)/.test(id) ||
+    /^claude-(?:3|[\w]+-4|4)(?:[-.]|$)/.test(id) ||
+    /^gemini-(?:1\.5|[2-9])(?:[-.]|$)/.test(id) ||
+    /^(?:qwen.*-vl|llama.*-vision)(?:-|$)/.test(id);
 };
 
 function normalizeBaseUrl(baseUrl: string): string {
@@ -58,10 +78,15 @@ type RawGatewayModel = {
 
   supported_parameters?: unknown;
 
+  architecture?: unknown;
+  supports_images?: unknown;
+  supports_vision?: unknown;
+  capabilities?: unknown;
+
   reasoning?: unknown;
 };
 
-const parseGatewayModels = (
+export const parseGatewayModels = (
   payload: unknown,
 ): GatewayModel[] => {
   const data =
@@ -115,6 +140,31 @@ const parseGatewayModels = (
           (parameter): parameter is string => typeof parameter === "string",
         )
       : [];
+    const architecture =
+      rawModel.architecture && typeof rawModel.architecture === "object"
+        ? (rawModel.architecture as { input_modalities?: unknown; modality?: unknown })
+        : undefined;
+    const inputModalities = Array.isArray(architecture?.input_modalities)
+      ? architecture.input_modalities.filter((modality): modality is string => typeof modality === "string")
+      : undefined;
+    const modalityDescription = typeof architecture?.modality === "string"
+      ? architecture.modality
+      : "";
+    const imageParameterAdvertised = supportedParameters.some((parameter) =>
+      parameter === "image" || parameter === "image_url" || parameter === "vision",
+    );
+    const capabilities = rawModel.capabilities && typeof rawModel.capabilities === "object"
+      ? rawModel.capabilities as { vision?: unknown }
+      : undefined;
+    const explicitSupport = [rawModel.supports_images, rawModel.supports_vision, capabilities?.vision]
+      .find((value) => typeof value === "boolean");
+    const supportsImages = typeof explicitSupport === "boolean"
+      ? explicitSupport
+      : inputModalities
+        ? inputModalities.some((modality) => modality.toLowerCase() === "image")
+        : modalityDescription
+          ? /image/i.test(modalityDescription.split("->")[0])
+          : imageParameterAdvertised;
     const reasoningMetadata =
       rawModel.reasoning && typeof rawModel.reasoning === "object"
         ? (rawModel.reasoning as { supported_efforts?: unknown })
@@ -150,6 +200,10 @@ const parseGatewayModels = (
 
       ...(supportedReasoningEfforts
         ? { supportedReasoningEfforts }
+        : {}),
+
+      ...(typeof explicitSupport === "boolean" || inputModalities || modalityDescription || imageParameterAdvertised
+        ? { supportsImages }
         : {}),
     });
   }
@@ -193,7 +247,7 @@ export const listGatewayModels =
     try {
       response = await fetch(
         `${normalizeBaseUrl(baseUrl)}/models`,
-        { headers },
+        { headers, signal: AbortSignal.timeout(10_000) },
       );
     } catch (error: unknown) {
       throw new Error(

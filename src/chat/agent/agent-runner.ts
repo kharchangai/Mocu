@@ -26,12 +26,14 @@ import { createAgentModelTrace } from '../services/agentTrace';
 import { streamChatModelWithTrace } from '../../services/ai/model-stream';
 import { isAbortError, throwIfAborted } from '../../services/ai/agent/abort';
 import { ToolExecutor } from '../../services/ai/agent/tool-executor';
+import { isFileToolError } from '../../services/ai/agent/file-tool-recovery';
 import { terminalExecutionTool } from '../../services/ai/tools/terminal_execution_tool';
 import {
   readFileTool,
   writeFileTool,
   editFileTool,
   findFileTool,
+  FILE_TOOLS_SYSTEM_PROMPT,
 } from '../../services/ai/tools/filesystem';
 import { docTools } from '../../services/ai/tools/docs_tools';
 import { notesTools } from '../../services/ai/tools/notes_tools';
@@ -233,7 +235,7 @@ async function runAgentNode(
     : await getAsyncLLM('expensive');
   const llmWithTools = llm.bindTools(bindableTools);
   let messages: BaseMessage[] = [
-    new SystemMessage(systemPrompt),
+    new SystemMessage([systemPrompt, selectedFilesystemTools.length ? FILE_TOOLS_SYSTEM_PROMPT : ''].filter(Boolean).join('\n\n')),
     new HumanMessage(input.userMessage.trim()),
   ];
   const initialModelTrace = createAgentModelTrace(getChatIdFromConfig(runnableConfig));
@@ -274,7 +276,7 @@ async function runAgentNode(
           await executor.execute(
             toolCall.name,
             (toolCall.args ?? {}) as ToolArgs,
-            { toolCallId, toolName: toolCall.name, chatId: ownerChatId },
+            { toolCallId, toolName: toolCall.name, chatId: ownerChatId, signal },
           ),
         ).trim();
       } catch (error) {
@@ -287,6 +289,7 @@ async function runAgentNode(
       }
 
       result ||= 'The tool completed without a result.';
+      toolFailed ||= isFileToolError(result);
       dispatchAgentToolActivity({
         id: toolCallId,
         tool: toolCall.name,

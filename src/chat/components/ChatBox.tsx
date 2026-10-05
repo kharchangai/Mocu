@@ -7,6 +7,7 @@ import {
   useState,
   type UIEvent,
 } from 'react';
+import { Virtuoso, type ListProps, type VirtuosoHandle } from 'react-virtuoso';
 import { Eye, EyeOff, List } from 'lucide-react';
 
 import {
@@ -14,14 +15,14 @@ import {
   BaseMessage,
   HumanMessage,
 } from '@langchain/core/messages';
-
 import { ChatInput } from './ChatInput';
 import { resolveFileMentions, type SelectedFileReference } from './fileMentionReferences';
+import { buildHumanMessageWithImages } from '../../services/ai/agent/image-content';
 import { UserMessage } from './UserMessage';
-import { AssistantMessage } from './AssistantMessage';
 import { ChatStatusBubble } from './ChatStatusBubble';
-import { ToolActivityFeed } from './ToolActivityFeed';
+import { AssistantMessage } from './AssistantMessage';
 import { MemorySaveIndicator } from './MemorySaveIndicator';
+import { ToolActivityFeed } from './ToolActivityFeed';
 import {
   respondToExtensionInteraction,
   useExtensionInteraction,
@@ -161,6 +162,7 @@ const EditableUserMessage = memo(function EditableUserMessage({
   return (
     <UserMessage
       content={message.content}
+      attachments={message.attachments}
       resourceNames={resourceNames}
       onEdit={handleEdit}
       canRerun={canRerun}
@@ -171,6 +173,17 @@ const EditableUserMessage = memo(function EditableUserMessage({
     />
   );
 });
+
+const MESSAGE_WINDOW_SIZE = 80;
+const MESSAGE_PAGE_SIZE = 50;
+const VIRTUOSO_INDEX_BASE = 1_000_000;
+
+const ChatMessageList = ({ children, style, ...props }: ListProps) => (
+  <div {...props} className="chat-box-messages-inner" style={style}>
+    {children}
+  </div>
+);
+
 
 type EnsureChatResult = {
   chatId: string;
@@ -188,14 +201,10 @@ type SendOptions = {
   selectedExtensions?: SelectedExtension[];
   selectedMcpServers?: SelectedMcpServer[];
   selectedAgent?: SelectedAgent | null;
-  /*
-   * Model override chosen in the composer model picker. It reaches only
-   * the main agents through the agent config; null/undefined keeps the
-   * configured default model.
-   */
   selectedModel?: string | null;
   selectedReasoningEffort?: GatewayReasoningEffort | null;
   fileReferences?: SelectedFileReference[];
+  imageAttachments?: ChatMessage['attachments'];
 };
 
 type ProjectAgentFailureDetails = {
@@ -665,19 +674,20 @@ type ChatBoxProps = {
     firstMessage: string,
     projectPath: string,
     initialHistory?: ChatMessage[],
+    attachments?: ChatMessage['attachments'],
   ) => Promise<EnsureChatResult>;
 
   onAppendMessage: (
     chatId: string,
     role: 'user' | 'assistant',
     content: string,
+    attachments?: ChatMessage['attachments'],
   ) => ChatMessage;
   onReplaceMessage: (
     chatId: string,
     messageId: string,
     content: string,
   ) => void;
-
 };
 
 function convertToLangChainMessages(
@@ -965,8 +975,17 @@ export function ChatBox({
     setProjectMemoryMessages,
   ] = useState<ChatMessage[]>([]);
 
-  const bottomAnchorRef =
-    useRef<HTMLDivElement | null>(null);
+  const virtuosoRef = useRef<VirtuosoHandle | null>(null);
+  const pendingThreadMessageIdRef = useRef<string | null>(null);
+  const [historyWindow, setHistoryWindow] = useState({
+    viewKey: `${chatId ?? 'new'}:all`,
+    start: Math.max(0, messages.length - MESSAGE_WINDOW_SIZE),
+    end: messages.length,
+  });
+  const historyLengthRef = useRef({
+    viewKey: `${chatId ?? 'new'}:all`,
+    length: messages.length,
+  });
 
   /*
    * NOTE: the running request no longer lives in this component. Abort
@@ -1141,6 +1160,7 @@ export function ChatBox({
     options?: SendOptions,
   ): Promise<void> => {
     const normalizedText = text.trim();
+    const imageAttachments = options?.imageAttachments ?? [];
     const requestThreadKey = sectionOnlyVisible && currentThreadIsActive
       ? currentThreadGroupKey
       : null;
@@ -1150,7 +1170,7 @@ export function ChatBox({
      * agent run is active, or its conversation is still being created.
      * Other chats keep running in the background and are untouched.
      */
-    if (!normalizedText || isLoading) {
+    if ((!normalizedText && imageAttachments.length === 0) || isLoading) {
       return;
     }
 
@@ -1212,6 +1232,7 @@ export function ChatBox({
         normalizedText,
         effectiveProjectPath,
         initialHistory,
+        imageAttachments,
       );
 
       requestChatId = result.chatId;
@@ -1257,10 +1278,10 @@ export function ChatBox({
         requestChatId,
         'user',
         normalizedText,
+        imageAttachments,
       );
       markMessageAsPartOfThread(userMessage.id, requestThreadKey);
     }
-
     setLiveSectionThreadKey(requestThreadKey);
     setDraftMessage('');
 
@@ -1339,12 +1360,15 @@ export function ChatBox({
           )
         : [];
 
+    const resolvedUserText = resolveFileMentions(normalizedText, options?.fileReferences ?? []);
+    const agentUserMessage = buildHumanMessageWithImages(
+      resolvedUserText,
+      imageAttachments,
+    );
     const nextMessages: BaseMessage[] = [
       ...memoryHistory,
       ...currentHistory,
-      new HumanMessage(
-        resolveFileMentions(normalizedText, options?.fileReferences ?? []),
-      ),
+      agentUserMessage,
     ];
 
     let cancelledRunRecorded = false;
@@ -1652,7 +1676,7 @@ export function ChatBox({
     const agentMessages: BaseMessage[] = [
       ...memoryHistory,
       ...previousMessages,
-      new HumanMessage(userMessage.content),
+      buildHumanMessageWithImages(userMessage.content, userMessage.attachments ?? []),
     ];
 
     const controller = beginChatRun(chatId);
@@ -1774,7 +1798,14 @@ export function ChatBox({
     messages.length > 0
       ? messages
       : projectMemoryMessages;
-
+  const uniqueMessageKeys = useMemo(() => {
+    const occurrences = new Map<string, number>();
+    return displayMessages.map((message) => {
+      const occurrence = occurrences.get(message.id) ?? 0;
+      occurrences.set(message.id, occurrence + 1);
+      return occurrence === 0 ? message.id : `${message.id}:duplicate:${occurrence}`;
+    });
+  }, [displayMessages]);
   const stepWorkflowMessageMapping = useMemo(
     () => buildWorkflowMessageMapping(
       stepWorkflowLogEntries,
@@ -1900,21 +1931,26 @@ export function ChatBox({
   }
 
   /*
-   * The mind icon sits directly below the agent's latest response
-   * (rendered inside that message, above its action buttons).
+   * Attach live trace/status to the latest unanswered user turn instead of
+   * leaving it in the virtualizer footer. Once the assistant reply is appended,
+   * it disappears from the live row and the committed trace sits above the reply.
    */
   let lastAssistantIndex = -1;
+  let lastUserIndex = -1;
 
-  for (
-    let index = displayMessages.length - 1;
-    index >= 0;
-    index -= 1
-  ) {
-    if (displayMessages[index].role === 'assistant') {
+  for (let index = displayMessages.length - 1; index >= 0; index -= 1) {
+    if (lastAssistantIndex < 0 && displayMessages[index].role === 'assistant') {
       lastAssistantIndex = index;
-      break;
     }
+    if (lastUserIndex < 0 && displayMessages[index].role === 'user') {
+      lastUserIndex = index;
+    }
+    if (lastAssistantIndex >= 0 && lastUserIndex >= 0) break;
   }
+
+  const liveRequestUserMessageId = isLoading && lastUserIndex > lastAssistantIndex
+    ? displayMessages[lastUserIndex]?.id
+    : undefined;
 
   const retryFromAssistantMessage = (messageIndex: number): void => {
     for (let index = messageIndex - 1; index >= 0; index -= 1) {
@@ -1987,9 +2023,25 @@ export function ChatBox({
     if (sectionOnlyVisible) saveThreadView(chatId, item.key);
     setSectionsMenuOpen(false);
     if (item.firstIndex === null) return;
-    document.getElementById(getThreadSectionElementId(item.key))?.scrollIntoView({
-      behavior: 'smooth',
-      block: 'start',
+
+    const messageId = sectionNavigationMessageIds.get(item.key);
+    if (!messageId) return;
+    pendingThreadMessageIdRef.current = messageId;
+
+    // A section can be anywhere in the full history. Materialize its page;
+    // the effect below scrolls to it once the selected view has been applied.
+    const fullIndex = displayMessages.findIndex((message) => message.id === messageId);
+    if (fullIndex < 0) return;
+
+    // In section-only mode the effect below recalculates the filtered index
+    // after the selected section changes; full-history indices are not valid
+    // offsets into that filtered list.
+    if (sectionOnlyVisible) return;
+
+    setHistoryWindow({
+      viewKey: `${chatId ?? 'new'}:all`,
+      start: Math.max(0, fullIndex - MESSAGE_WINDOW_SIZE / 2),
+      end: Math.min(displayMessages.length, fullIndex + MESSAGE_WINDOW_SIZE / 2),
     });
   };
 
@@ -2021,24 +2073,91 @@ export function ChatBox({
     sectionTransientMessageThreadKeys,
   ]);
 
+  const historyViewKey = `${chatId ?? 'new'}:${sectionOnlyVisible ? currentThreadKey ?? 'section' : 'all'}`;
+  const messageWindow = historyWindow.viewKey === historyViewKey
+    ? historyWindow
+    : {
+        viewKey: historyViewKey,
+        start: Math.max(0, visibleMessageIndexes.length - MESSAGE_WINDOW_SIZE),
+        end: visibleMessageIndexes.length,
+      };
+  const messageWindowStart = Math.max(
+    0,
+    Math.min(messageWindow.start, Math.max(0, visibleMessageIndexes.length - 1)),
+  );
+  const windowedMessageIndexes = visibleMessageIndexes.slice(
+    messageWindowStart,
+    messageWindow.end,
+  );
+  const virtuosoComponents = useMemo(() => ({
+    List: ChatMessageList,
+  }), []);
+
   useEffect(() => {
-    // Restoring a saved Focus/Step-only view changes the rendered message
-    // list after the initial chat render. Wait for that layout (and its
-    // thread markers) before scrolling so reopening lands on the newest turn.
+    setHistoryWindow({
+      viewKey: historyViewKey,
+      start: Math.max(0, visibleMessageIndexes.length - MESSAGE_WINDOW_SIZE),
+      end: visibleMessageIndexes.length,
+    });
+    historyLengthRef.current = {
+      viewKey: historyViewKey,
+      length: visibleMessageIndexes.length,
+    };
+  }, [historyViewKey]);
+
+  useEffect(() => {
+    const previous = historyLengthRef.current;
+    const addedCount = visibleMessageIndexes.length - previous.length;
+    if (previous.viewKey === historyViewKey && addedCount > 0) {
+      setHistoryWindow((current) => ({
+        viewKey: historyViewKey,
+        start: current.viewKey === historyViewKey
+          ? current.start
+          : Math.max(0, visibleMessageIndexes.length - addedCount - MESSAGE_WINDOW_SIZE),
+        end: Math.min(
+          visibleMessageIndexes.length,
+          (current.viewKey === historyViewKey ? current.end : visibleMessageIndexes.length - addedCount) + addedCount,
+        ),
+      }));
+    }
+    historyLengthRef.current = {
+      viewKey: historyViewKey,
+      length: visibleMessageIndexes.length,
+    };
+  }, [historyViewKey, visibleMessageIndexes.length]);
+
+  useEffect(() => {
+    const messageId = pendingThreadMessageIdRef.current;
+    if (!messageId) return;
+    const visibleIndex = visibleMessageIndexes.findIndex(
+      (index) => displayMessages[index]?.id === messageId,
+    );
+    if (visibleIndex < 0) return;
+
+    if (visibleIndex < messageWindowStart || visibleIndex >= messageWindow.end) {
+      setHistoryWindow({
+        viewKey: historyViewKey,
+        start: visibleIndex,
+        end: Math.min(visibleMessageIndexes.length, visibleIndex + MESSAGE_WINDOW_SIZE),
+      });
+      return;
+    }
+
+    pendingThreadMessageIdRef.current = null;
     const frame = window.requestAnimationFrame(() => {
-      bottomAnchorRef.current?.scrollIntoView({
+      virtuosoRef.current?.scrollToIndex({
+        index: visibleIndex - messageWindowStart,
+        align: 'start',
         behavior: 'smooth',
-        block: 'end',
       });
     });
     return () => window.cancelAnimationFrame(frame);
   }, [
-    chatId,
-    messages,
-    projectMemoryMessages,
-    isLoading,
-    sectionOnlyVisible,
-    chatThreadMarkers,
+    displayMessages,
+    historyViewKey,
+    messageWindow.end,
+    messageWindowStart,
+    visibleMessageIndexes,
   ]);
 
   const showLiveSectionActivity = !sectionOnlyVisible || Boolean(
@@ -2121,13 +2240,34 @@ export function ChatBox({
         ) : null}
       </div>
       {hasMessages ? (
-        <div
+        <Virtuoso
+          key={chatId ?? 'new'}
+          ref={virtuosoRef}
           className="chat-box-messages"
           aria-live="polite"
           onScroll={handleThreadScroll}
-        >
-          <div className="chat-box-messages-inner">
-            {visibleMessageIndexes.map((messageIndex) => {
+          data={windowedMessageIndexes}
+          firstItemIndex={VIRTUOSO_INDEX_BASE + messageWindowStart}
+          initialTopMostItemIndex={windowedMessageIndexes.length - 1}
+          computeItemKey={(_index, messageIndex) => uniqueMessageKeys[messageIndex] ?? messageIndex}
+          increaseViewportBy={{ top: 360, bottom: 720 }}
+          minOverscanItemCount={{ top: 2, bottom: 4 }}
+          followOutput={(atBottom) => atBottom ? 'smooth' : false}
+          startReached={() => {
+            if (messageWindowStart > 0) {
+              setHistoryWindow((current) => {
+                if (current.viewKey !== historyViewKey || current.start !== messageWindow.start) {
+                  return current;
+                }
+                return {
+                  viewKey: historyViewKey,
+                  start: Math.max(0, current.start - MESSAGE_PAGE_SIZE),
+                  end: current.end,
+                };
+              });
+            }
+          }}
+          itemContent={(_virtualIndex, messageIndex) => {
               const message = displayMessages[messageIndex];
               const thread = chatThreadMarkers.get(message.id);
               const cancelledRun = cancelledRunByIndex.get(messageIndex);
@@ -2163,7 +2303,7 @@ export function ChatBox({
                     ? getThreadSectionElementId(threadKey)
                     : undefined}
                   data-chat-thread-key={threadKey ?? undefined}
-                  key={message.id}
+                  key={uniqueMessageKeys[messageIndex] ?? message.id}
                 >
                   {thread?.label ? <span className="chat-thread-label">{sectionLabel}</span> : null}
                   {message.role === 'user' ? (
@@ -2222,6 +2362,16 @@ export function ChatBox({
                           stepWorkflowMessageMapping.activitiesByMessage.get(message.id) ?? []
                         ).filter((activity) => !renderedToolActivityIds.has(activity.id))}
                       />
+                      {showLiveSectionActivity && message.id === liveRequestUserMessageId ? (
+                        <>
+                          <ToolActivityFeed activities={toolActivity.pendingActivities} />
+                          {toolActivity.liveAnswer ? (
+                            <AssistantMessage content={toolActivity.liveAnswer} streaming />
+                          ) : (
+                            <ChatStatusBubble agentName={agentName} isLoading />
+                          )}
+                        </>
+                      ) : null}
                     </>
                   ) : (
                     <>
@@ -2264,42 +2414,9 @@ export function ChatBox({
                   ) : null}
                 </div>
               );
-            })}
-
-            {/*
-              * Live tool boxes of the request that is currently
-              * running. Once the response arrives they are committed
-              * to that message and move above it.
-              */}
-            {showLiveSectionActivity && toolActivity.pendingActivities.length > 0 ? (
-              <ToolActivityFeed
-                activities={
-                  toolActivity.pendingActivities
-                }
-              />
-            ) : null}
-
-            {showLiveSectionActivity && isLoading && toolActivity.liveAnswer ? (
-              <AssistantMessage
-                content={toolActivity.liveAnswer}
-                streaming
-              />
-            ) : null}
-
-            {showLiveSectionActivity && isLoading && !toolActivity.liveAnswer ? (
-              <ChatStatusBubble
-                agentName={agentName}
-                isLoading={isLoading}
-              />
-            ) : null}
-
-            <div
-              ref={bottomAnchorRef}
-              className="chat-box-messages-anchor"
-              aria-hidden="true"
-            />
-          </div>
-        </div>
+          }}
+          components={virtuosoComponents}
+        />
       ) : (
         <div className="chat-box-empty">
           <div
@@ -2335,7 +2452,7 @@ export function ChatBox({
       )}
 
       <ChatInput
-        key={chatId ?? 'new-chat'}
+        key={`chat-input-${chatId ?? 'new-chat'}`}
         chatId={chatId}
         value={draftMessage}
         onValueChange={setDraftMessage}

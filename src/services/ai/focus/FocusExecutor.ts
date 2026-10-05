@@ -10,6 +10,7 @@ import { emptyFocusMemory } from "./types";
 import { FocusStore } from "./focusStore";
 import { saveSpecialistSectionMemoryInBackground } from "../agent/specialist-memory";
 import { withShortDescription } from "../agent/tool-summaries";
+import { FileToolRecovery, isFileToolError } from "../agent/file-tool-recovery";
 import { buildDocsContextPrompt } from "../../../chat/docs";
 import { persistAgentGraphTurn } from "../../../graphStructure/agentTurn";
 
@@ -235,6 +236,7 @@ export class FocusExecutor {
     const focusTools = this.createFocusTools(state, controls);
     const allTools = [...turn.tools, ...focusTools];
     const toolMap = new Map(allTools.map((item) => [item.name, item]));
+    const fileRecovery = new FileToolRecovery();
     /* Compact summaries keep the prompt small; argument details stay in each
      * tool's bound schema and key behavior lives in the summaries. */
     const llmTools = allTools.map(withShortDescription);
@@ -312,12 +314,12 @@ export class FocusExecutor {
         try {
           const selected = toolMap.get(call.name);
           if (!selected) throw new Error(`Unknown Focus tool: ${call.name}`);
-          const output = await selected.invoke(args, turn.config);
+          const output = await fileRecovery.execute(
+            call.name, args, async () => selected.invoke(args, turn.config),
+            toolMap.has("terminal_executor"), turn.config?.signal as AbortSignal | undefined,
+          );
           resultText = typeof output === "string" ? output : JSON.stringify(output);
-          try {
-            const parsed = JSON.parse(resultText) as Record<string, unknown>;
-            if (parsed.ok === false || parsed.error) toolStatus = "error";
-          } catch { /* ordinary text tool output */ }
+          if (isFileToolError(resultText)) toolStatus = "error";
         } catch (error) {
           toolStatus = "error";
           resultText = JSON.stringify({ ok: false, error: error instanceof Error ? error.message : String(error) });

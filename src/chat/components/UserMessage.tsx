@@ -8,9 +8,10 @@ import {
 import { getTextDirection } from './textDirection';
 import { RerunModelButton } from './RerunModelButton';
 import type { GatewayReasoningEffort } from '../../services/ai/model-catalog';
-
+import type { ChatImageAttachment } from '../types/imageAttachment';
 type UserMessageProps = {
   content: string;
+  attachments?: ChatImageAttachment[];
   resourceNames?: MentionResourceNames;
   onEdit?: () => void;
   currentModel?: string | null;
@@ -25,6 +26,7 @@ type UserMessageProps = {
 
 function UserMessageImpl({
   content,
+  attachments = [],
   resourceNames,
   onEdit,
   currentModel = null,
@@ -65,12 +67,18 @@ function UserMessageImpl({
   return (
     <article className="user-message" aria-label="User message">
       <div className="user-message-group">
-        <div className="user-message-bubble" dir={getTextDirection(content)}>
-          <SlashMentionText
-            content={content}
-            resourceNames={resourceNames}
-          />
-        </div>
+        {attachments.length > 0 ? (
+          <div className="user-message-images" aria-label="Attached images">
+            {attachments.map((attachment) => (
+              <img key={attachment.id} src={attachment.dataUrl} alt={attachment.name} title={attachment.name} loading="lazy" />
+            ))}
+          </div>
+        ) : null}
+        {content ? (
+          <div className="user-message-bubble" dir={getTextDirection(content)}>
+            <SlashMentionText content={content} resourceNames={resourceNames} />
+          </div>
+        ) : null}
 
         <div className="user-message-actions">
           {canRerun && onRerun ? (

@@ -63,12 +63,15 @@ import type {
 import {
   getMainAgentDefaultModel,
   listGatewayModels,
+  modelSupportsImageInput,
 } from '../../services/ai/model-catalog';
 import type {
   GatewayModel,
   GatewayReasoningEffort,
 } from '../../services/ai/model-catalog';
-import { readDir } from '@tauri-apps/plugin-fs';
+import { readDir, readFile } from '@tauri-apps/plugin-fs';
+import { isTauri } from '@tauri-apps/api/core';
+import { getCurrentWebview } from '@tauri-apps/api/webview';
 import { join } from '@tauri-apps/api/path';
 import { FileMentionMenu, type ProjectFileEntry } from './FileMentionMenu';
 import {
@@ -80,6 +83,8 @@ import {
 import { resolveFileMentions, type SelectedFileReference } from './fileMentionReferences';
 import { getTextDirection } from './textDirection';
 import { useSpeechRecorder, joinVoiceText } from './useSpeechRecorder';
+import { imageFileFromBytes, prepareImageAttachments } from '../services/imageAttachments';
+import type { ChatImageAttachment } from '../types/imageAttachment';
 import './ChatInput.css';
 
 export type SendOptions = {
@@ -96,8 +101,8 @@ export type SendOptions = {
   selectedModel: string | null;
   selectedReasoningEffort: GatewayReasoningEffort | null;
   fileReferences: SelectedFileReference[];
+  imageAttachments: ChatImageAttachment[];
 };
-
 export type ChatInputProps = {
   value?: string;
   chatId?: string | null;
@@ -195,6 +200,9 @@ export function ChatInput({
   onInteractionChoose,
 }: ChatInputProps) {
   const textareaRef = useRef<HTMLTextAreaElement | null>(null);
+  const imageInputRef = useRef<HTMLInputElement | null>(null);
+  const attachmentAreaRef = useRef<HTMLDivElement | null>(null);
+  const imageLoadRef = useRef({ generation: 0, busy: false });
   const highlightRef = useRef<HTMLDivElement | null>(null);
   const modelSelectorRef = useRef<HTMLDivElement | null>(null);
   const effortSelectorRef = useRef<HTMLDivElement | null>(null);
@@ -236,11 +244,13 @@ export function ChatInput({
     useState<ActiveFileMention | null>(null);
   const [selectedFileReferences, setSelectedFileReferences] =
     useState<SelectedFileReference[]>([]);
+  const [imageAttachments, setImageAttachments] = useState<ChatImageAttachment[]>([]);
+  const [isDraggingImages, setIsDraggingImages] = useState(false);
+  const [isPreparingImages, setIsPreparingImages] = useState(false);
   const [fileMentionDirectory, setFileMentionDirectory] = useState('');
   const [projectEntries, setProjectEntries] = useState<ProjectFileEntry[]>([]);
   const [isLoadingProjectEntries, setIsLoadingProjectEntries] = useState(false);
   const [projectEntriesError, setProjectEntriesError] = useState<string | null>(null);
-
   const [selectedSkills, setSelectedSkills] = useState<
     SelectedSkill[]
   >([]);
@@ -290,6 +300,7 @@ export function ChatInput({
   const activeModel = availableModels.find(
     (model) => model.id === activeModelId,
   );
+  const supportsImages = modelSupportsImageInput(activeModelId, availableModels);
   const supportedReasoningEfforts =
     activeModel?.supportedReasoningEfforts ?? [];
   const hasReasoningSupport = supportedReasoningEfforts.length > 0;
@@ -381,10 +392,11 @@ export function ChatInput({
         .some((value) => value!.toLowerCase().includes(query)),
     );
   }, [availableModels, modelSearchQuery]);
-
   const canSend =
-    safeValue.trim().length > 0 &&
-    (interactionInputEnabled || (!isLoading && !interactionActive));
+    !isPreparingImages &&
+    (interactionActive
+      ? interactionInputEnabled && safeValue.trim().length > 0
+      : !isLoading && (safeValue.trim().length > 0 || imageAttachments.length > 0));
   /*
    * Names/ids of the pinned resources, used by the toggle menu to mark
    * which switches are on and by the chip row to render them.
@@ -743,13 +755,13 @@ export function ChatInput({
     setModelsError(null);
 
     try {
-      const [models, configuredModel] = await Promise.all([
+      const [modelsResult, defaultResult] = await Promise.allSettled([
         listGatewayModels(),
         getMainAgentDefaultModel(),
       ]);
-
-      setAvailableModels(models);
-      setDefaultMainAgentModel(configuredModel);
+      if (defaultResult.status === 'fulfilled') setDefaultMainAgentModel(defaultResult.value);
+      if (modelsResult.status === 'rejected') throw modelsResult.reason;
+      setAvailableModels(modelsResult.value);
     } catch (error) {
       console.error('Failed to load gateway models:', error);
 
@@ -792,9 +804,92 @@ export function ChatInput({
   }, [loadMcpServers]);
 
   useEffect(() => {
+    imageLoadRef.current.generation += 1;
+    imageLoadRef.current.busy = false;
+    setIsPreparingImages(false);
+    setIsDraggingImages(false);
     setSelectedFileReferences([]);
+    setImageAttachments([]);
+    setSendError(null);
+    return () => { imageLoadRef.current.generation += 1; };
   }, [chatId]);
 
+  const addImageFiles = async (loadFiles: () => Promise<File[]>) => {
+    if (isLoading || interactionActive || imageLoadRef.current.busy) return;
+    const generation = imageLoadRef.current.generation;
+    imageLoadRef.current.busy = true;
+    setIsPreparingImages(true);
+    try {
+      const files = await loadFiles();
+      if (!files.length || generation !== imageLoadRef.current.generation) return;
+      const attachments = await prepareImageAttachments(files, imageAttachments.length);
+      if (generation !== imageLoadRef.current.generation) return;
+      setImageAttachments((current) => [...current, ...attachments].slice(0, 3));
+      setSendError(null);
+    } catch (error) {
+      if (generation === imageLoadRef.current.generation) {
+        setSendError(error instanceof Error ? error.message : 'Could not add the selected image.');
+      }
+    } finally {
+      if (generation === imageLoadRef.current.generation) {
+        imageLoadRef.current.busy = false;
+        setIsPreparingImages(false);
+      }
+    }
+  };
+  const addImageFilesRef = useRef(addImageFiles);
+  addImageFilesRef.current = addImageFiles;
+
+  // Tauri intercepts OS drops: DOM dataTransfer.files alone is not enough on Windows.
+  useEffect(() => {
+    if (!isTauri()) return;
+    let disposed = false;
+    let unlisten: (() => void) | undefined;
+    void getCurrentWebview().onDragDropEvent((event) => {
+      if (disposed) return;
+      const payload = event.payload;
+      if (payload.type === 'leave') {
+        setIsDraggingImages(false);
+        return;
+      }
+      const rect = attachmentAreaRef.current?.getBoundingClientRect();
+      const x = payload.position.x / window.devicePixelRatio;
+      const y = payload.position.y / window.devicePixelRatio;
+      const inside = Boolean(rect && x >= rect.left && x <= rect.right && y >= rect.top && y <= rect.bottom);
+      setIsDraggingImages(inside && payload.type !== 'drop');
+      if (payload.type === 'drop' && inside) {
+        void addImageFilesRef.current(async () => Promise.all(payload.paths.map(async (path) =>
+          imageFileFromBytes(path, await readFile(path)),
+        )));
+      }
+    }).then((stop) => {
+      if (disposed) stop();
+      else unlisten = stop;
+    }).catch((error) => console.error('Could not listen for image drops:', error));
+    return () => { disposed = true; unlisten?.(); };
+  }, []);
+
+  const handleImagePickerChange = (event: React.ChangeEvent<HTMLInputElement>) => {
+    const files = Array.from(event.target.files ?? []);
+    void addImageFiles(async () => files);
+    event.target.value = '';
+  };
+
+  const handleComposerDragOver = (event: React.DragEvent<HTMLDivElement>) => {
+    if (Array.from(event.dataTransfer.types).includes('Files')) {
+      event.preventDefault();
+      event.dataTransfer.dropEffect = 'copy';
+      setIsDraggingImages(true);
+    }
+  };
+
+  const handleComposerDrop = (event: React.DragEvent<HTMLDivElement>) => {
+    if (!Array.from(event.dataTransfer.types).includes('Files')) return;
+    event.preventDefault();
+    setIsDraggingImages(false);
+    const files = Array.from(event.dataTransfer.files);
+    void addImageFiles(async () => files);
+  };
   useEffect(() => {
     if (!activeFileMention || !normalizedProjectPath) {
       setProjectEntries([]);
@@ -1402,7 +1497,6 @@ export function ChatInput({
 
     const handleOutsidePointerDown = (event: PointerEvent) => {
       const target = event.target;
-
       if (
         target instanceof Node &&
         !modelSelectorRef.current?.contains(target) &&
@@ -1414,10 +1508,7 @@ export function ChatInput({
     };
 
     document.addEventListener('pointerdown', handleOutsidePointerDown);
-
-    return () => {
-      document.removeEventListener('pointerdown', handleOutsidePointerDown);
-    };
+    return () => document.removeEventListener('pointerdown', handleOutsidePointerDown);
   }, [isModelMenuOpen, isEffortMenuOpen]);
 
   const handleReasoningEffortSelect = (
@@ -1441,15 +1532,23 @@ export function ChatInput({
 
   const handleSend = async () => {
     const message = safeValue.trim();
+    const attachmentsToSend = imageAttachments;
 
-    if (!message) {
+    if (imageLoadRef.current.busy || (!message && attachmentsToSend.length === 0)) {
       return;
     }
 
+    if (attachmentsToSend.length > 0 && interactionActive) {
+      setSendError('Image attachments cannot be sent to an extension reply.');
+      return;
+    }
+    if (attachmentsToSend.length > 0 && !supportsImages) {
+      setSendError('Choose a model with image input support or remove the attached images.');
+      return;
+    }
     const fileReferencesToSend = selectedFileReferences.filter((reference) =>
       message.includes(reference.mention),
     );
-
     if (interactionActive) {
       if (!interactionInputEnabled || !onInteractionSend) {
         return;
@@ -1511,6 +1610,7 @@ export function ChatInput({
     setSelectedAgent(null);
     setSelectedMcpServers([]);
     setSelectedFileReferences([]);
+    setImageAttachments([]);
     onValueChange('');
 
     try {
@@ -1523,6 +1623,7 @@ export function ChatInput({
         selectedModel,
         selectedReasoningEffort,
         fileReferences: fileReferencesToSend,
+        imageAttachments: attachmentsToSend,
       });
 
       settledMentionsRef.current = [];
@@ -1542,6 +1643,7 @@ export function ChatInput({
           (extension) => !pinnedExtensionIds.includes(extension.id),
         ),
       );
+      setImageAttachments(attachmentsToSend);
       setSelectedAgent(
         agentToSend && agentToSend !== pinnedResources.agent
           ? agentToSend
@@ -1728,7 +1830,6 @@ export function ChatInput({
       }
     }
   };
-
   const handleTextareaScroll = (
     event: React.UIEvent<HTMLTextAreaElement>,
   ) => {
@@ -1759,7 +1860,16 @@ export function ChatInput({
             };
   return (
     <div className="chat-input-shell">
-      <div className="chat-input-inner">
+      <div
+        ref={attachmentAreaRef}
+        className="chat-input-inner"
+        onDragEnter={handleComposerDragOver}
+        onDragOver={handleComposerDragOver}
+        onDragLeave={(event) => {
+          if (!event.currentTarget.contains(event.relatedTarget as Node | null)) setIsDraggingImages(false);
+        }}
+        onDrop={handleComposerDrop}
+      >
         {interaction && onInteractionChoose && (
           <ExtensionInteractionCard
             interaction={interaction}
@@ -1767,7 +1877,34 @@ export function ChatInput({
           />
         )}
 
-        <div className="chat-composer">
+          {imageAttachments.length > 0 ? (
+            <div className="image-attachment-strip" aria-label="Images attached to this message">
+              {imageAttachments.map((attachment) => (
+                <div className="image-attachment-preview" key={attachment.id}>
+                  <img src={attachment.dataUrl} alt={attachment.name} />
+                  <button
+                    type="button"
+                    className="image-attachment-remove"
+                    onClick={() => setImageAttachments((current) => current.filter((item) => item.id !== attachment.id))}
+                    aria-label={`Remove ${attachment.name}`}
+                    title={`Remove ${attachment.name}`}
+                  >
+                    <X size={13} />
+                  </button>
+                </div>
+              ))}
+            </div>
+          ) : null}
+          <div className={`chat-composer${isDraggingImages ? ' chat-composer--dragging' : ''}`}>
+          {isDraggingImages ? <div className="image-drop-hint">Drop up to 3 images here</div> : null}
+          <input
+            ref={imageInputRef}
+            className="image-attachment-input"
+            type="file"
+            accept="image/jpeg,image/png,image/webp,image/gif"
+            multiple
+            onChange={handleImagePickerChange}
+          />
           {isResourceMenuOpen && (
             <ResourceToggleMenu
               skills={availableSkills}
@@ -2041,9 +2178,7 @@ export function ChatInput({
                     ? ' composer-icon-button--active'
                     : ''
                 }`}
-                onClick={() =>
-                  setIsResourceMenuOpen((open) => !open)
-                }
+                onClick={() => setIsResourceMenuOpen((open) => !open)}
                 aria-label="Choose resources active for this chat"
                 aria-expanded={isResourceMenuOpen}
                 title="Choose resources active for this chat"
@@ -2054,7 +2189,10 @@ export function ChatInput({
               <button
                 type="button"
                 className="composer-icon-button"
-                aria-label="Attach a file"
+                onClick={() => imageInputRef.current?.click()}
+                aria-label="Attach up to 3 images"
+                title={isPreparingImages ? 'Preparing images…' : `Attach images (${imageAttachments.length}/3)`}
+                disabled={isLoading || interactionActive || isPreparingImages || imageAttachments.length >= 3}
               >
                 <Paperclip size={18} />
               </button>
