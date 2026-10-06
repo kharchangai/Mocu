@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState, type FormEvent } from 'react';
-import { confirm, open } from '@tauri-apps/plugin-dialog';
-import { Bot, Download, Pencil, RefreshCw, Trash2, Upload, X } from 'lucide-react';
+import { open } from '@tauri-apps/plugin-dialog';
+import { Bot, Download, LoaderCircle, Pencil, RefreshCw, Trash2, Upload, X } from 'lucide-react';
+import { ResourceDeleteDialog } from '../../../components/ResourceDeleteDialog';
 import { listAvailableAgents, type AvailableAgent } from '../../agent/agent-loader';
 import type { AgentDefinition } from '../../agent/agent-definition-parser';
 import {
@@ -65,6 +66,8 @@ export function AgentsPage() {
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const [editing, setEditing] = useState<AvailableAgent | null>(null);
+  const [agentToDelete, setAgentToDelete] = useState<AvailableAgent | null>(null);
+  const [busyMessage, setBusyMessage] = useState<string | null>(null);
   const [form, setForm] = useState<AgentForm>(emptyForm);
 
   const loadAgents = useCallback(async () => {
@@ -98,6 +101,7 @@ export function AgentsPage() {
     if (!selected || Array.isArray(selected)) return;
 
     setBusy(true);
+    setBusyMessage('Installing agent package…');
     setNotice(null);
     try {
       const definition = await installAgentPackage(selected);
@@ -107,6 +111,7 @@ export function AgentsPage() {
       setError(getError(installError));
     } finally {
       setBusy(false);
+      setBusyMessage(null);
     }
   };
 
@@ -126,6 +131,7 @@ export function AgentsPage() {
     }
 
     setBusy(true);
+    setBusyMessage('Saving agent changes…');
     setError(null);
     try {
       const name = form.agentName.trim();
@@ -137,35 +143,31 @@ export function AgentsPage() {
       setError(getError(saveError));
     } finally {
       setBusy(false);
+      setBusyMessage(null);
     }
   };
 
-  const removeAgent = async (agent: AvailableAgent) => {
-    let accepted: boolean;
-    try {
-      accepted = await confirm(`Delete “${agent.agentName}”? This cannot be undone.`, {
-        title: 'Delete agent',
-        kind: 'warning',
-        okLabel: 'Delete',
-        cancelLabel: 'Cancel',
-      });
-    } catch (dialogError) {
-      setError(getError(dialogError));
-      return;
-    }
-    if (!accepted) return;
-
-    setBusy(true);
+  const removeAgent = (agent: AvailableAgent) => {
+    setAgentToDelete(agent);
     setError(null);
     setNotice(null);
+  };
+
+  const confirmRemoveAgent = async () => {
+    if (!agentToDelete) return;
+    setBusy(true);
+    setBusyMessage('Deleting agent…');
+    setError(null);
     try {
-      await deleteAgentDefinition(agent);
-      setNotice(`“${agent.agentName}” deleted.`);
+      await deleteAgentDefinition(agentToDelete);
+      setNotice(`“${agentToDelete.agentName}” deleted.`);
+      setAgentToDelete(null);
       await loadAgents();
     } catch (deleteError) {
-      setError(getError(deleteError));
+      throw deleteError;
     } finally {
       setBusy(false);
+      setBusyMessage(null);
     }
   };
 
@@ -208,6 +210,7 @@ export function AgentsPage() {
 
       {error ? <p className="agents-message agents-message-error" role="alert">{error}</p> : null}
       {notice ? <p className="agents-message agents-message-success" role="status">{notice}</p> : null}
+      {busyMessage ? <p className="agents-operation-status" role="status" aria-live="polite"><LoaderCircle size={15} />{busyMessage}</p> : null}
       {isLoading ? (
         <p className="agents-message">Loading agents...</p>
       ) : agents.length === 0 ? (
@@ -263,6 +266,16 @@ export function AgentsPage() {
             </footer>
           </form>
         </div>
+      ) : null}
+
+      {agentToDelete ? (
+        <ResourceDeleteDialog
+          resourceType="Agent"
+          resourceName={agentToDelete.agentName}
+          description="The saved agent definition and its package files will be permanently removed."
+          onCancel={() => setAgentToDelete(null)}
+          onConfirm={confirmRemoveAgent}
+        />
       ) : null}
     </section>
   );

@@ -178,6 +178,53 @@
   cursor: not-allowed;
 }
 
+.settings-model-summary {
+  gap: 11px;
+}
+
+.settings-model-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.settings-model-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+  padding: 9px 10px;
+  border: 1px solid #f0ece6;
+  border-radius: 8px;
+  background: rgba(251, 250, 248, .72);
+}
+
+.settings-model-tier {
+  flex: 0 0 130px;
+  color: #777168;
+  font-size: 11px;
+  font-weight: 600;
+}
+
+.settings-model-id {
+  min-width: 0;
+  overflow: hidden;
+  color: #51483f;
+  font-size: 11px;
+  text-overflow: ellipsis;
+}
+
+.settings-model-badge {
+  margin-left: auto;
+  padding: 3px 7px;
+  border-radius: 999px;
+  color: #80624d;
+  background: #f2e9df;
+  font-size: 9px;
+  font-weight: 700;
+  text-transform: uppercase;
+}
+
 .settings-grid-2 {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -278,5 +325,7 @@
   .settings-section:first-child { grid-template-columns: 1fr; }
   .settings-section:first-child > .settings-section-title { grid-column: auto; }
   .settings-grid-2 { grid-template-columns: 1fr; }
+  .settings-model-row { flex-wrap: wrap; }
+  .settings-model-tier { flex-basis: 100%; }
   .settings-footer { padding: 12px 20px; }
 }

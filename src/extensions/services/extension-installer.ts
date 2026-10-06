@@ -25,14 +25,10 @@ type ArchiveFile = {
   data: Uint8Array;
 };
 
-type BundledFile = {
-  path: string;
-  content: string;
-};
 
 type BundledExtension = {
   id: string;
-  files: BundledFile[];
+  sourcePath: string;
 };
 
 type PreparedArchive = {
@@ -384,6 +380,35 @@ async function getExtensionsRoot(): Promise<string> {
   );
 }
 
+/** Install a bundled extension by copying its on-disk source directory. */
+export async function installBundledExtension(
+  bundled: Pick<BundledExtension, "id" | "sourcePath">,
+): Promise<InstalledExtensionResult> {
+  const sourceManifestPath = await join(bundled.sourcePath, "manifest.json");
+  if (!(await exists(sourceManifestPath))) {
+    throw new Error(`Bundled extension manifest not found: ${sourceManifestPath}`);
+  }
+
+  const sourceManifest = JSON.parse(await readTextFile(sourceManifestPath)) as { id?: unknown };
+  if (typeof sourceManifest.id !== "string" || sanitizeExtensionName(sourceManifest.id) !== sanitizeExtensionName(bundled.id)) {
+    throw new Error("Bundled extension ID does not match manifest.json.");
+  }
+
+  const files: ArchiveFile[] = [];
+  await collectFolderFiles(bundled.sourcePath, bundled.sourcePath, "", files);
+  if (!files.some((file) => file.relativePath.toLocaleLowerCase() === "manifest.json")) {
+    throw new Error("The bundled extension must contain manifest.json.");
+  }
+
+  const extensionsRoot = await getExtensionsRoot();
+  await mkdir(extensionsRoot, { recursive: true });
+  const extensionId = sanitizeExtensionName(bundled.id);
+  const installedDirectory = await join(extensionsRoot, extensionId);
+  await installExtensionFiles(installedDirectory, files);
+
+  return { extensionId, installedDirectory, fileCount: files.length };
+}
+
 /**
  * Best-effort Windows detection. Same rationale as the terminal tool:
  * navigator.userAgent reflects the host operating system inside Tauri.
@@ -565,65 +590,6 @@ export async function installExtensionFromFolder(
 
   return {
     extensionId: manifestId,
-    installedDirectory,
-    fileCount: files.length,
-  };
-}
-
-/**
- * Install a bundled extension whose file contents are embedded in the
- * frontend catalog. No on-disk source directory is required, so it
- * works identically in development and in a packaged Tauri build.
- */
-export async function installBundledExtension(
-  bundled: BundledExtension,
-): Promise<InstalledExtensionResult> {
-  const files: ArchiveFile[] = bundled.files.map((file) => ({
-    relativePath: normalizeArchivePath(file.path),
-    data: new TextEncoder().encode(file.content),
-  }));
-
-  if (files.length === 0) {
-    throw new Error(
-      "The bundled extension contains no files.",
-    );
-  }
-
-  const hasManifest = files.some(
-    (file) =>
-      file.relativePath.toLocaleLowerCase() ===
-      "manifest.json",
-  );
-
-  if (!hasManifest) {
-    throw new Error(
-      "The bundled extension must contain manifest.json.",
-    );
-  }
-
-  const extensionId = sanitizeExtensionName(
-    bundled.id,
-  );
-
-  const extensionsRoot =
-    await getExtensionsRoot();
-
-  await mkdir(extensionsRoot, {
-    recursive: true,
-  });
-
-  const installedDirectory = await join(
-    extensionsRoot,
-    extensionId,
-  );
-
-  await installExtensionFiles(
-    installedDirectory,
-    files,
-  );
-
-  return {
-    extensionId,
     installedDirectory,
     fileCount: files.length,
   };

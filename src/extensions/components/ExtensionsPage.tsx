@@ -1,45 +1,17 @@
 import { useState } from "react";
-
+import { LoaderCircle } from "lucide-react";
+import { ResourceDeleteDialog } from "../../components/ResourceDeleteDialog";
 import { open } from "@tauri-apps/plugin-dialog";
-
-import {
-  EXTENSION_CATALOG,
-} from "../services/extension-catalog";
-
-import {
-  ExtensionCard,
-} from "./ExtensionCard";
-
-import {
-  useExtensions,
-} from "../hooks/useExtensions";
-
+import { ExtensionCard } from "./ExtensionCard";
+import { useExtensions } from "../hooks/useExtensions";
 import "./extensions.css";
 
 type ExtensionsView = "browse" | "installed";
 
-/*
- * Installs one bundled/catalog extension with a one-click action.
- */
-function installEntry(
-  entryId: string,
-  catalog: typeof EXTENSION_CATALOG,
-  installBundled: (entry: (typeof EXTENSION_CATALOG)[number]) => Promise<unknown>,
-): Promise<unknown> {
-  const entry = catalog.find((candidate) => candidate.id === entryId);
-
-  if (!entry) {
-    return Promise.reject(
-      new Error(`Unknown bundled extension: ${entryId}`),
-    );
-  }
-
-  return installBundled(entry);
-}
-
 export function ExtensionsPage() {
   const {
     extensions,
+    catalog,
     loading,
     error,
     refresh,
@@ -50,75 +22,76 @@ export function ExtensionsPage() {
 
   const [view, setView] = useState<ExtensionsView>("browse");
   const [busyIds, setBusyIds] = useState<Set<string>>(new Set());
+  const [busyMessages, setBusyMessages] = useState<Record<string, string>>({});
   const [pageError, setPageError] = useState<string | null>(null);
+  const [extensionToDelete, setExtensionToDelete] = useState<{ id: string; name: string } | null>(null);
 
-  const installedIds = new Set(
-    extensions.map((extension) => extension.manifest.id),
-  );
+  const installedIds = new Set(extensions.map((extension) => extension.manifest.id));
 
   const withBusy = async (
     id: string,
     action: () => Promise<unknown>,
+    message: string,
+    rethrow = false,
   ): Promise<void> => {
-    setBusyIds((current) => {
-      const next = new Set(current);
-      next.add(id);
-      return next;
-    });
+    setBusyIds((current) => new Set(current).add(id));
+    setBusyMessages((current) => ({ ...current, [id]: message }));
     setPageError(null);
 
     try {
       await action();
     } catch (reason) {
-      setPageError(
-        reason instanceof Error
-          ? reason.message
-          : String(reason),
-      );
+      if (rethrow) throw reason;
+      setPageError(reason instanceof Error ? reason.message : String(reason));
     } finally {
       setBusyIds((current) => {
         const next = new Set(current);
         next.delete(id);
         return next;
       });
+      setBusyMessages((current) => {
+        const next = { ...current };
+        delete next[id];
+        return next;
+      });
     }
   };
 
   const handleInstallCatalog = (entryId: string): void => {
-    void withBusy(entryId, () =>
-      installEntry(entryId, EXTENSION_CATALOG, installBundled),
-    );
+    const entry = catalog.find((candidate) => candidate.id === entryId);
+    if (!entry) {
+      setPageError(`Unknown bundled extension: ${entryId}`);
+      return;
+    }
+    void withBusy(entryId, () => installBundled(entry), "Installing extension…");
   };
 
-  const handleUninstall = (extensionId: string): void => {
-    void withBusy(extensionId, () => uninstall(extensionId));
+  const handleUninstall = (extensionId: string, extensionName: string): void => {
+    setExtensionToDelete({ id: extensionId, name: extensionName });
+  };
+
+  const confirmUninstall = async (): Promise<void> => {
+    if (!extensionToDelete) return;
+    await withBusy(
+      extensionToDelete.id,
+      () => uninstall(extensionToDelete.id),
+      "Uninstalling extension…",
+      true,
+    );
+    setExtensionToDelete(null);
   };
 
   const handleInstallZip = async (): Promise<void> => {
     const selected = await open({
-      filters: [
-        {
-          name: "Extension archive",
-          extensions: ["zip"],
-        },
-      ],
+      filters: [{ name: "Extension archive", extensions: ["zip"] }],
       multiple: false,
       title: "Choose an extension ZIP file",
     });
-
-    if (selected === null) {
-      return;
+    if (selected === null) return;
+    const filePath = Array.isArray(selected) ? selected[0] : selected;
+    if (filePath) {
+      void withBusy("__zip__", () => install(filePath, false), "Installing extension from ZIP…");
     }
-
-    const filePath = Array.isArray(selected)
-      ? selected[0]
-      : selected;
-
-    if (!filePath) {
-      return;
-    }
-
-    void withBusy("__zip__", () => install(filePath, false));
   };
 
   const handleInstallFolder = async (): Promise<void> => {
@@ -127,20 +100,11 @@ export function ExtensionsPage() {
       multiple: false,
       title: "Choose an extension folder",
     });
-
-    if (selected === null) {
-      return;
+    if (selected === null) return;
+    const folderPath = Array.isArray(selected) ? selected[0] : selected;
+    if (typeof folderPath === "string") {
+      void withBusy("__folder__", () => install(folderPath, true), "Installing extension from folder…");
     }
-
-    const folderPath = Array.isArray(selected)
-      ? selected[0]
-      : selected;
-
-    if (typeof folderPath !== "string") {
-      return;
-    }
-
-    void withBusy("__folder__", () => install(folderPath, true));
   };
 
   return (
@@ -150,29 +114,14 @@ export function ExtensionsPage() {
           <h1>Extensions</h1>
           <p>Install, delete, and run Python &amp; Node.js extensions on demand from chat.</p>
         </div>
-
         <div className="extensions-header-actions">
-          <button
-            className="extensions-button"
-            disabled={loading}
-            onClick={() => void refresh()}
-          >
+          <button className="extensions-button" disabled={loading} onClick={() => void refresh()}>
             Refresh
           </button>
-
-          <button
-            className="extensions-button"
-            disabled={loading}
-            onClick={() => void handleInstallFolder()}
-          >
+          <button className="extensions-button" disabled={loading} onClick={() => void handleInstallFolder()}>
             Install from Folder
           </button>
-
-          <button
-            className="extensions-button"
-            disabled={loading}
-            onClick={() => void handleInstallZip()}
-          >
+          <button className="extensions-button" disabled={loading} onClick={() => void handleInstallZip()}>
             Install from ZIP
           </button>
         </div>
@@ -186,7 +135,6 @@ export function ExtensionsPage() {
         >
           Browse
         </button>
-
         <button
           type="button"
           className={`extensions-tab ${view === "installed" ? "is-active" : ""}`}
@@ -197,61 +145,40 @@ export function ExtensionsPage() {
         </button>
       </nav>
 
-      {loading && (
-        <p className="extensions-status">Loading extensions…</p>
-      )}
-
-      {error && (
-        <pre className="extensions-error">
-          {error}
-        </pre>
-      )}
-
-      {pageError && (
-        <pre className="extensions-error">
-          {pageError}
-        </pre>
+      {loading && <p className="extensions-status">Loading extensions…</p>}
+      {error && <pre className="extensions-error">{error}</pre>}
+      {pageError && <pre className="extensions-error">{pageError}</pre>}
+      {Object.keys(busyMessages).length > 0 && (
+        <div className="extensions-operation-status" role="status" aria-live="polite">
+          <LoaderCircle size={16} />{Object.values(busyMessages)[0]}
+        </div>
       )}
 
       {!loading && view === "browse" && (
         <section className="extensions-grid">
-          {EXTENSION_CATALOG.map((entry) => {
+          {catalog.length === 0 && (
+            <p className="extensions-empty">No bundled extensions found in extensions-default.</p>
+          )}
+          {catalog.map((entry) => {
             const isInstalled = installedIds.has(entry.id);
             const isBusy = busyIds.has(entry.id);
-
             return (
               <article key={entry.id} className="extensions-card">
                 <header className="extensions-card-header">
                   <h3>{entry.name}</h3>
-                  <span className="extensions-card-badge">
-                    {entry.runtime}
-                  </span>
+                  <span className="extensions-card-badge">{entry.runtime}</span>
                 </header>
-
-                <p className="extensions-card-description">
-                  {entry.description}
-                </p>
-
+                <p className="extensions-card-description">{entry.description}</p>
                 <div className="extensions-card-meta">
                   <span>{entry.version}</span>
                   <span>by {entry.author}</span>
                 </div>
-
                 <div className="extensions-card-tags">
-                  {entry.tags.map((tag) => (
-                    <span key={tag} className="extensions-tag">{tag}</span>
-                  ))}
+                  {entry.tags.map((tag) => <span key={tag} className="extensions-tag">{tag}</span>)}
                 </div>
-
                 <div className="extensions-card-actions">
                   {isInstalled ? (
-                    <button
-                      type="button"
-                      className="extensions-button"
-                      disabled
-                    >
-                      ✓ Installed
-                    </button>
+                    <button type="button" className="extensions-button" disabled>✓ Installed</button>
                   ) : (
                     <button
                       type="button"
@@ -271,21 +198,26 @@ export function ExtensionsPage() {
 
       {!loading && view === "installed" && (
         <section className="extensions-grid">
-          {!loading && extensions.length === 0 && (
-            <p className="extensions-empty">
-              No extensions are installed yet.
-            </p>
-          )}
-
+          {extensions.length === 0 && <p className="extensions-empty">No extensions are installed yet.</p>}
           {extensions.map((extension) => (
             <ExtensionCard
               key={extension.manifest.id}
               extension={extension}
-              onUninstall={handleUninstall}
+              onUninstall={(id) => handleUninstall(id, extension.manifest.name)}
             />
           ))}
         </section>
       )}
+
+      {extensionToDelete ? (
+        <ResourceDeleteDialog
+          resourceType="Extension"
+          resourceName={extensionToDelete.name}
+          description="The installed extension and its files will be permanently removed."
+          onCancel={() => setExtensionToDelete(null)}
+          onConfirm={confirmUninstall}
+        />
+      ) : null}
     </section>
   );
 }

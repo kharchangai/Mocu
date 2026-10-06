@@ -231,10 +231,10 @@ export async function transcribeAudio(
   throwIfAborted(signal);
   validateApiKey(config);
 
-  if (!config.expensiveBaseUrl?.trim()) {
-    throw new Error(
-      "Speech Base URL is missing. Configure the Expensive LLM Base URL in Settings.",
-    );
+  const speechBaseUrl = normalizeBaseUrl(config.gatewayBaseUrl);
+
+  if (!speechBaseUrl) {
+    throw new Error("Speech Base URL is missing. Configure the gateway in Settings.");
   }
 
   if (!config.sttModel?.trim()) {
@@ -243,7 +243,7 @@ export async function transcribeAudio(
     );
   }
 
-  const baseUrl = normalizeBaseUrl(config.expensiveBaseUrl);
+  const baseUrl = speechBaseUrl;
   const formData = new FormData();
 
   const extension = audioBlob.type.includes("ogg")
@@ -353,10 +353,10 @@ export async function generateSpeech(
   throwIfAborted(signal);
   validateApiKey(config);
 
-  if (!config.expensiveBaseUrl?.trim()) {
-    throw new Error(
-      "Speech Base URL is missing. Configure the Expensive LLM Base URL in Settings.",
-    );
+  const speechBaseUrl = normalizeBaseUrl(config.gatewayBaseUrl);
+
+  if (!speechBaseUrl) {
+    throw new Error("Speech Base URL is missing. Configure the gateway in Settings.");
   }
 
   if (!config.ttsModel?.trim()) {
@@ -381,7 +381,7 @@ export async function generateSpeech(
     );
   }
 
-  const baseUrl = normalizeBaseUrl(config.expensiveBaseUrl);
+  const baseUrl = speechBaseUrl;
   const format = DEFAULT_TTS_FORMAT;
 
   const payload = {

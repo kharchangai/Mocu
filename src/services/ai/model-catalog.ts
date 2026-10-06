@@ -64,7 +64,7 @@ export const getMainGatewayBaseUrl = (
 export const getMainAgentDefaultModel = async (): Promise<string> => {
   const config = await readSettings();
 
-  return config.expensiveModel.trim();
+  return config.llmModel.trim();
 };
 
 type RawGatewayModel = {

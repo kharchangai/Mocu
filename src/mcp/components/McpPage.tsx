@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
-
 import { confirm } from '@tauri-apps/plugin-dialog';
+import { LoaderCircle } from 'lucide-react';
+import { ResourceDeleteDialog } from '../../components/ResourceDeleteDialog';
 
 import { importMcpServers } from '../manager';
 import {
@@ -138,6 +139,8 @@ export function McpPage() {
   const [loading, setLoading] = useState(true);
   const [pageError, setPageError] = useState<string | null>(null);
   const [busyIds, setBusyIds] = useState<Set<string>>(new Set());
+  const [busyMessages, setBusyMessages] = useState<Record<string, string>>({});
+  const [serverToDelete, setServerToDelete] = useState<McpServerSummary | null>(null);
 
   const [showImport, setShowImport] = useState(false);
   const [importText, setImportText] = useState('');
@@ -211,12 +214,18 @@ export function McpPage() {
   }, [refresh]);
 
   const withBusy = useCallback(
-    async (id: string, action: () => Promise<unknown>): Promise<void> => {
+    async (
+      id: string,
+      action: () => Promise<unknown>,
+      message = 'Working…',
+      rethrow = false,
+    ): Promise<void> => {
       setBusyIds((current) => {
         const next = new Set(current);
         next.add(id);
         return next;
       });
+      setBusyMessages((current) => ({ ...current, [id]: message }));
       setPageError(null);
 
       try {
@@ -224,10 +233,16 @@ export function McpPage() {
         await refresh();
       } catch (reason) {
         setPageError(reason instanceof Error ? reason.message : String(reason));
+        if (rethrow) throw reason;
       } finally {
         setBusyIds((current) => {
           const next = new Set(current);
           next.delete(id);
+          return next;
+        });
+        setBusyMessages((current) => {
+          const next = { ...current };
+          delete next[id];
           return next;
         });
       }
@@ -335,20 +350,19 @@ export function McpPage() {
 
           await connectMcpServer(summary.config.id, { approve: true });
         }
-      }),
+      }, 'Connecting to MCP server…'),
     [withBusy],
   );
 
   const handleDisconnect = useCallback(
     (summary: McpServerSummary): Promise<void> =>
-      withBusy(summary.config.id, () => disconnectMcpServer(summary.config.id)),
+      withBusy(summary.config.id, () => disconnectMcpServer(summary.config.id), 'Disconnecting MCP server…'),
     [withBusy],
   );
 
   const handleRemove = useCallback(
-    (summary: McpServerSummary): Promise<void> =>
-      withBusy(summary.config.id, () => removeMcpServer(summary.config.id)),
-    [withBusy],
+    (summary: McpServerSummary): void => setServerToDelete(summary),
+    [],
   );
 
   const handleToggleEnabled = useCallback(
@@ -362,7 +376,7 @@ export function McpPage() {
         if (!nextConfig.enabled) {
           await disconnectMcpServer(summary.config.id);
         }
-      }),
+      }, 'Updating MCP server…'),
     [withBusy],
   );
 
@@ -462,6 +476,7 @@ export function McpPage() {
 
       {pageError && <pre className="mcp-error">{pageError}</pre>}
       {loading && <p className="mcp-status">Loading MCP servers…</p>}
+      {Object.keys(busyMessages).length > 0 && <div className="mcp-operation-status" role="status" aria-live="polite"><LoaderCircle size={16} />{Object.values(busyMessages)[0]}</div>}
 
       {!loading && sortedServers.length === 0 && (
         <p className="mcp-empty">
@@ -570,7 +585,7 @@ export function McpPage() {
                   type="button"
                   className="mcp-button mcp-button--small mcp-button--danger"
                   disabled={busy}
-                  onClick={() => void handleRemove(summary)}
+                  onClick={() => handleRemove(summary)}
                 >
                   Remove
                 </button>
@@ -664,7 +679,7 @@ export function McpPage() {
                 type="button"
                 className="mcp-button mcp-button--primary"
                 disabled={!importText.trim()}
-                onClick={() => void withBusy('__import__', handleImport).catch(() => undefined)}
+                onClick={() => void withBusy('__import__', handleImport, 'Importing MCP servers…').catch(() => undefined)}
               >
                 Import
               </button>
@@ -936,7 +951,7 @@ export function McpPage() {
                 type="button"
                 className="mcp-button mcp-button--primary"
                 disabled={!form.id.trim()}
-                onClick={() => void withBusy('__form__', handleSaveForm).catch(() => undefined)}
+                onClick={() => void withBusy('__form__', handleSaveForm, 'Saving MCP server…').catch(() => undefined)}
               >
                 Save
               </button>
@@ -945,6 +960,23 @@ export function McpPage() {
         </div>
       )}
 
-    </section>
-  );
+      {serverToDelete ? (
+        <ResourceDeleteDialog
+          resourceType="MCP server"
+          resourceName={serverToDelete.config.name}
+          description="This will remove the server configuration and its saved connection details from Mocu."
+          onCancel={() => setServerToDelete(null)}
+          onConfirm={async () => {
+            await withBusy(
+              serverToDelete.config.id,
+              () => removeMcpServer(serverToDelete.config.id),
+              'Removing MCP server…',
+              true,
+            );
+            setServerToDelete(null);
+          }}
+        />
+      ) : null}
+      </section>
+    );
 }

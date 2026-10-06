@@ -204,4 +204,7 @@
   .agents-page-header-actions { flex-direction: column-reverse; align-items: flex-end; }
   .agents-edit-fields { grid-template-columns: 1fr; }
   .agents-edit-fields label:last-child { grid-column: auto; }
+
 }
+
+.agents-operation-status{display:flex;align-items:center;gap:8px;margin:0 0 16px;padding:10px 12px;border:1px solid #e9e8e3;border-radius:9px;color:#6d5a3f;background:#fffaf6;font-size:12px}.agents-operation-status svg{animation:agents-spin .8s linear infinite}

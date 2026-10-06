@@ -105,7 +105,7 @@ function roundScore(score: number): number {
  * A plain character cap is not safe: non-ASCII text (e.g. Persian)
  * packs far fewer characters per token than English, so a 24k-char
  * cap can still exceed the token limit. Instead, each text is cut at
- * an estimated token budget (ASCII ≈ 4 chars/token, everything else
+ * an estimated token budget (ASCII Γëê 4 chars/token, everything else
  * counted far more conservatively) to stay safely below the limit.
  */
 const MAX_EMBEDDING_INPUT_TOKENS = 6000;
@@ -229,7 +229,7 @@ export class TextSimilarity {
 
     this.embeddings = new OpenAIEmbeddings({
       model: settings.embeddingModel,
-      apiKey: settings.embeddingApiKey || "not-required",
+      apiKey: settings.embeddingApiKey || settings.apiKey || "not-required",
       configuration: {
         baseURL: settings.embeddingBaseUrl,
       },

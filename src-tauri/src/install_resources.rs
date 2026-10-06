@@ -6,13 +6,13 @@ use std::{
 
 use tauri::{AppHandle, Manager};
 
-const INSTALL_MARKER: &str = ".mocu-install-resources-v1";
+const INSTALL_MARKER: &str = ".mocu-install-resources-v2";
 
 const RESOURCE_FOLDERS: [(&str, &str); 4] = [
     ("agents", "agents"),
     ("docs", "docs"),
     ("skills", "skills"),
-    ("extensions-examples", "extensions"),
+    ("extensions-default", "extensions-default"),
 ];
 
 pub fn initialize(app: &AppHandle) -> Result<(), Box<dyn std::error::Error>> {
@@ -66,13 +66,30 @@ fn copy_missing_files(source: &Path, destination: &Path) -> io::Result<()> {
     for entry in fs::read_dir(source)? {
         let entry = entry?;
         let file_type = entry.file_type()?;
+        // Omit local state and dependency caches from development resources,
+        // matching the filtered resources used by packaged builds.
+        let name = entry.file_name();
+        let name_text = name.to_string_lossy();
+        if file_type.is_dir()
+            && ["node_modules", ".mocu", "__pycache__", "target", ".venv"]
+                .contains(&name_text.as_ref())
+        {
+            continue;
+        }
+        if name_text.ends_with(".egg-info")
+            || name_text.ends_with(".pyc")
+            || name_text.starts_with("docs.db-")
+            || name_text == "docs.db"
+        {
+            continue;
+        }
 
         // Do not copy symbolic links from bundled resources.
         if file_type.is_symlink() {
             continue;
         }
 
-        let target = destination.join(entry.file_name());
+        let target = destination.join(&name);
 
         if file_type.is_dir() {
             copy_missing_files(&entry.path(), &target)?;

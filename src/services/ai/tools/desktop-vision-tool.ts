@@ -4,7 +4,7 @@ import { z } from "zod";
 import { invoke } from "@tauri-apps/api/core";
 import { HumanMessage } from "@langchain/core/messages";
 import { ChatOpenAI } from "@langchain/openai";
-import { readSettings } from "../../../store"; // Adjust the relative path if your store file is located elsewhere
+import { readSettings } from "../../../store";
 import { isAbortError } from "../agent/abort";
 
 export const desktopVisionTool = tool(
@@ -15,13 +15,10 @@ export const desktopVisionTool = tool(
       console.log("[Vision Tool] Loading settings from store...");
       const settings = await readSettings();
 
-      // Determine which API key, base URL, and model to use.
-      // We prioritize the dedicated Vision settings. If they are empty,
-      // we fallback to the general LLM settings as a backup.
+      // All model capabilities use the shared gateway URL and API key by default.
       const apiKey = settings.visionApiKey || settings.apiKey;
       const baseURL = settings.visionBaseUrl || settings.mediumBaseUrl;
-      const modelName = settings.visionModel || settings.mediumModel || "gpt-4o-mini";
-
+      const modelName = settings.visionModel || settings.mediumModel;
       if (!apiKey) {
         return "Error: No API Key configured. Please set your API Key in the settings menu.";
       }

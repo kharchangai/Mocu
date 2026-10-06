@@ -1,79 +1,24 @@
 import React, { useEffect, useState } from "react";
 import { getCurrentWebviewWindow } from "@tauri-apps/api/webviewWindow";
 import {
-  OPENROUTER_DEFAULT_MODEL,
-  OPENROUTER_GATEWAY_URL,
-  readSettings,
-  saveSettings,
+  OPENROUTER_GATEWAY_URL, OPENROUTER_DEFAULT_LLM_MODEL,
+  OPENROUTER_CHEAP_DEFAULT_MODEL, OPENROUTER_MEDIUM_DEFAULT_MODEL, OPENROUTER_EXPENSIVE_DEFAULT_MODEL,
+  OPENROUTER_STT_DEFAULT_MODEL, OPENROUTER_TTS_DEFAULT_MODEL, OPENROUTER_TTS_DEFAULT_VOICE,
+  OPENROUTER_VISION_DEFAULT_MODEL, OPENROUTER_EMBEDDING_DEFAULT_MODEL, OPENROUTER_PERPLEXITY_DEFAULT_MODEL,
+  OPENROUTER_DECISION_DEFAULT_ENDPOINT, OPENROUTER_DECISION_DEFAULT_MODEL,
+  getDecisionEndpointForGateway, readSettings, saveSettings,
 } from "../store";
 import { DOCS_RETRIEVAL_DEFAULTS } from "../chat/docs/docs-retrieval-config";
 
 import "./Settings.css";
 
-import "./Settings.css";
-
-/*
- * Optional close callback. When Settings is rendered inside the chat
- * page (its default home now), the chat page provides this so Save /
- * Cancel navigate back instead of closing a standalone OS window.
- */
 type SettingsProps = {
   onClose?: () => void;
   onSaved?: () => void | Promise<void>;
 };
 
-type LlmTierCardProps = {
-  title: string;
-  description: string;
-  baseUrl: string;
-  model: string;
-  disabled: boolean;
-  onBaseUrlChange: (value: string) => void;
-  onModelChange: (value: string) => void;
-};
-
-const LlmTierCard: React.FC<LlmTierCardProps> = ({
-  title,
-  description,
-  baseUrl,
-  model,
-  disabled,
-  onBaseUrlChange,
-  onModelChange,
-}) => {
-  return (
-    <div className="settings-card">
-      <div className="settings-card-header">
-        <h4 className="settings-card-title">{title}</h4>
-        <p className="settings-card-description">{description}</p>
-      </div>
-
-      <div className="settings-field">
-        <label className="settings-label">Base URL</label>
-        <input
-          type="text"
-          value={baseUrl}
-          disabled={disabled}
-          onChange={(event) => onBaseUrlChange(event.target.value)}
-          placeholder="https://api.openai.com/v1"
-          className="settings-input"
-        />
-      </div>
-
-      <div className="settings-field">
-        <label className="settings-label">Model Name</label>
-        <input
-          type="text"
-          value={model}
-          disabled={disabled}
-          onChange={(event) => onModelChange(event.target.value)}
-          placeholder="Model name"
-          className="settings-input"
-        />
-      </div>
-    </div>
-  );
-};
+type LlmTierCardProps = { title: string; description: string; model: string; disabled: boolean; onModelChange: (value: string) => void };
+const LlmTierCard: React.FC<LlmTierCardProps> = ({ title, description, model, disabled, onModelChange }) => <div className="settings-card"><div className="settings-card-header"><h4 className="settings-card-title">{title}</h4><p className="settings-card-description">{description}</p></div><div className="settings-field"><label className="settings-label">Model Name</label><input type="text" value={model} disabled={disabled} onChange={(event) => onModelChange(event.target.value)} className="settings-input" /></div></div>;
 
 export const Settings: React.FC<SettingsProps> = ({
   onClose,
@@ -83,43 +28,33 @@ export const Settings: React.FC<SettingsProps> = ({
   const [apiKey, setApiKey] = useState("");
   const [gatewayProvider, setGatewayProvider] = useState<"openrouter" | "custom">("openrouter");
   const [gatewayBaseUrl, setGatewayBaseUrl] = useState(OPENROUTER_GATEWAY_URL);
+  const [llmModel, setLlmModel] = useState(OPENROUTER_DEFAULT_LLM_MODEL);
+  // Keep legacy dedicated keys until the user explicitly switches gateways.
+  const [dedicatedKeys, setDedicatedKeys] = useState({ embedding: "", vision: "", perplexity: "" });
 
-  // Cheap LLM settings
-  const [cheapBaseUrl, setCheapBaseUrl] = useState(OPENROUTER_GATEWAY_URL);
-  const [cheapModel, setCheapModel] = useState(OPENROUTER_DEFAULT_MODEL);
+  const [cheapModel, setCheapModel] = useState(OPENROUTER_CHEAP_DEFAULT_MODEL);
+  const [mediumModel, setMediumModel] = useState(OPENROUTER_MEDIUM_DEFAULT_MODEL);
+  const [expensiveModel, setExpensiveModel] = useState(OPENROUTER_EXPENSIVE_DEFAULT_MODEL);
 
-  // Medium LLM settings
-  const [mediumBaseUrl, setMediumBaseUrl] = useState(OPENROUTER_GATEWAY_URL);
-  const [mediumModel, setMediumModel] = useState(OPENROUTER_DEFAULT_MODEL);
-
-  // Expensive LLM settings
-  const [expensiveBaseUrl, setExpensiveBaseUrl] = useState(OPENROUTER_GATEWAY_URL);
-  const [expensiveModel, setExpensiveModel] = useState(OPENROUTER_DEFAULT_MODEL);
   // Speech settings
-  const [sttModel, setSttModel] = useState("");
-  const [ttsModel, setTtsModel] = useState("");
-  const [ttsVoice, setTtsVoice] = useState("");
+  const [sttModel, setSttModel] = useState(OPENROUTER_STT_DEFAULT_MODEL);
+  const [ttsModel, setTtsModel] = useState(OPENROUTER_TTS_DEFAULT_MODEL);
+  const [ttsVoice, setTtsVoice] = useState(OPENROUTER_TTS_DEFAULT_VOICE);
 
   // Embedding settings
-  const [embeddingApiKey, setEmbeddingApiKey] = useState("");
-  const [embeddingBaseUrl, setEmbeddingBaseUrl] = useState("");
-  const [embeddingModel, setEmbeddingModel] = useState("");
+  const [embeddingModel, setEmbeddingModel] = useState(OPENROUTER_EMBEDDING_DEFAULT_MODEL);
 
   // Vision settings
-  const [visionApiKey, setVisionApiKey] = useState("");
-  const [visionBaseUrl, setVisionBaseUrl] = useState("");
-  const [visionModel, setVisionModel] = useState("");
+  const [visionModel, setVisionModel] = useState(OPENROUTER_VISION_DEFAULT_MODEL);
 
   // Perplexity settings
-  const [perplexityApiKey, setPerplexityApiKey] = useState("");
-  const [perplexityBaseUrl, setPerplexityBaseUrl] = useState("");
-  const [perplexityModel, setPerplexityModel] = useState("");
+  const [perplexityModel, setPerplexityModel] = useState(OPENROUTER_PERPLEXITY_DEFAULT_MODEL);
   const [searchDepth, setSearchDepth] = useState(3);
 
   // Decision (Jev) settings
   const [decisionApiKey, setDecisionApiKey] = useState("");
-  const [decisionEndpointUrl, setDecisionEndpointUrl] = useState("");
-  const [decisionModel, setDecisionModel] = useState("");
+  const [decisionEndpointUrl, setDecisionEndpointUrl] = useState(OPENROUTER_DECISION_DEFAULT_ENDPOINT);
+  const [decisionModel, setDecisionModel] = useState(OPENROUTER_DECISION_DEFAULT_MODEL);
 
   // Docs retrieval settings (hybrid search)
   const [docsBm25Weight, setDocsBm25Weight] = useState(
@@ -155,6 +90,7 @@ export const Settings: React.FC<SettingsProps> = ({
 
   const [isLoading, setIsLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
+  const [gatewayError, setGatewayError] = useState("");
 
   const appWindow = getCurrentWebviewWindow();
 
@@ -169,52 +105,32 @@ export const Settings: React.FC<SettingsProps> = ({
           return;
         }
 
-        // LLM settings
         setApiKey(settings.apiKey);
-        setGatewayBaseUrl(settings.expensiveBaseUrl || OPENROUTER_GATEWAY_URL);
-        const isDefaultOpenRouter = [
-          settings.cheapBaseUrl,
-          settings.mediumBaseUrl,
-          settings.expensiveBaseUrl,
-        ].every((url) => url.replace(/\/+$/, "") === OPENROUTER_GATEWAY_URL);
+        setGatewayBaseUrl(settings.gatewayBaseUrl || OPENROUTER_GATEWAY_URL);
+        const isDefaultOpenRouter = settings.gatewayBaseUrl.replace(/\/+$/, "") === OPENROUTER_GATEWAY_URL;
         setGatewayProvider(isDefaultOpenRouter ? "openrouter" : "custom");
-
-        setCheapBaseUrl(settings.cheapBaseUrl);
+        setLlmModel(settings.llmModel);
+        setDedicatedKeys({
+          embedding: settings.embeddingApiKey === settings.apiKey ? "" : settings.embeddingApiKey,
+          vision: settings.visionApiKey === settings.apiKey ? "" : settings.visionApiKey,
+          perplexity: settings.perplexityApiKey === settings.apiKey ? "" : settings.perplexityApiKey,
+        });
         setCheapModel(settings.cheapModel);
-
-        setMediumBaseUrl(settings.mediumBaseUrl);
         setMediumModel(settings.mediumModel);
-
-        setExpensiveBaseUrl(settings.expensiveBaseUrl);
         setExpensiveModel(settings.expensiveModel);
-
-        // Speech settings
         setSttModel(settings.sttModel);
         setTtsModel(settings.ttsModel);
         setTtsVoice(settings.ttsVoice);
 
-        // Embedding settings
-        setEmbeddingApiKey(settings.embeddingApiKey);
-        setEmbeddingBaseUrl(settings.embeddingBaseUrl);
         setEmbeddingModel(settings.embeddingModel);
-
-        // Vision settings
-        setVisionApiKey(settings.visionApiKey);
-        setVisionBaseUrl(settings.visionBaseUrl);
         setVisionModel(settings.visionModel);
-
-        // Perplexity settings
-        setPerplexityApiKey(settings.perplexityApiKey);
-        setPerplexityBaseUrl(settings.perplexityBaseUrl);
         setPerplexityModel(settings.perplexityModel);
         setSearchDepth(settings.searchDepth);
 
-        // Decision (Jev) settings
         setDecisionApiKey(settings.decisionApiKey);
         setDecisionEndpointUrl(settings.decisionEndpointUrl);
         setDecisionModel(settings.decisionModel);
 
-        // Docs retrieval settings
         setDocsBm25Weight(settings.docsBm25Weight);
         setDocsKeywordWeight(settings.docsKeywordWeight);
         setDocsEmbeddingWeight(settings.docsEmbeddingWeight);
@@ -225,8 +141,6 @@ export const Settings: React.FC<SettingsProps> = ({
         setDocsJevCandidateLimit(settings.docsJevCandidateLimit);
         setDocsJevTimeoutMs(settings.docsJevTimeoutMs);
         setDocsJevWeight(settings.docsJevWeight);
-      } catch (error) {
-        console.error("Failed to load settings:", error);
       } finally {
         if (isMounted) {
           setIsLoading(false);
@@ -241,25 +155,53 @@ export const Settings: React.FC<SettingsProps> = ({
     };
   }, []);
 
+  const changeGatewayBaseUrl = (nextBaseUrl: string) => {
+    // Follow the shared URL unless the user customized the Decision endpoint.
+    if (!decisionEndpointUrl || decisionEndpointUrl === getDecisionEndpointForGateway(gatewayBaseUrl)) {
+      setDecisionEndpointUrl(getDecisionEndpointForGateway(nextBaseUrl));
+    }
+    setGatewayBaseUrl(nextBaseUrl);
+    setGatewayError("");
+  };
+
+  const changeGatewayProvider = (provider: "openrouter" | "custom") => {
+    setGatewayProvider(provider);
+    setApiKey("");
+    setDedicatedKeys({ embedding: "", vision: "", perplexity: "" });
+    setDecisionApiKey("");
+    const nextBaseUrl = provider === "openrouter" ? OPENROUTER_GATEWAY_URL : "";
+    setGatewayBaseUrl(nextBaseUrl);
+    setDecisionEndpointUrl(getDecisionEndpointForGateway(nextBaseUrl));
+    setGatewayError("");
+    // Deliberately leave all model selections unchanged.
+  };
   const handleSave = async () => {
     if (isSaving) {
       return;
     }
 
+    if (!apiKey.trim() || (gatewayProvider === "custom" && !gatewayBaseUrl.trim())) {
+      setGatewayError(gatewayProvider === "custom"
+        ? "Enter both the custom gateway base URL and API key."
+        : "Enter your OpenRouter API key to continue.");
+      return;
+    }
+    setGatewayError("");
+
     setIsSaving(true);
 
     try {
       await saveSettings({
-        // LLM settings
         apiKey,
-
-        cheapBaseUrl,
+        gatewayBaseUrl,
+        llmModel,
+        cheapBaseUrl: gatewayBaseUrl,
         cheapModel,
 
-        mediumBaseUrl,
+        mediumBaseUrl: gatewayBaseUrl,
         mediumModel,
 
-        expensiveBaseUrl,
+        expensiveBaseUrl: gatewayBaseUrl,
         expensiveModel,
 
         // Speech settings
@@ -267,28 +209,23 @@ export const Settings: React.FC<SettingsProps> = ({
         ttsModel,
         ttsVoice,
 
-        // Embedding settings
-        embeddingApiKey,
-        embeddingBaseUrl,
+        embeddingApiKey: dedicatedKeys.embedding,
+        embeddingBaseUrl: gatewayBaseUrl,
         embeddingModel,
 
-        // Vision settings
-        visionApiKey,
-        visionBaseUrl,
+        visionApiKey: dedicatedKeys.vision,
+        visionBaseUrl: gatewayBaseUrl,
         visionModel,
 
-        // Perplexity settings
-        perplexityApiKey,
-        perplexityBaseUrl,
+        perplexityApiKey: dedicatedKeys.perplexity,
+        perplexityBaseUrl: gatewayBaseUrl,
         perplexityModel,
         searchDepth,
 
-        // Decision (Jev) settings
         decisionApiKey,
         decisionEndpointUrl,
         decisionModel,
 
-        // Docs retrieval settings
         docsBm25Weight,
         docsKeywordWeight,
         docsEmbeddingWeight,
@@ -316,6 +253,7 @@ export const Settings: React.FC<SettingsProps> = ({
       }
     } catch (error) {
       console.error("Failed to save settings:", error);
+      setGatewayError("Could not save settings. Please try again.");
       setIsSaving(false);
     }
   };
@@ -371,96 +309,47 @@ export const Settings: React.FC<SettingsProps> = ({
 
             <div className="settings-field">
               <label className="settings-label">Gateway</label>
-              <select
-                value={gatewayProvider}
-                disabled={isSaving}
-                onChange={(event) => {
-                  const nextProvider = event.target.value as "openrouter" | "custom";
-                  setGatewayProvider(nextProvider);
-                  if (nextProvider === "openrouter") {
-                    setGatewayBaseUrl(OPENROUTER_GATEWAY_URL);
-                    setCheapBaseUrl(OPENROUTER_GATEWAY_URL);
-                    setMediumBaseUrl(OPENROUTER_GATEWAY_URL);
-                    setExpensiveBaseUrl(OPENROUTER_GATEWAY_URL);
-                  }
-                }}
-                className="settings-input"
-              >
+              <select value={gatewayProvider} disabled={isSaving}
+                onChange={(event) => changeGatewayProvider(event.target.value as "openrouter" | "custom")}
+                className="settings-input">
                 <option value="openrouter">OpenRouter (recommended)</option>
                 <option value="custom">Custom OpenAI-compatible gateway</option>
               </select>
             </div>
-
-            {gatewayProvider === "custom" && (
-              <div className="settings-field">
-                <label className="settings-label">Gateway Base URL</label>
-                <input
-                  type="text"
-                  value={gatewayBaseUrl}
-                  disabled={isSaving}
-                  onChange={(event) => {
-                    const nextUrl = event.target.value;
-                    setGatewayBaseUrl(nextUrl);
-                    setCheapBaseUrl(nextUrl);
-                    setMediumBaseUrl(nextUrl);
-                    setExpensiveBaseUrl(nextUrl);
-                  }}
-                  placeholder="https://your-gateway.example/v1"
-                  className="settings-input"
-                />
-              </div>
-            )}
-
+            {gatewayProvider === "custom" && <div className="settings-field">
+              <label className="settings-label">Shared Gateway Base URL</label>
+              <input type="text" value={gatewayBaseUrl} disabled={isSaving}
+                onChange={(event) => changeGatewayBaseUrl(event.target.value)}
+                placeholder="https://your-gateway.example/v1" className="settings-input" required />
+            </div>}
             <div className="settings-field">
               <label className="settings-label">API Key</label>
               <input
                 type="password"
                 value={apiKey}
                 disabled={isSaving}
-                onChange={(event) => setApiKey(event.target.value)}
+                onChange={(event) => { setApiKey(event.target.value); setGatewayError(""); }}
                 placeholder="Paste your gateway API key"
                 className="settings-input"
               />
               <p className="settings-card-description">
-                {gatewayProvider === "openrouter"
-                  ? "Shared by all three model tiers and Decision (Jev)."
-                  : "Shared by all three model tiers. Decision (Jev) may need its own API key for a custom gateway."}
+                Shared by all models and Decision (Jev), unless you configure a separate key.
               </p>
+              {gatewayError && <p className="settings-card-description" role="alert">{gatewayError}</p>}
             </div>
           </div>
 
-          <details className="settings-advanced">
-            <summary>Customize models and per-tier gateway URLs</summary>
-            <p className="settings-card-description">
-              Choose a different model for each task, or override the shared gateway URL for an individual tier.
-            </p>
-            <LlmTierCard
-              title="Cheap LLM"
-              description="Used for fast, low-cost tasks."
-              baseUrl={cheapBaseUrl}
-              model={cheapModel}
-              disabled={isSaving}
-              onBaseUrlChange={setCheapBaseUrl}
-              onModelChange={setCheapModel}
-            />
-            <LlmTierCard
-              title="Medium LLM"
-              description="Balanced quality and speed for daily use."
-              baseUrl={mediumBaseUrl}
-              model={mediumModel}
-              disabled={isSaving}
-              onBaseUrlChange={setMediumBaseUrl}
-              onModelChange={setMediumModel}
-            />
-            <LlmTierCard
-              title="Expensive LLM"
-              description="Best reasoning model for complex requests."
-              baseUrl={expensiveBaseUrl}
-              model={expensiveModel}
-              disabled={isSaving}
-              onBaseUrlChange={setExpensiveBaseUrl}
-              onModelChange={setExpensiveModel}
-            />
+          <div className="settings-card settings-model-summary">
+            <p className="settings-card-description">Preconfigured models — change any model below if needed. A custom gateway must support the selected models and APIs.</p>
+            <div className="settings-model-list">
+              {[["Main chat", llmModel], ["Cheap", cheapModel], ["Medium", mediumModel], ["Expensive", expensiveModel], ["STT", sttModel], ["TTS", ttsModel], ["Vision", visionModel], ["Embedding", embeddingModel], ["Perplexity", perplexityModel], ["Decision (Jev)", decisionModel]].map(([name, model]) => <div className="settings-model-row" key={name}><span className="settings-model-tier">{name}</span><span className="settings-model-id">{model}</span></div>)}
+            </div>
+          </div>
+          <details className="settings-advanced"><summary>Customize models</summary>
+            <div className="settings-card"><label className="settings-label">Main Chat Model</label><input type="text" value={llmModel} disabled={isSaving} onChange={(event) => setLlmModel(event.target.value)} className="settings-input" /></div>
+            <LlmTierCard title="Cheap LLM" description="Fast, low-cost tasks." model={cheapModel} disabled={isSaving} onModelChange={setCheapModel} />
+            <LlmTierCard title="Medium LLM" description="Balanced daily use." model={mediumModel} disabled={isSaving} onModelChange={setMediumModel} />
+            <LlmTierCard title="Expensive LLM" description="Complex requests." model={expensiveModel} disabled={isSaving} onModelChange={setExpensiveModel} />
           </details>
         </section>
 
@@ -510,155 +399,13 @@ export const Settings: React.FC<SettingsProps> = ({
         </section>
 
         {/* ---------- Embedding ---------- */}
-        <section className="settings-section">
-          <h5 className="settings-section-label">Embedding Model</h5>
-
-          <div className="settings-card">
-            <div className="settings-field">
-              <label className="settings-label">API Key</label>
-              <input
-                type="password"
-                value={embeddingApiKey}
-                disabled={isSaving}
-                onChange={(event) => setEmbeddingApiKey(event.target.value)}
-                placeholder="Leave empty if not required"
-                className="settings-input"
-              />
-            </div>
-
-            <div className="settings-field">
-              <label className="settings-label">Base URL</label>
-              <input
-                type="text"
-                value={embeddingBaseUrl}
-                disabled={isSaving}
-                onChange={(event) => setEmbeddingBaseUrl(event.target.value)}
-                placeholder="https://api.openai.com/v1"
-                className="settings-input"
-              />
-            </div>
-
-            <div className="settings-field">
-              <label className="settings-label">Model Name</label>
-              <input
-                type="text"
-                value={embeddingModel}
-                disabled={isSaving}
-                onChange={(event) => setEmbeddingModel(event.target.value)}
-                placeholder="Embedding model name"
-                className="settings-input"
-              />
-            </div>
-          </div>
-        </section>
+        <section className="settings-section"><h5 className="settings-section-label">Embedding Model</h5><div className="settings-card"><p className="settings-card-description">Uses the shared gateway URL and API key configured above.</p><div className="settings-field"><label className="settings-label">Model</label><input value={embeddingModel} disabled={isSaving} onChange={(event)=>setEmbeddingModel(event.target.value)} className="settings-input"/></div></div></section>
 
         {/* ---------- Vision ---------- */}
-        <section className="settings-section">
-          <h5 className="settings-section-label">Vision Model</h5>
-
-          <div className="settings-card">
-            <div className="settings-field">
-              <label className="settings-label">API Key</label>
-              <input
-                type="password"
-                value={visionApiKey}
-                disabled={isSaving}
-                onChange={(event) => setVisionApiKey(event.target.value)}
-                placeholder="Enter Vision API key"
-                className="settings-input"
-              />
-            </div>
-
-            <div className="settings-field">
-              <label className="settings-label">Base URL</label>
-              <input
-                type="text"
-                value={visionBaseUrl}
-                disabled={isSaving}
-                onChange={(event) => setVisionBaseUrl(event.target.value)}
-                placeholder="https://api.openai.com/v1"
-                className="settings-input"
-              />
-            </div>
-
-            <div className="settings-field">
-              <label className="settings-label">Model Name</label>
-              <input
-                type="text"
-                value={visionModel}
-                disabled={isSaving}
-                onChange={(event) => setVisionModel(event.target.value)}
-                placeholder="Vision model name"
-                className="settings-input"
-              />
-            </div>
-          </div>
-        </section>
+        <section className="settings-section"><h5 className="settings-section-label">Vision Model</h5><div className="settings-card"><p className="settings-card-description">Uses the shared gateway URL and API key configured above.</p><div className="settings-field"><label className="settings-label">Model</label><input value={visionModel} disabled={isSaving} onChange={(event)=>setVisionModel(event.target.value)} className="settings-input"/></div></div></section>
 
         {/* ---------- Perplexity ---------- */}
-        <section className="settings-section">
-          <h5 className="settings-section-label">
-            Perplexity (Research Engine)
-          </h5>
-
-          <div className="settings-card">
-            <div className="settings-field">
-              <label className="settings-label">API Key</label>
-              <input
-                type="password"
-                value={perplexityApiKey}
-                disabled={isSaving}
-                onChange={(event) => setPerplexityApiKey(event.target.value)}
-                placeholder="Enter Perplexity API key"
-                className="settings-input"
-              />
-            </div>
-
-            <div className="settings-field">
-              <label className="settings-label">Base URL</label>
-              <input
-                type="text"
-                value={perplexityBaseUrl}
-                disabled={isSaving}
-                onChange={(event) => setPerplexityBaseUrl(event.target.value)}
-                placeholder="https://api.perplexity.ai"
-                className="settings-input"
-              />
-            </div>
-
-            <div className="settings-grid-2">
-              <div className="settings-field">
-                <label className="settings-label">Model</label>
-                <input
-                  type="text"
-                  value={perplexityModel}
-                  disabled={isSaving}
-                  onChange={(event) => setPerplexityModel(event.target.value)}
-                  placeholder="sonar"
-                  className="settings-input"
-                />
-              </div>
-
-              <div className="settings-field">
-                <label className="settings-label">Search Depth</label>
-                <input
-                  type="number"
-                  min="1"
-                  max="10"
-                  value={searchDepth}
-                  disabled={isSaving}
-                  onChange={(event) => {
-                    const nextValue = Number(event.target.value);
-                    setSearchDepth(
-                      Number.isFinite(nextValue) ? nextValue : 3,
-                    );
-                  }}
-                  className="settings-input"
-                />
-              </div>
-            </div>
-          </div>
-        </section>
+        <section className="settings-section"><h5 className="settings-section-label">Perplexity (Research Engine)</h5><div className="settings-card"><p className="settings-card-description">Uses the shared gateway URL and API key configured above.</p><div className="settings-grid-2"><div className="settings-field"><label className="settings-label">Model</label><input value={perplexityModel} disabled={isSaving} onChange={(event)=>setPerplexityModel(event.target.value)} className="settings-input"/></div><div className="settings-field"><label className="settings-label">Search Depth</label><input type="number" min="1" max="10" value={searchDepth} disabled={isSaving} onChange={(event)=>setSearchDepth(Number(event.target.value)||3)} className="settings-input"/></div></div></div></section>
 
         {/* ---------- Decision (Jev) ---------- */}
         <section className="settings-section">
@@ -668,7 +415,7 @@ export const Settings: React.FC<SettingsProps> = ({
             <div className="settings-card-header">
               <h4 className="settings-card-title">Decision settings</h4>
               <p className="settings-card-description">
-                When using OpenRouter, this reuses your shared gateway API key. For another gateway, enter a separate key if needed.
+                Uses the shared gateway API key and an automatically configured endpoint. You can override either below.
               </p>
             </div>
 
@@ -726,7 +473,7 @@ export const Settings: React.FC<SettingsProps> = ({
 
             <div className="settings-grid-2">
               <div className="settings-field">
-                <label className="settings-label">BM25 Weight (0–1)</label>
+                <label className="settings-label">BM25 Weight (0Î“Ã‡Ã´1)</label>
                 <input
                   type="number"
                   min="0"
@@ -747,7 +494,7 @@ export const Settings: React.FC<SettingsProps> = ({
               </div>
 
               <div className="settings-field">
-                <label className="settings-label">Keyword Weight (0–1)</label>
+                <label className="settings-label">Keyword Weight (0Î“Ã‡Ã´1)</label>
                 <input
                   type="number"
                   min="0"
@@ -768,7 +515,7 @@ export const Settings: React.FC<SettingsProps> = ({
               </div>
 
               <div className="settings-field">
-                <label className="settings-label">Embedding Weight (0–1)</label>
+                <label className="settings-label">Embedding Weight (0Î“Ã‡Ã´1)</label>
                 <input
                   type="number"
                   min="0"
@@ -789,7 +536,7 @@ export const Settings: React.FC<SettingsProps> = ({
               </div>
 
               <div className="settings-field">
-                <label className="settings-label">Relevance Threshold (0–1)</label>
+                <label className="settings-label">Relevance Threshold (0Î“Ã‡Ã´1)</label>
                 <input
                   type="number"
                   min="0"
@@ -810,7 +557,7 @@ export const Settings: React.FC<SettingsProps> = ({
               </div>
 
               <div className="settings-field">
-                <label className="settings-label">Result Cap (1–50)</label>
+                <label className="settings-label">Result Cap (1Î“Ã‡Ã´50)</label>
                 <input
                   type="number"
                   min="1"
@@ -830,7 +577,7 @@ export const Settings: React.FC<SettingsProps> = ({
               </div>
 
               <div className="settings-field">
-                <label className="settings-label">Candidate Depth (1–200)</label>
+                <label className="settings-label">Candidate Depth (1Î“Ã‡Ã´200)</label>
                 <input
                   type="number"
                   min="1"
@@ -860,7 +607,7 @@ export const Settings: React.FC<SettingsProps> = ({
                 Its probability gates and refines the hybrid score; on
                 failure search falls back to the deterministic hybrid score.
                 The relevance threshold applies to the final score, then the
-                result cap — two distinct controls.
+                result cap Î“Ã‡Ã¶ two distinct controls.
               </p>
             </div>
 
@@ -882,7 +629,7 @@ export const Settings: React.FC<SettingsProps> = ({
 
               <div className="settings-field">
                 <label className="settings-label">
-                  Jev Candidate Limit (1–20)
+                  Jev Candidate Limit (1Î“Ã‡Ã´20)
                 </label>
                 <input
                   type="number"
@@ -903,7 +650,7 @@ export const Settings: React.FC<SettingsProps> = ({
               </div>
 
               <div className="settings-field">
-                <label className="settings-label">Jev Timeout (ms, 500–30000)</label>
+                <label className="settings-label">Jev Timeout (ms, 500Î“Ã‡Ã´30000)</label>
                 <input
                   type="number"
                   min="500"
@@ -924,7 +671,7 @@ export const Settings: React.FC<SettingsProps> = ({
               </div>
 
               <div className="settings-field">
-                <label className="settings-label">Jev Weight (0–1)</label>
+                <label className="settings-label">Jev Weight (0Î“Ã‡Ã´1)</label>
                 <input
                   type="number"
                   min="0"

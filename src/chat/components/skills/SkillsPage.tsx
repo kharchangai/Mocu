@@ -3,6 +3,7 @@ import {
   useMemo,
   useState,
 } from 'react';
+import { ResourceDeleteDialog } from '../../../components/ResourceDeleteDialog';
 
 import {
   useProjectSkills,
@@ -31,7 +32,7 @@ import {
 import {
   SkillsEmptyState,
 } from './SkillsEmptyState';
-
+import { LoaderCircle } from 'lucide-react';
 import './skills.css';
 
 function createSearchableMetadataText(
@@ -101,6 +102,8 @@ export function SkillsPage() {
   ] = useState<string | null>(
     null,
   );
+  const [installationStatus, setInstallationStatus] = useState<string | null>(null);
+  const [skillToDelete, setSkillToDelete] = useState<ProjectSkillFile | null>(null);
 
   const {
     skills,
@@ -111,6 +114,7 @@ export function SkillsPage() {
     error,
     reloadSkills,
     updateSkill,
+    deleteSkill,
   } = useProjectSkills();
 
   const displayedDirectory =
@@ -234,34 +238,25 @@ export function SkillsPage() {
         }
 
         setIsInstalling(true);
+        setInstallationStatus('Installing skill package…');
         setInstallationError(null);
 
         try {
-          await installSkillFromZip({
-            zipPath,
-          });
-
+          const result = await installSkillFromZip({ zipPath });
+          setInstallationStatus(`Installing ${result.skillName} files…`);
           await reloadSkills();
-
-          setIsNewSkillModalOpen(
-            false,
-          );
+          setIsNewSkillModalOpen(false);
           setInstallationError(null);
         } catch (installError) {
           setInstallationError(
-            getErrorMessage(
-              installError,
-              'The skill could not be installed.',
-            ),
+            getErrorMessage(installError, 'The skill could not be installed.'),
           );
         } finally {
           setIsInstalling(false);
+          setInstallationStatus(null);
         }
       },
-      [
-        isInstalling,
-        reloadSkills,
-      ],
+      [isInstalling, reloadSkills],
     );
 
   return (
@@ -486,9 +481,9 @@ export function SkillsPage() {
               <SkillCard
                 key={`${skillFile.source}:${skillFile.directoryPath}`}
                 skillFile={skillFile}
-                onOpen={
-                  handleOpenSkill
-                }
+                onOpen={handleOpenSkill}
+                onDelete={setSkillToDelete}
+                isDeleting={isSaving}
               />
             ),
           )}
@@ -530,6 +525,24 @@ export function SkillsPage() {
           onInstall={
             handleInstallSkill
           }
+        />
+      ) : null}
+      {installationStatus ? (
+        <div className="skills-operation-status" role="status" aria-live="polite">
+          <LoaderCircle size={16} />{installationStatus}
+        </div>
+      ) : null}
+
+      {skillToDelete ? (
+        <ResourceDeleteDialog
+          resourceType="Skill"
+          resourceName={skillToDelete.skill.name}
+          description="The skill folder and all of its bundled resources will be permanently removed."
+          onCancel={() => setSkillToDelete(null)}
+          onConfirm={async () => {
+            await deleteSkill(skillToDelete);
+            setSkillToDelete(null);
+          }}
         />
       ) : null}
     </main>

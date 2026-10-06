@@ -22,8 +22,8 @@ export const perplexitySearchTool = tool(
       return "Error: Failed to load application settings.";
     }
 
-    const apiKey = settings.perplexityApiKey;
-    const baseUrl = settings.perplexityBaseUrl || "https://api.perplexity.ai";
+    const apiKey = settings.perplexityApiKey || settings.apiKey;
+    const baseUrl = settings.perplexityBaseUrl || settings.mediumBaseUrl;
     const modelName = settings.perplexityModel || "sonar";
 
     console.log(`[Perplexity Tool] Using Base URL: ${baseUrl} and Model: ${modelName}`);

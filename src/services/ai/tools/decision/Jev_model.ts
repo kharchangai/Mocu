@@ -1,6 +1,5 @@
 import { readSettings } from "../../../../store";
 import { combineAbortSignals } from "../../agent/abort";
-
 /**
  * Jev Decision Model.
  *
@@ -11,18 +10,12 @@ import { combineAbortSignals } from "../../agent/abort";
  *  - "choice": a pick from caller-defined options
  *  - "score": a position on an ordered rubric
  *
- * Configuration (API key, base URL, model) is read from app settings first,
- * with an OPENROUTER_API_KEY environment variable fallback.
+ * API key, endpoint and model are read from app settings. The shared gateway
+ * API key is used unless a Decision-specific key is configured.
  */
 
-const DEFAULT_DECISION_ENDPOINT_URL =
-  "https://openrouter.ai/api/alpha/decisions";
+const DEFAULT_DECISION_ENDPOINT_URL = "https://openrouter.ai/api/alpha/decisions";
 const DEFAULT_DECISION_MODEL = "~typesafe/jev-latest";
-
-const DEFAULT_OPENROUTER_DECISION_HOSTS = new Set([
-  "openrouter.ai",
-  "api.openrouter.ai",
-]);
 
 export type JevDecisionQuestion = {
   type: "noul" | "choice" | "score";
@@ -61,22 +54,11 @@ export async function getJevDecision({
   signal,
 }: JevDecisionParams) {
   const settings = await readSettings();
-  const sharedKeyHost = (() => {
-    try {
-      return new URL(settings.expensiveBaseUrl).hostname.toLowerCase();
-    } catch {
-      return "";
-    }
-  })();
-  const sharedOpenRouterKey = DEFAULT_OPENROUTER_DECISION_HOSTS.has(sharedKeyHost)
-    ? settings.apiKey
-    : "";
-  const resolvedApiKey =
-    apiKey?.trim() || settings.decisionApiKey || sharedOpenRouterKey;
+  const resolvedApiKey = apiKey?.trim() || settings.decisionApiKey || settings.apiKey;
 
   if (!resolvedApiKey) {
     throw new Error(
-      "Decision API key is not configured. Open Settings and set the Decision (Jev) API key.",
+      "Gateway API key is not configured. Open Settings and enter the API key for your selected gateway.",
     );
   }
 

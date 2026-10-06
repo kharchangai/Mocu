@@ -20,7 +20,7 @@ export {
 } from "./services/extension-installer";
 
 export {
-  EXTENSION_CATALOG,
+  loadInstallableExtensions,
   type ExtensionCatalogEntry,
 } from "./services/extension-catalog";
 

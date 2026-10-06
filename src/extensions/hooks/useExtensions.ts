@@ -1,9 +1,11 @@
 import { useCallback, useEffect, useState } from "react";
 
 import type { InstalledExtension } from "../types/extension";
-
 import { scanInstalledExtensions } from "../services/extension-scanner";
-
+import {
+  loadInstallableExtensions,
+  type ExtensionCatalogEntry,
+} from "../services/extension-catalog";
 import {
   installExtensionFromFolder,
   installExtensionFromZip,
@@ -12,22 +14,10 @@ import {
   type InstalledExtensionResult,
 } from "../services/extension-installer";
 
-import type {
-  ExtensionCatalogEntry,
-} from "../services/extension-catalog";
-
-/**
- * Snapshot of installed extensions plus install / uninstall / refresh.
- *
- * There is intentionally no activation or running state: extensions are
- * spawned lazily by the Rust manager the moment a command is invoked, so the
- * UI only ever deals with "what is installed" and "install / delete".
- */
+/** Installed extensions and bundled extensions available to install. */
 export function useExtensions() {
-  const [extensions, setExtensions] = useState<
-    InstalledExtension[]
-  >([]);
-
+  const [extensions, setExtensions] = useState<InstalledExtension[]>([]);
+  const [catalog, setCatalog] = useState<ExtensionCatalogEntry[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -36,46 +26,34 @@ export function useExtensions() {
     setError(null);
 
     try {
-      const installed = await scanInstalledExtensions();
+      const [installed, installable] = await Promise.all([
+        scanInstalledExtensions(),
+        loadInstallableExtensions(),
+      ]);
       setExtensions(installed);
+      setCatalog(installable);
     } catch (reason) {
-      setError(
-        reason instanceof Error
-          ? reason.message
-          : String(reason),
-      );
+      setError(reason instanceof Error ? reason.message : String(reason));
     } finally {
       setLoading(false);
     }
   }, []);
 
   const install = useCallback(
-    async (
-      sourcePath: string,
-      isDirectory: boolean,
-    ): Promise<InstalledExtensionResult> => {
+    async (sourcePath: string, isDirectory: boolean): Promise<InstalledExtensionResult> => {
       const result = isDirectory
         ? await installExtensionFromFolder(sourcePath)
         : await installExtensionFromZip(sourcePath);
-
       await refresh();
-
       return result;
     },
     [refresh],
   );
 
   const installBundled = useCallback(
-    async (
-      entry: ExtensionCatalogEntry,
-    ): Promise<InstalledExtensionResult> => {
-      const result = await installBundledExtension({
-        id: entry.id,
-        files: entry.files,
-      });
-
+    async (entry: ExtensionCatalogEntry): Promise<InstalledExtensionResult> => {
+      const result = await installBundledExtension(entry);
       await refresh();
-
       return result;
     },
     [refresh],
@@ -93,13 +71,5 @@ export function useExtensions() {
     void refresh();
   }, [refresh]);
 
-  return {
-    extensions,
-    loading,
-    error,
-    refresh,
-    install,
-    installBundled,
-    uninstall,
-  };
+  return { extensions, catalog, loading, error, refresh, install, installBundled, uninstall };
 }

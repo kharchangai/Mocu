@@ -5,6 +5,7 @@ import {
 } from 'react';
 
 import {
+  deleteSkill as deleteSkillFile,
   loadProjectSkills,
   saveSkill,
 } from '../services/skills/projectSkillService';
@@ -33,8 +34,8 @@ type UseProjectSkillsResult = {
   updateSkill: (
     skillFile: ProjectSkillFile,
   ) => Promise<ProjectSkillFile>;
+  deleteSkill: (skillFile: ProjectSkillFile) => Promise<void>;
 };
-
 function getErrorMessage(
   error: unknown,
 ): string {
@@ -194,6 +195,21 @@ export function useProjectSkills(): UseProjectSkillsResult {
       [],
     );
 
+  const deleteSkill = useCallback(async (skillFile: ProjectSkillFile): Promise<void> => {
+    setIsSaving(true);
+    setError(null);
+    try {
+      await deleteSkillFile(skillFile);
+      setSkills((current) => current.filter((item) => item.directoryPath !== skillFile.directoryPath));
+    } catch (deleteError) {
+      const message = getErrorMessage(deleteError);
+      setError(message);
+      throw deleteError;
+    } finally {
+      setIsSaving(false);
+    }
+  }, []);
+
   return {
     skills,
     invalidSkills,
@@ -204,5 +220,6 @@ export function useProjectSkills(): UseProjectSkillsResult {
     error,
     reloadSkills,
     updateSkill,
+    deleteSkill,
   };
 }

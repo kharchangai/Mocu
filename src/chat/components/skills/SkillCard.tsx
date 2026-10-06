@@ -1,12 +1,13 @@
+import { Trash2 } from 'lucide-react';
 import type {
   ProjectSkillFile,
 } from '../../types/skill';
 
 type SkillCardProps = {
   skillFile: ProjectSkillFile;
-  onOpen: (
-    skillFile: ProjectSkillFile,
-  ) => void;
+  onOpen: (skillFile: ProjectSkillFile) => void;
+  onDelete: (skillFile: ProjectSkillFile) => void;
+  isDeleting: boolean;
 };
 
 function getMetadataTags(
@@ -37,6 +38,8 @@ function isSkillEnabled(
 export function SkillCard({
   skillFile,
   onOpen,
+  onDelete,
+  isDeleting,
 }: SkillCardProps) {
   const tags =
     getMetadataTags(skillFile);
@@ -45,14 +48,13 @@ export function SkillCard({
     isSkillEnabled(skillFile);
 
   return (
-    <button
-      type="button"
-      className="skill-card"
-      onClick={() =>
-        onOpen(skillFile)
-      }
-      aria-label={`Open ${skillFile.skill.name}`}
-    >
+    <article className="skill-card">
+      <button
+        type="button"
+        className="skill-card-open"
+        onClick={() => onOpen(skillFile)}
+        aria-label={`Open ${skillFile.skill.name}`}
+      >
       <span className="skill-card-top">
         <span className="skill-card-icon">
           <svg
@@ -125,6 +127,17 @@ export function SkillCard({
             : 'resources'}
         </span>
       </span>
-    </button>
+      </button>
+      <button
+        type="button"
+        className="skill-card-delete"
+        onClick={() => onDelete(skillFile)}
+        disabled={isDeleting}
+        aria-label={`Delete ${skillFile.skill.name}`}
+        title="Delete skill"
+      >
+        <Trash2 size={15} />
+      </button>
+    </article>
   );
 }

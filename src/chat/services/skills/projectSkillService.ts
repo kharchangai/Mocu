@@ -4,6 +4,7 @@ import {
   mkdir,
   readDir,
   readTextFile,
+  remove,
   writeTextFile,
 } from '@tauri-apps/plugin-fs';
 
@@ -395,4 +396,20 @@ export async function saveSkill(
     },
     resources,
   };
+}
+/** Permanently removes a skill folder and all of its bundled resources. */
+export async function deleteSkill(
+  skillFile: ProjectSkillFile,
+): Promise<void> {
+  const options = skillFile.baseDir === undefined
+    ? undefined
+    : { baseDir: skillFile.baseDir };
+  const directoryExists = await exists(skillFile.directoryPath, options);
+  if (!directoryExists) {
+    throw new Error(`The skill directory no longer exists: ${skillFile.directoryPath}`);
+  }
+  await remove(skillFile.directoryPath, {
+    recursive: true,
+    ...(options ?? {}),
+  });
 }

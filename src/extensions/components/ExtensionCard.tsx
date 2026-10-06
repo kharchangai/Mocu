@@ -43,7 +43,6 @@ export function ExtensionCard({
   extension,
   onUninstall,
 }: ExtensionCardProps) {
-  const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   const [settingsOpen, setSettingsOpen] = useState(false);
@@ -114,20 +113,10 @@ export function ExtensionCard({
   }, [settingsOpen, configLoaded, manifest.id, configFields]);
 
   const handleUninstall = (): void => {
-    if (!onUninstall) {
-      return;
-    }
-
-    setBusy(true);
-    setError(null);
-
+    if (!onUninstall) return;
     Promise.resolve(onUninstall(manifest.id)).catch((reason) => {
-      setError(
-        reason instanceof Error
-          ? reason.message
-          : String(reason),
-      );
-    }).finally(() => setBusy(false));
+      setError(reason instanceof Error ? reason.message : String(reason));
+    });
   };
 
   const handleSaveConfig = async (): Promise<void> => {
@@ -288,7 +277,6 @@ export function ExtensionCard({
         <button
           type="button"
           className="extensions-button is-danger"
-          disabled={busy}
           onClick={handleUninstall}
         >
           Uninstall
