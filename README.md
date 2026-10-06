@@ -59,11 +59,11 @@ Mocu is in an **early stage of development** and is not yet stable. Due to poten
 | Chat, agents, skills, memory | TypeScript | `src/chat/` |
 | Extension runtime & UI | TypeScript | `src/extensions/` |
 | MCP client | TypeScript | `src/mcp/` |
-| Extension SDKs & shared contracts | Node.js (`@mocu/extension-sdk`) and Python (`mocu_extension_sdk`) | `extension-system/` |
+| Extension SDKs & shared contracts | Node.js (`@mocu/extension-sdk`) and Python (`mocu_extension_sdk`) | `install-resources/extension-system/` |
 
 **Extension system in short:** the Rust host keeps a registry of installed extensions (from their `manifest.json`), spawns the extension process lazily when a command runs, routes JSON-RPC requests, and enforces per-command timeouts. The frontend handles installation, settings forms, and exposes each extension command as an agent tool (e.g. `extension_pi_node_ask`). Full documentation lives in [`docs/extention/`](docs/extention/README.md).
 
-**Example extensions** in [`extensions-examples/`](extensions-examples/): `time-node` (hello world), `sysinfo-node` (system info), `hi-llm-node` (first LLM call), `llm-outside-example`, `pi-node` (advanced: multi-command coding-agent session with streaming activity), and `test` (bare protocol, no SDK).
+**Example extensions** in [`install-resources/extensions-examples/`](install-resources/extensions-examples/): `time-node` (hello world), `sysinfo-node` (system info), `hi-llm-node` (first LLM call), `llm-outside-example`, `pi-node` (advanced: multi-command coding-agent session with streaming activity), and `test` (bare protocol, no SDK).
 
 ---
 
@@ -75,7 +75,7 @@ Building and running Mocu from source requires:
 |-------------|-----------|-------|
 | **Rust** (stable, with `rustup`) | Building the Tauri/Rust backend (`src-tauri/`) | Install the OS prerequisites for [Tauri 2](https://tauri.app/start/prerequisites/) for your platform. |
 | **Node.js** (LTS, includes npm) | Building the frontend, the dev server, and running **Node.js extensions** | Node extensions are the most common extension runtime; the installer runs `npm install` for them automatically. |
-| **Python** (optional) | Running **Python extensions** | Only needed if you use Python-based extensions (the SDK is in `extension-system/sdk-python/`). Mocu does **not** run `pip install` for you — manage Python extension dependencies yourself. |
+| **Python** (optional) | Running **Python extensions** | Only needed if you use Python-based extensions (the SDK is in `install-resources/extension-system/sdk-python/`). Mocu does **not** run `pip install` for you — manage Python extension dependencies yourself. |
 | **AI provider API key** | All AI features | Any **OpenAI-compatible** endpoint; configure base URL, model names, and API key in Mocu's Settings. |
 | **Perplexity API key** (optional) | Web search tool | Configure in Settings. |
 

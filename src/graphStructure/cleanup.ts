@@ -23,8 +23,7 @@
 //     recorded in the decision. Losing good data is worse than keeping
 //     one extra node.
 //
-// run_start (user message) and run_end (final answer) are always kept:
-// they are the context every later step needs.
+// The complete user request and final answer stay in the internal graph for similarity matching; agent-facing retrieval omits both.
 
 import { getJevDecision } from "../services/ai/tools/decision/Jev_model";
 import type { GraphRecord } from "./recorder";
@@ -32,8 +31,8 @@ import type { GraphRecord } from "./recorder";
 /** Maximum characters of a tool result sent to JEV. */
 const RESULT_PREVIEW_LIMIT = 2000;
 
-/** Same threshold used by the JEV gate. */
-const KEEP_PROBABILITY = 0.5;
+/** Lower threshold keeps borderline-useful calls; JEV failures remain fail-open. */
+const KEEP_PROBABILITY = 0.35;
 
 export type CleanupDecisionReason =
   | "jev"
@@ -180,24 +179,23 @@ const judgeToolCall = async (input: {
       usefulForRun: {
         type: "noul",
         instructions:
-          "Considering the user's request and the final answer, was this tool's output helpful for reaching that final answer?",
+          "Could this tool call, its inputs, or its output be useful evidence for a future similar user request, either by avoiding repeated work or supplying relevant context? Prefer retaining plausible candidates over dropping them.",
         criteria: {
-          true: "The tool's output contributed to reaching the final answer.",
-          false: "The tool's output was not needed to reach the final answer.",
+          true: "This tool call plausibly helps with a future similar request, including an action, a read, a search, or an intermediate step.",
+          false: "This tool call is clearly unrelated, redundant, or useless for future work.",
         },
       },
       usefulForStructure: {
         type: "noul",
         instructions:
-          "Did this tool return reusable knowledge about the project's file structure, such as paths, directory layout, file contents, or search results?",
+          "Does this call contain reusable information about files, project layout, configuration, or other context that may help future similar work?",
         criteria: {
-          true: "The tool returned knowledge about the project structure worth remembering.",
-          false: "Nothing about the project structure is worth remembering from this tool.",
+          true: "It contains potentially reusable contextual information.",
+          false: "It contains no reusable contextual information.",
         },
       },
     },
   });
-
   if (!result || typeof result !== "object" || !("answers" in result)) {
     throw new Error("JEV returned an unexpected decision response.");
   }

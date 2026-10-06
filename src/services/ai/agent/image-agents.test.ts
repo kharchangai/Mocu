@@ -46,8 +46,9 @@ vi.mock('../focus/focusManager', () => ({
 }));
 vi.mock('../stepbystep/workflowManager', () => ({ hasActiveStepWorkflow: async () => false }));
 vi.mock('../specialistCommands', () => ({ runSpecialistSlashCommand: async () => null }));
-vi.mock('../../../graphStructure/graphSearch', () => ({ searchRunGraphHints: async () => '' }));
-vi.mock('../../../graphStructure/recorder', () => ({ createGraphRecorder: () => ({}) }));
+vi.mock('../../../graphStructure/graphSearch', () => ({ searchRunGraphs: async () => ({ matches: [], totalGraphs: 0, query: '', scoring: 'none' }) }));
+vi.mock('../../../graphStructure/graphDigest', () => ({ searchRunGraphHints: async () => '', createGraphDigestTool: () => ({ name: 'get_relevant_run_graph_digest', description: '', runnable: { name: 'get_relevant_run_graph_digest' }, execute: async () => '' }), createGraphToolLogTool: () => ({ name: 'get_run_graph_tool_log', description: '', runnable: { name: 'get_run_graph_tool_log' }, execute: async () => '' }) }));
+vi.mock('../../../graphStructure/recorder', () => ({ createGraphRecorder: () => ({ startRun() {}, getRecords: () => [], finishRun() {}, recordModelCall() {}, recordToolCall() {}, runId: 'test-run', agentKind: 'project', chatId: 'test-chat' }) }));
 
 import { callChatAgent } from '../chat-agent';
 import { callProjectAgent } from '../project-agent';

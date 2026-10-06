@@ -183,7 +183,7 @@ import { shouldRouteToGraphSystem } from "../../graphStructure/jevGate";
 import { cleanRunRecords } from "../../graphStructure/cleanup";
 import { buildGraph } from "../../graphStructure/graphMaker";
 import { saveRunGraph } from "../../graphStructure/graphStorage";
-import { createGraphDigestTool, searchRunGraphHints } from "../../graphStructure/graphDigest";
+import { createGraphDigestTool, createGraphToolLogTool, searchRunGraphHints } from "../../graphStructure/graphDigest";
 import { runProjectMemoryExclusive } from "../../chat/project/memory/projectMemoryOperationQueue";
 import {
   buildDocsContextPrompt,
@@ -2100,19 +2100,21 @@ export const callProjectAgent =
     if (!suppressMemorySave) {
       try {
         recordThisRun = await shouldRouteToGraphSystem(userText);
-        if (recordThisRun) graphRecorder.startRun(userText);
       } catch (error) {
-        console.warn("[Project Agent] JEV recording gate failed; continuing without recording:", error);
+        console.warn("[Project Agent] JEV recording gate failed; recording this turn:", error);
+        recordThisRun = true;
       }
+      graphRecorder.startRun(userText);
     }
     const graphDigestTool = createGraphDigestTool(normalizedProjectPath);
+    const graphToolLogTool = createGraphToolLogTool(normalizedProjectPath);
     const specialistMemoryTool = createFindSpecialistProjectMemoryTool(normalizedProjectPath);
     const llmWithTools = llm.bindTools([
       scheduleTool, desktopVisionTool, terminalTool, perplexitySearchTool,
       textToSpeechTool, speechControlTool, skillLoaderTool, createAgentTool,
       ...agentManagementTools,
       readFileTool, writeFileTool, editFileTool, findFileTool,
-      graphDigestTool.runnable, specialistMemoryTool, readSpecialistHistoryTool,
+      graphDigestTool.runnable, graphToolLogTool.runnable, specialistMemoryTool, readSpecialistHistoryTool,
       ...docTools, ...notesTools, ...extensionTools.tools, ...mcpTools.tools, ...agentTools.tools,
     ]);
     const toolExecutor = createProjectToolExecutor(terminalTool, runnableConfig);
@@ -2120,6 +2122,11 @@ export const callProjectAgent =
       name: graphDigestTool.name,
       description: graphDigestTool.description,
       execute: (args) => graphDigestTool.execute(args as { query: string; runId?: string }),
+    });
+    toolExecutor.registerTool({
+      name: graphToolLogTool.name,
+      description: graphToolLogTool.description,
+      execute: (args) => graphToolLogTool.execute(args as { runId: string; toolCallId: string }),
     });
 
     toolExecutor.registerTool({
@@ -2134,7 +2141,6 @@ export const callProjectAgent =
     });
 
     extensionTools.registerAll(toolExecutor);
-    mcpTools.registerAll(toolExecutor);
     agentTools.registerAll(toolExecutor);
 
     const availableToolNames = [
@@ -2142,7 +2148,7 @@ export const callProjectAgent =
       "speech_control", perplexitySearchTool.name, skillLoaderTool.name, createAgentTool.name,
       ...agentManagementTools.map((agentTool) => agentTool.name),
       readFileTool.name, writeFileTool.name, editFileTool.name, findFileTool.name,
-      graphDigestTool.name, specialistMemoryTool.name, readSpecialistHistoryTool.name,
+      graphDigestTool.name, graphToolLogTool.name, specialistMemoryTool.name, readSpecialistHistoryTool.name,
       ...docTools.map((item) => item.name), ...notesTools.map((item) => item.name),
       ...extensionTools.entries.map((item) => item.name), ...mcpTools.tools.map((item) => item.name),
       ...agentTools.entries.map((item) => item.name),
@@ -2330,7 +2336,7 @@ export const callProjectAgent =
             stepNumber: currentStepNumber,
             signal,
             chatId: getChatIdFromConfig(runnableConfig),
-            recorder: recordThisRun ? graphRecorder : undefined,
+            recorder: !suppressMemorySave ? graphRecorder : undefined,
           });
 
         /*
@@ -2560,7 +2566,8 @@ export const callProjectAgent =
     response.content =
       finalAssistantContent;
 
-    if (recordThisRun) {
+    const graphHasToolCalls = graphRecorder.getRecords().some((record) => record.type === "tool_call");
+    if (recordThisRun || graphHasToolCalls) {
       graphRecorder.finishRun(finalAssistantContent);
       try {
         const cleanup = await cleanRunRecords(graphRecorder.getRecords());

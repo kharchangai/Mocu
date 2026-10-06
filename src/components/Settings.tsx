@@ -1,6 +1,11 @@
 import React, { useEffect, useState } from "react";
 import { getCurrentWebviewWindow } from "@tauri-apps/api/webviewWindow";
-import { readSettings, saveSettings } from "../store";
+import {
+  OPENROUTER_DEFAULT_MODEL,
+  OPENROUTER_GATEWAY_URL,
+  readSettings,
+  saveSettings,
+} from "../store";
 import { DOCS_RETRIEVAL_DEFAULTS } from "../chat/docs/docs-retrieval-config";
 
 import "./Settings.css";
@@ -72,21 +77,22 @@ const LlmTierCard: React.FC<LlmTierCardProps> = ({
 export const Settings: React.FC<SettingsProps> = ({
   onClose,
 }) => {
-  // Shared LLM API key
+  // Shared LLM gateway settings
   const [apiKey, setApiKey] = useState("");
+  const [gatewayProvider, setGatewayProvider] = useState<"openrouter" | "custom">("openrouter");
+  const [gatewayBaseUrl, setGatewayBaseUrl] = useState(OPENROUTER_GATEWAY_URL);
 
   // Cheap LLM settings
-  const [cheapBaseUrl, setCheapBaseUrl] = useState("");
-  const [cheapModel, setCheapModel] = useState("");
+  const [cheapBaseUrl, setCheapBaseUrl] = useState(OPENROUTER_GATEWAY_URL);
+  const [cheapModel, setCheapModel] = useState(OPENROUTER_DEFAULT_MODEL);
 
   // Medium LLM settings
-  const [mediumBaseUrl, setMediumBaseUrl] = useState("");
-  const [mediumModel, setMediumModel] = useState("");
+  const [mediumBaseUrl, setMediumBaseUrl] = useState(OPENROUTER_GATEWAY_URL);
+  const [mediumModel, setMediumModel] = useState(OPENROUTER_DEFAULT_MODEL);
 
   // Expensive LLM settings
-  const [expensiveBaseUrl, setExpensiveBaseUrl] = useState("");
-  const [expensiveModel, setExpensiveModel] = useState("");
-
+  const [expensiveBaseUrl, setExpensiveBaseUrl] = useState(OPENROUTER_GATEWAY_URL);
+  const [expensiveModel, setExpensiveModel] = useState(OPENROUTER_DEFAULT_MODEL);
   // Speech settings
   const [sttModel, setSttModel] = useState("");
   const [ttsModel, setTtsModel] = useState("");
@@ -110,7 +116,7 @@ export const Settings: React.FC<SettingsProps> = ({
 
   // Decision (Jev) settings
   const [decisionApiKey, setDecisionApiKey] = useState("");
-  const [decisionBaseUrl, setDecisionBaseUrl] = useState("");
+  const [decisionEndpointUrl, setDecisionEndpointUrl] = useState("");
   const [decisionModel, setDecisionModel] = useState("");
 
   // Docs retrieval settings (hybrid search)
@@ -163,6 +169,13 @@ export const Settings: React.FC<SettingsProps> = ({
 
         // LLM settings
         setApiKey(settings.apiKey);
+        setGatewayBaseUrl(settings.expensiveBaseUrl || OPENROUTER_GATEWAY_URL);
+        const isDefaultOpenRouter = [
+          settings.cheapBaseUrl,
+          settings.mediumBaseUrl,
+          settings.expensiveBaseUrl,
+        ].every((url) => url.replace(/\/+$/, "") === OPENROUTER_GATEWAY_URL);
+        setGatewayProvider(isDefaultOpenRouter ? "openrouter" : "custom");
 
         setCheapBaseUrl(settings.cheapBaseUrl);
         setCheapModel(settings.cheapModel);
@@ -196,7 +209,7 @@ export const Settings: React.FC<SettingsProps> = ({
 
         // Decision (Jev) settings
         setDecisionApiKey(settings.decisionApiKey);
-        setDecisionBaseUrl(settings.decisionBaseUrl);
+        setDecisionEndpointUrl(settings.decisionEndpointUrl);
         setDecisionModel(settings.decisionModel);
 
         // Docs retrieval settings
@@ -270,7 +283,7 @@ export const Settings: React.FC<SettingsProps> = ({
 
         // Decision (Jev) settings
         decisionApiKey,
-        decisionBaseUrl,
+        decisionEndpointUrl,
         decisionModel,
 
         // Docs retrieval settings
@@ -344,11 +357,53 @@ export const Settings: React.FC<SettingsProps> = ({
 
           <div className="settings-card">
             <div className="settings-card-header">
-              <h4 className="settings-card-title">LLM API Key</h4>
+              <h4 className="settings-card-title">AI Gateway</h4>
               <p className="settings-card-description">
-                Shared API key used by all language model tiers.
+                Start with OpenRouter: add your API key and Mocu is ready. You can switch to another OpenAI-compatible gateway anytime.
               </p>
             </div>
+
+            <div className="settings-field">
+              <label className="settings-label">Gateway</label>
+              <select
+                value={gatewayProvider}
+                disabled={isSaving}
+                onChange={(event) => {
+                  const nextProvider = event.target.value as "openrouter" | "custom";
+                  setGatewayProvider(nextProvider);
+                  if (nextProvider === "openrouter") {
+                    setGatewayBaseUrl(OPENROUTER_GATEWAY_URL);
+                    setCheapBaseUrl(OPENROUTER_GATEWAY_URL);
+                    setMediumBaseUrl(OPENROUTER_GATEWAY_URL);
+                    setExpensiveBaseUrl(OPENROUTER_GATEWAY_URL);
+                  }
+                }}
+                className="settings-input"
+              >
+                <option value="openrouter">OpenRouter (recommended)</option>
+                <option value="custom">Custom OpenAI-compatible gateway</option>
+              </select>
+            </div>
+
+            {gatewayProvider === "custom" && (
+              <div className="settings-field">
+                <label className="settings-label">Gateway Base URL</label>
+                <input
+                  type="text"
+                  value={gatewayBaseUrl}
+                  disabled={isSaving}
+                  onChange={(event) => {
+                    const nextUrl = event.target.value;
+                    setGatewayBaseUrl(nextUrl);
+                    setCheapBaseUrl(nextUrl);
+                    setMediumBaseUrl(nextUrl);
+                    setExpensiveBaseUrl(nextUrl);
+                  }}
+                  placeholder="https://your-gateway.example/v1"
+                  className="settings-input"
+                />
+              </div>
+            )}
 
             <div className="settings-field">
               <label className="settings-label">API Key</label>
@@ -357,41 +412,50 @@ export const Settings: React.FC<SettingsProps> = ({
                 value={apiKey}
                 disabled={isSaving}
                 onChange={(event) => setApiKey(event.target.value)}
-                placeholder="Shared API key for LLM providers"
+                placeholder="Paste your gateway API key"
                 className="settings-input"
               />
+              <p className="settings-card-description">
+                {gatewayProvider === "openrouter"
+                  ? "Shared by all three model tiers and Decision (Jev)."
+                  : "Shared by all three model tiers. Decision (Jev) may need its own API key for a custom gateway."}
+              </p>
             </div>
           </div>
 
-          <LlmTierCard
-            title="Cheap LLM"
-            description="Used for fast, low-cost tasks."
-            baseUrl={cheapBaseUrl}
-            model={cheapModel}
-            disabled={isSaving}
-            onBaseUrlChange={setCheapBaseUrl}
-            onModelChange={setCheapModel}
-          />
-
-          <LlmTierCard
-            title="Medium LLM"
-            description="Balanced quality and speed for daily use."
-            baseUrl={mediumBaseUrl}
-            model={mediumModel}
-            disabled={isSaving}
-            onBaseUrlChange={setMediumBaseUrl}
-            onModelChange={setMediumModel}
-          />
-
-          <LlmTierCard
-            title="Expensive LLM"
-            description="Best reasoning model for complex requests."
-            baseUrl={expensiveBaseUrl}
-            model={expensiveModel}
-            disabled={isSaving}
-            onBaseUrlChange={setExpensiveBaseUrl}
-            onModelChange={setExpensiveModel}
-          />
+          <details className="settings-advanced">
+            <summary>Customize models and per-tier gateway URLs</summary>
+            <p className="settings-card-description">
+              Choose a different model for each task, or override the shared gateway URL for an individual tier.
+            </p>
+            <LlmTierCard
+              title="Cheap LLM"
+              description="Used for fast, low-cost tasks."
+              baseUrl={cheapBaseUrl}
+              model={cheapModel}
+              disabled={isSaving}
+              onBaseUrlChange={setCheapBaseUrl}
+              onModelChange={setCheapModel}
+            />
+            <LlmTierCard
+              title="Medium LLM"
+              description="Balanced quality and speed for daily use."
+              baseUrl={mediumBaseUrl}
+              model={mediumModel}
+              disabled={isSaving}
+              onBaseUrlChange={setMediumBaseUrl}
+              onModelChange={setMediumModel}
+            />
+            <LlmTierCard
+              title="Expensive LLM"
+              description="Best reasoning model for complex requests."
+              baseUrl={expensiveBaseUrl}
+              model={expensiveModel}
+              disabled={isSaving}
+              onBaseUrlChange={setExpensiveBaseUrl}
+              onModelChange={setExpensiveModel}
+            />
+          </details>
         </section>
 
         {/* ---------- Speech ---------- */}
@@ -595,41 +659,49 @@ export const Settings: React.FC<SettingsProps> = ({
           <h5 className="settings-section-label">Decision (Jev)</h5>
 
           <div className="settings-card">
-            <div className="settings-field">
-              <label className="settings-label">API Key</label>
-              <input
-                type="password"
-                value={decisionApiKey}
-                disabled={isSaving}
-                onChange={(event) => setDecisionApiKey(event.target.value)}
-                placeholder="Enter OpenRouter API key"
-                className="settings-input"
-              />
+            <div className="settings-card-header">
+              <h4 className="settings-card-title">Decision settings</h4>
+              <p className="settings-card-description">
+                When using OpenRouter, this reuses your shared gateway API key. For another gateway, enter a separate key if needed.
+              </p>
             </div>
 
-            <div className="settings-field">
-              <label className="settings-label">Base URL</label>
-              <input
-                type="text"
-                value={decisionBaseUrl}
-                disabled={isSaving}
-                onChange={(event) => setDecisionBaseUrl(event.target.value)}
-                placeholder="https://openrouter.ai/api"
-                className="settings-input"
-              />
-            </div>
-
-            <div className="settings-field">
-              <label className="settings-label">Model</label>
-              <input
-                type="text"
-                value={decisionModel}
-                disabled={isSaving}
-                onChange={(event) => setDecisionModel(event.target.value)}
-                placeholder="~typesafe/jev-latest"
-                className="settings-input"
-              />
-            </div>
+            <details className="settings-advanced">
+              <summary>Advanced Decision settings</summary>
+              <div className="settings-field">
+                <label className="settings-label">Separate API Key (optional)</label>
+                <input
+                  type="password"
+                  value={decisionApiKey}
+                  disabled={isSaving}
+                  onChange={(event) => setDecisionApiKey(event.target.value)}
+                  placeholder="Leave blank to use the shared gateway key"
+                  className="settings-input"
+                />
+              </div>
+              <div className="settings-field">
+                <label className="settings-label">Endpoint URL</label>
+                <input
+                  type="text"
+                  value={decisionEndpointUrl}
+                  disabled={isSaving}
+                  onChange={(event) => setDecisionEndpointUrl(event.target.value)}
+                  placeholder="https://openrouter.ai/api/alpha/decisions"
+                  className="settings-input"
+                />
+              </div>
+              <div className="settings-field">
+                <label className="settings-label">Model</label>
+                <input
+                  type="text"
+                  value={decisionModel}
+                  disabled={isSaving}
+                  onChange={(event) => setDecisionModel(event.target.value)}
+                  placeholder="~typesafe/jev-latest"
+                  className="settings-input"
+                />
+              </div>
+            </details>
           </div>
         </section>
         {/* ---------- Docs search ---------- */}

@@ -7,7 +7,7 @@
  * search goal?". Only matches whose relevance probability clears the
  * threshold are returned, each with its score.
  *
- * Batched like extensions-examples/filesystem/semantic_search.ts: up to
+ * Batched like install-resources/extensions-examples/filesystem/semantic_search.ts: up to
  * MAX_JEV_QUESTIONS excerpts per API call, keyed by "candidate_N".
  *
  * If the Jev model is not configured or the call fails, the caller keeps

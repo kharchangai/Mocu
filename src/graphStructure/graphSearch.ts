@@ -146,7 +146,7 @@ const toMatch = (
  * `query`. Never throws for embedding issues — falls back to keywords.
  */
 export const searchRunGraphs = async (
-  projectPath: string,
+  projectPath: string | undefined,
   query: string,
   options: GraphSearchOptions = {},
 ): Promise<GraphSearchResult> => {
@@ -243,7 +243,7 @@ export const searchRunGraphs = async (
  * Loads one run graph by id (shared import for tools/tests).
  */
 export const getRunGraphById = async (
-  projectPath: string,
+  projectPath: string | undefined,
   runId: string,
 ): Promise<StoredRunGraphData | null> => {
   return loadRunGraph(projectPath, runId);

@@ -1,7 +1,7 @@
 /*
  * find_file tool — file discovery + content search with line numbers.
  *
- * Modelled on extensions-examples/filesystem/regex_search.ts (which stays
+ * Modelled on install-resources/extensions-examples/filesystem/regex_search.ts (which stays
  * as an example): matches report file name, absolute path, matched text
  * and the line range the match covers, so the agent can jump straight to
  * read_file / edit_file with the right line numbers.
@@ -226,7 +226,7 @@ function escapeRegExp(text: string): string {
  *
  * Only used for candidate generation: the Jev decision model later keeps
  * just the semantically relevant excerpts, so recall matters more than
- * precision here (same split as extensions-examples/filesystem's
+ * precision here (same split as install-resources/extensions-examples/filesystem's
  * semantic_search: patterns generate candidates, query judges meaning).
  *
  * Returns null when the query has no usable keywords.

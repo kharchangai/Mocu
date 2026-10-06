@@ -2,7 +2,7 @@ import type { StructuredToolInterface } from "@langchain/core/tools";
 
 import { runProjectMemoryExclusive } from "../chat/project/memory/projectMemoryOperationQueue";
 import { cleanRunRecords } from "./cleanup";
-import { createGraphDigestTool, searchRunGraphHints } from "./graphDigest";
+import { createGraphToolLogTool, createGraphDigestTool, searchRunGraphHints } from "./graphDigest";
 import { buildGraph } from "./graphMaker";
 import { createGraphRecorder, type AgentKind, type GraphRecorder } from "./recorder";
 import { saveRunGraph } from "./graphStorage";
@@ -13,13 +13,11 @@ export interface PreparedAgentGraphTurn {
   recorder: GraphRecorder | null;
   graphHint: string;
   digestTool: StructuredToolInterface | null;
+  toolLogTool: StructuredToolInterface | null;
+  persistRequested: boolean;
 }
 
-/**
- * Prepares project-scoped prior-run retrieval and optional graph recording for
- * one specialist turn. Retrieval remains available even when JEV decides that
- * this turn should not be persisted, matching the project agent behavior.
- */
+/** Prepare global prior-run retrieval and capture one specialist turn. */
 export async function prepareAgentGraphTurn(input: {
   agentKind: Extract<AgentKind, "focus" | "stepbystep">;
   chatId: string;
@@ -27,61 +25,63 @@ export async function prepareAgentGraphTurn(input: {
   userMessage: string;
 }): Promise<PreparedAgentGraphTurn> {
   const projectPath = input.projectPath?.trim() ?? "";
-  if (!projectPath) {
-    return { projectPath: "", recorder: null, graphHint: "", digestTool: null };
-  }
+  const retrievalPath = projectPath || undefined;
 
   let graphHint = "";
   try {
-    graphHint = await searchRunGraphHints(projectPath, input.userMessage);
+    graphHint = await searchRunGraphHints(retrievalPath, input.userMessage);
   } catch (error) {
     console.warn(`[${input.agentKind}] Prior run graph search failed; continuing without a hint:`, error);
   }
 
-  let recorder: GraphRecorder | null = null;
+  let persistRequested = false;
   try {
-    if (await shouldRouteToGraphSystem(input.userMessage)) {
-      recorder = createGraphRecorder({
-        agentKind: input.agentKind,
-        chatId: input.chatId,
-        projectPath,
-      });
-      recorder.startRun(input.userMessage);
-    }
+    persistRequested = await shouldRouteToGraphSystem(input.userMessage);
   } catch (error) {
-    console.warn(`[${input.agentKind}] JEV graph-recording gate failed; continuing without recording:`, error);
+    // A failed classifier must not suppress potentially useful history.
+    console.warn(`[${input.agentKind}] JEV graph-recording gate failed; recording this turn:`, error);
+    persistRequested = true;
   }
+
+  // Capture calls even when JEV's initial message-only gate says no; an actual
+  // tool-using turn can still be useful to remember and is evaluated at save time.
+  const recorder = createGraphRecorder({ agentKind: input.agentKind, chatId: input.chatId, projectPath: retrievalPath });
+  recorder.startRun(input.userMessage);
 
   let digestTool: StructuredToolInterface | null = null;
+  let toolLogTool: StructuredToolInterface | null = null;
   try {
-    digestTool = createGraphDigestTool(projectPath).runnable as StructuredToolInterface;
+    digestTool = createGraphDigestTool(retrievalPath).runnable as StructuredToolInterface;
+    toolLogTool = createGraphToolLogTool(retrievalPath).runnable as StructuredToolInterface;
   } catch (error) {
-    console.warn(`[${input.agentKind}] Could not create the prior-run digest tool:`, error);
+    console.warn(`[${input.agentKind}] Could not create prior-run graph tools:`, error);
   }
-
-  return { projectPath, recorder, graphHint, digestTool };
+  return { projectPath, recorder, graphHint, digestTool, toolLogTool, persistRequested };
 }
 
-/** Save one specialist turn's graph best-effort; this must never fail the task. */
+/** Save one useful specialist turn best-effort; never fail the user task. */
 export async function persistAgentGraphTurn(
   prepared: PreparedAgentGraphTurn,
   finalAnswer: string,
   logPrefix: string,
 ): Promise<void> {
   const recorder = prepared.recorder;
-  if (!recorder || !prepared.projectPath) return;
-
+  if (!recorder) return;
   recorder.finishRun(finalAnswer);
+  const records = recorder.getRecords();
+  const hasToolCalls = records.some((record) => record.type === "tool_call");
+  if (!prepared.persistRequested && !hasToolCalls) return;
+
   try {
-    const cleanup = await cleanRunRecords(recorder.getRecords());
+    const cleanup = await cleanRunRecords(records);
     const graph = buildGraph({
       runId: recorder.runId,
       agentKind: recorder.agentKind,
       chatId: recorder.chatId,
-      projectPath: prepared.projectPath,
+      projectPath: prepared.projectPath || undefined,
       getRecords: () => cleanup.kept,
     });
-    const saved = await runProjectMemoryExclusive(() => saveRunGraph(prepared.projectPath, graph));
+    const saved = await runProjectMemoryExclusive(() => saveRunGraph(prepared.projectPath || undefined, graph));
     console.log(`${logPrefix} Saved run graph ${saved.key}; embedded=${saved.embedded}`);
   } catch (error) {
     console.warn(`${logPrefix} Graph recording failed; user task already completed:`, error);

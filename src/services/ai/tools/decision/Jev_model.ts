@@ -15,8 +15,14 @@ import { combineAbortSignals } from "../../agent/abort";
  * with an OPENROUTER_API_KEY environment variable fallback.
  */
 
-const DEFAULT_DECISION_BASE_URL = "https://openrouter.ai/api";
+const DEFAULT_DECISION_ENDPOINT_URL =
+  "https://openrouter.ai/api/alpha/decisions";
 const DEFAULT_DECISION_MODEL = "~typesafe/jev-latest";
+
+const DEFAULT_OPENROUTER_DECISION_HOSTS = new Set([
+  "openrouter.ai",
+  "api.openrouter.ai",
+]);
 
 export type JevDecisionQuestion = {
   type: "noul" | "choice" | "score";
@@ -34,10 +40,10 @@ export type JevDecisionParams = {
   state: unknown;
   /** Typed questions keyed by a caller-chosen name. */
   questions: JevDecisionQuestions;
-  /** Optional override; defaults to settings, then OPENROUTER_API_KEY. */
+  /** Optional API key override; defaults to the configured Decision API key. */
   apiKey?: string;
-  /** Optional override; defaults to the decision base URL from settings. */
-  baseUrl?: string;
+  /** Optional complete endpoint URL override; defaults to settings. */
+  endpointUrl?: string;
   /** Optional override; defaults to the decision model from settings. */
   model?: string;
   timeoutMs?: number;
@@ -45,34 +51,28 @@ export type JevDecisionParams = {
   signal?: AbortSignal;
 };
 
-function buildDecisionUrl(baseUrl: string): string {
-  const cleanBase = baseUrl.trim().replace(/\/+$/, "");
-
-  if (!cleanBase) {
-    return `${DEFAULT_DECISION_BASE_URL}/alpha/decisions`;
-  }
-
-  // Accept either the API root ("https://openrouter.ai/api") or a full
-  // endpoint ("https://openrouter.ai/api/alpha/decisions").
-  if (/\/alpha\/decisions$/.test(cleanBase)) {
-    return cleanBase;
-  }
-
-  return `${cleanBase}/alpha/decisions`;
-}
-
 export async function getJevDecision({
   state,
   questions,
   apiKey,
-  baseUrl,
+  endpointUrl,
   model,
   timeoutMs = 30_000,
   signal,
 }: JevDecisionParams) {
   const settings = await readSettings();
-
-  const resolvedApiKey = apiKey?.trim() || settings.decisionApiKey;
+  const sharedKeyHost = (() => {
+    try {
+      return new URL(settings.expensiveBaseUrl).hostname.toLowerCase();
+    } catch {
+      return "";
+    }
+  })();
+  const sharedOpenRouterKey = DEFAULT_OPENROUTER_DECISION_HOSTS.has(sharedKeyHost)
+    ? settings.apiKey
+    : "";
+  const resolvedApiKey =
+    apiKey?.trim() || settings.decisionApiKey || sharedOpenRouterKey;
 
   if (!resolvedApiKey) {
     throw new Error(
@@ -93,10 +93,13 @@ export async function getJevDecision({
     throw new Error("questions must be a non-empty object.");
   }
 
-  const resolvedBaseUrl = baseUrl?.trim() || settings.decisionBaseUrl;
+  const resolvedEndpointUrl =
+    endpointUrl?.trim() ||
+    settings.decisionEndpointUrl ||
+    DEFAULT_DECISION_ENDPOINT_URL;
   const resolvedModel = model?.trim() || settings.decisionModel;
 
-  const response = await fetch(buildDecisionUrl(resolvedBaseUrl), {
+  const response = await fetch(resolvedEndpointUrl, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",

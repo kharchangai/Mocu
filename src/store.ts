@@ -4,6 +4,9 @@ import {
   validateRangedInt,
   validateUnitInterval,
 } from "./chat/docs/docs-retrieval-config";
+export const OPENROUTER_GATEWAY_URL = "https://openrouter.ai/api/v1";
+export const OPENROUTER_DEFAULT_MODEL = "openrouter/auto";
+
 export type AppSettings = {
   // LLM settings
   apiKey: string;
@@ -52,7 +55,7 @@ export type AppSettings = {
   docsJevWeight: number;
   // Decision (Jev) settings
   decisionApiKey: string;
-  decisionBaseUrl: string;
+  decisionEndpointUrl: string;
   decisionModel: string;
 };
 
@@ -122,27 +125,46 @@ export async function readSettings(): Promise<AppSettings> {
   ).trim();
 
   const expensiveBaseUrl = (
-    (await store.get<string>("MOCU_EXPENSIVE_BASE_URL")) || legacyBaseUrl
+    (await store.get<string>("MOCU_EXPENSIVE_BASE_URL")) ||
+    legacyBaseUrl ||
+    OPENROUTER_GATEWAY_URL
   ).trim();
+  const savedDecisionEndpointUrl = await store.get<string>(
+    "MOCU_DECISION_ENDPOINT_URL",
+  );
+  const legacyDecisionBaseUrl = (
+    (await store.get<string>("MOCU_DECISION_BASE_URL")) ||
+    "https://openrouter.ai/api"
+  )
+    .trim()
+    .replace(/\/+$/, "");
+  const decisionEndpointUrl = savedDecisionEndpointUrl
+    ? savedDecisionEndpointUrl.trim()
+    : /\/alpha\/decisions$/.test(legacyDecisionBaseUrl)
+      ? legacyDecisionBaseUrl
+      : `${legacyDecisionBaseUrl}/alpha/decisions`;
 
   const expensiveModel = (
-    (await store.get<string>("MOCU_EXPENSIVE_MODEL")) || legacyLlmModel
+    (await store.get<string>("MOCU_EXPENSIVE_MODEL")) ||
+    legacyLlmModel ||
+    OPENROUTER_DEFAULT_MODEL
   ).trim();
-
   return {
     // LLM settings
     apiKey: ((await store.get<string>("MOCU_API_KEY")) || "").trim(),
 
     cheapBaseUrl: (
-      (await store.get<string>("MOCU_CHEAP_BASE_URL")) || ""
+      (await store.get<string>("MOCU_CHEAP_BASE_URL")) || expensiveBaseUrl
     ).trim(),
-    cheapModel: ((await store.get<string>("MOCU_CHEAP_MODEL")) || "").trim(),
+    cheapModel: (
+      (await store.get<string>("MOCU_CHEAP_MODEL")) || OPENROUTER_DEFAULT_MODEL
+    ).trim(),
 
     mediumBaseUrl: (
-      (await store.get<string>("MOCU_MEDIUM_BASE_URL")) || ""
+      (await store.get<string>("MOCU_MEDIUM_BASE_URL")) || expensiveBaseUrl
     ).trim(),
     mediumModel: (
-      (await store.get<string>("MOCU_MEDIUM_MODEL")) || ""
+      (await store.get<string>("MOCU_MEDIUM_MODEL")) || OPENROUTER_DEFAULT_MODEL
     ).trim(),
 
     // Falls back to old settings for migration compatibility.
@@ -244,10 +266,7 @@ export async function readSettings(): Promise<AppSettings> {
     decisionApiKey: (
       (await store.get<string>("MOCU_DECISION_API_KEY")) || ""
     ).trim(),
-    decisionBaseUrl: (
-      (await store.get<string>("MOCU_DECISION_BASE_URL")) ||
-      "https://openrouter.ai/api"
-    ).trim(),
+    decisionEndpointUrl,
     decisionModel: (
       (await store.get<string>("MOCU_DECISION_MODEL")) ||
       "~typesafe/jev-latest"
@@ -343,9 +362,10 @@ export async function saveSettings(settings: AppSettings): Promise<void> {
     (settings.decisionApiKey || "").trim(),
   );
   await store.set(
-    "MOCU_DECISION_BASE_URL",
+    "MOCU_DECISION_ENDPOINT_URL",
     (
-      settings.decisionBaseUrl || "https://openrouter.ai/api"
+      settings.decisionEndpointUrl ||
+      "https://openrouter.ai/api/alpha/decisions"
     ).trim(),
   );
   await store.set(

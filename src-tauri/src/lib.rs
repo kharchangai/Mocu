@@ -15,6 +15,10 @@ mod extension_host;
 // MCP stdio host (manages local MCP server child processes)
 mod mcp_stdio;
 
+
+// Install resources
+mod install_resources;
+
 use extension_host::manager::ExtensionManager;
 use mcp_stdio::McpStdioHost;
 
@@ -104,6 +108,8 @@ pub fn run() {
         ])
 
         .setup(|app| {
+            install_resources::initialize(app.handle())?;
+
             // Build the tray menu items
             let open_chat_item = MenuItem::with_id(
                 app,

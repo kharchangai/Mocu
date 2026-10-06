@@ -11,7 +11,7 @@
 import { readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 
-const root = "extensions-examples/pi-node";
+const root = "install-resources/extensions-examples/pi-node";
 
 const wanted = [
   "manifest.json",
@@ -44,7 +44,7 @@ const output = `/*
  * Generated file — do not edit by hand.
  *
  * Regenerate with: node scripts/generate-pi-catalog.mjs
- * (reads extensions-examples/pi-node and embeds its text files so the
+ * (reads install-resources/extensions-examples/pi-node and embeds its text files so the
  * Extensions catalog can one-click-install the pi Agent extension; the
  * installer runs \`npm install\` afterwards to fetch the pi SDK.)
  */

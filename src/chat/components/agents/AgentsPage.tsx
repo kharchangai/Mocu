@@ -5,8 +5,8 @@ import { listAvailableAgents, type AvailableAgent } from '../../agent/agent-load
 import type { AgentDefinition } from '../../agent/agent-definition-parser';
 import {
   deleteAgentDefinition,
-  installAgentDefinition,
-  readImportedAgent,
+  exportAgentPackage,
+  installAgentPackage,
   saveEditedAgent,
 } from '../../agent/agent-storage';
 import './agents.css';
@@ -86,10 +86,10 @@ export function AgentsPage() {
     let selected: string | string[] | null;
     try {
       selected = await open({
-        title: 'Install agent definition',
+        title: 'Install agent package',
         multiple: false,
         directory: false,
-        filters: [{ name: 'Agent definition', extensions: ['json'] }],
+        filters: [{ name: 'Agent package', extensions: ['zip'] }],
       });
     } catch (dialogError) {
       setError(getError(dialogError));
@@ -100,8 +100,7 @@ export function AgentsPage() {
     setBusy(true);
     setNotice(null);
     try {
-      const definition = await readImportedAgent(selected);
-      await installAgentDefinition(definition);
+      const definition = await installAgentPackage(selected);
       setNotice(`“${definition.agentName}” installed.`);
       await loadAgents();
     } catch (installError) {
@@ -174,15 +173,19 @@ export function AgentsPage() {
     setForm((current) => ({ ...current, [key]: value }));
   };
 
-  const exportAgent = (agent: AvailableAgent) => {
-    const { agentName, description, mainInstruction, agents, skills, tools, toolSelectionConfigured, extensions, llm } = agent;
-    const blob = new Blob([JSON.stringify({ agentName, description, mainInstruction, agents, skills, tools, toolSelectionConfigured, extensions, llm }, null, 2)], { type: 'application/json' });
-    const url = URL.createObjectURL(blob);
-    const anchor = document.createElement('a');
-    anchor.href = url;
-    anchor.download = `${agent.agentName.replace(/[<>:"/\\|?*\x00-\x1F]/g, '_')}.json`;
-    anchor.click();
-    URL.revokeObjectURL(url);
+  const exportAgent = async (agent: AvailableAgent) => {
+    try {
+      const bytes = await exportAgentPackage(agent);
+      const archive = new Blob([bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength) as ArrayBuffer], { type: 'application/zip' });
+      const url = URL.createObjectURL(archive);
+      const anchor = document.createElement('a');
+      anchor.href = url;
+      anchor.download = `${agent.agentName.replace(/[<>:"/\\|?*\x00-\x1F]/g, '_')}.zip`;
+      anchor.click();
+      window.setTimeout(() => URL.revokeObjectURL(url), 1000);
+    } catch (exportError) {
+      setError(getError(exportError));
+    }
   };
 
   return (
@@ -191,7 +194,7 @@ export function AgentsPage() {
         <div>
           <p className="agents-page-eyebrow">Specialists</p>
           <h1>Agents</h1>
-          <p>Manage saved agents or install a definition from a JSON file.</p>
+          <p>Manage saved agents or install an agent package from a ZIP file.</p>
         </div>
         <div className="agents-page-header-actions">
           <button type="button" className="agents-install-button" onClick={() => void installAgent()} disabled={busy}>
@@ -211,7 +214,7 @@ export function AgentsPage() {
         <div className="agents-empty-state">
           <Bot size={28} />
           <h2>No agents yet</h2>
-          <p>Install an agent from a JSON definition to get started.</p>
+          <p>Install an agent from a ZIP package to get started.</p>
         </div>
       ) : (
         <div className="agents-grid">
@@ -229,7 +232,7 @@ export function AgentsPage() {
                 <div className="agent-card-actions">
                   <button type="button" onClick={() => beginEdit(agent)} disabled={busy} aria-label={`Edit ${agent.agentName}`}><Pencil size={14} /> Edit</button>
                   <button type="button" className="agent-delete-button" onClick={() => void removeAgent(agent)} disabled={busy} aria-label={`Delete ${agent.agentName}`}><Trash2 size={14} /> Delete</button>
-                  <button type="button" className="agent-export-button" onClick={() => exportAgent(agent)} aria-label={`Export ${agent.agentName}`} title="Export definition"><Download size={14} /> Export</button>
+                  <button type="button" className="agent-export-button" onClick={() => void exportAgent(agent)} aria-label={`Export ${agent.agentName}`} title="Export agent package"><Download size={14} /> Export ZIP</button>
                 </div>
               </div>
             </article>

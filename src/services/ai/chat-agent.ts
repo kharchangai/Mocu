@@ -53,6 +53,13 @@ import {
   CHAT_EMPTY_TOOL_RESULT,
   CHAT_TOOL_FAILURE_RESULT,
 } from "./agent/chat-prompts";
+import { createGraphRecorder, type GraphRecorder } from "../../graphStructure/recorder";
+import { shouldRouteToGraphSystem } from "../../graphStructure/jevGate";
+import { cleanRunRecords } from "../../graphStructure/cleanup";
+import { buildGraph } from "../../graphStructure/graphMaker";
+import { saveRunGraph } from "../../graphStructure/graphStorage";
+import { createGraphDigestTool, createGraphToolLogTool, searchRunGraphHints } from "../../graphStructure/graphDigest";
+import { runProjectMemoryExclusive } from "../../chat/project/memory/projectMemoryOperationQueue";
 
 import {
   resolveSelectedSkills,
@@ -1276,6 +1283,7 @@ const executeToolCall =
     stepNumber,
     signal,
     chatId,
+    recorder,
   }: {
     toolExecutor: ToolExecutor;
     toolName: string;
@@ -1284,6 +1292,7 @@ const executeToolCall =
     stepNumber: number;
     signal?: AbortSignal;
     chatId?: string;
+    recorder?: GraphRecorder;
   }): Promise<ChatToolExecutionResult> => {
     throwIfAborted(
       signal,
@@ -1352,6 +1361,14 @@ const executeToolCall =
     const normalizedToolResult =
       toolResult ||
       CHAT_EMPTY_TOOL_RESULT;
+
+    recorder?.recordToolCall({
+      id: toolCallId,
+      tool: toolName,
+      args: toolArgs,
+      result: normalizedToolResult,
+      status: normalizedToolResult === CHAT_TOOL_FAILURE_RESULT || isFileToolError(normalizedToolResult) ? "error" : "done",
+    });
 
     dispatchAgentToolActivity({
       id: toolCallId,
@@ -1568,18 +1585,33 @@ export const callChatAgent =
      * gate. If stored memory is not required, include that same-chat turn in
      * the actual model messages so the reply can use local conversation context.
      */
+    const graphRecorder = createGraphRecorder({ agentKind: "chat", chatId: getChatIdFromConfig(runnableConfig) || "default" });
+    let recordThisRun = runnableConfig.configurable?.suppressMemorySave !== true;
+    if (recordThisRun) {
+      try {
+        recordThisRun = await shouldRouteToGraphSystem(userText);
+      } catch (error) {
+        console.warn("[Chat Agent] JEV graph-recording gate failed; recording this turn:", error);
+        recordThisRun = true;
+      }
+      graphRecorder.startRun(userText);
+    }
+
     const previousTurn = getPreviousConversationTurn(state.messages);
 
     const userMemory = await waitForOptionalContext(
-      (contextSignal) =>
-        retrieveUserMemory(userText, previousTurn, contextSignal),
+      (contextSignal) => retrieveUserMemory(userText, previousTurn, contextSignal),
       null,
       "user memory",
       signal,
       LONG_TERM_MEMORY_TIMEOUT_MS,
     );
-    const relatedMemoryPrompt = buildUserMemoryPrompt(userMemory);
-
+    let relatedMemoryPrompt = buildUserMemoryPrompt(userMemory);
+    try {
+      relatedMemoryPrompt = [relatedMemoryPrompt, await searchRunGraphHints(undefined, userText)].filter(Boolean).join("\\n\\n");
+    } catch (error) {
+      console.warn("[Chat Agent] Global graph search failed; continuing without a hint:", error);
+    }
     const chatMessages = buildChatMessagesForCurrentRequest(
       userText,
       userMemory?.memoryRequired === false ? previousTurn : null,
@@ -1690,26 +1722,29 @@ export const callChatAgent =
      * Without these entries, the model cannot generate read_file /
      * write_file / edit_file / find_file tool calls.
      */
-    const llmWithTools =
-      llm.bindTools([
-        scheduleTool,
-        desktopVisionTool,
-        terminalTool,
-        perplexitySearchTool,
-        textToSpeechTool,
-        speechControlTool,
-        skillLoaderTool,
-        createAgentTool,
-        readFileTool,
-        writeFileTool,
-        editFileTool,
-        findFileTool,
-        ...docTools,
-        ...notesTools,
-        ...extensionTools.tools,
-        ...mcpTools.tools,
-        ...agentTools.tools,
-      ]);
+    const graphDigestTool = createGraphDigestTool();
+    const graphToolLogTool = createGraphToolLogTool();
+    const llmWithTools = llm.bindTools([
+      scheduleTool,
+      desktopVisionTool,
+      terminalTool,
+      perplexitySearchTool,
+      textToSpeechTool,
+      speechControlTool,
+      skillLoaderTool,
+      createAgentTool,
+      readFileTool,
+      writeFileTool,
+      editFileTool,
+      findFileTool,
+      graphDigestTool.runnable,
+      graphToolLogTool.runnable,
+      ...docTools,
+      ...notesTools,
+      ...extensionTools.tools,
+      ...mcpTools.tools,
+      ...agentTools.tools,
+    ]);
 
     /*
      * The file tools are also registered in this executor.
@@ -1717,12 +1752,9 @@ export const callChatAgent =
      * bindTools() only gives the schema to the model. ToolExecutor is
      * responsible for actually invoking the requested tool.
      */
-    const toolExecutor =
-      createToolExecutor(
-        terminalTool,
-        runnableConfig,
-      );
-
+    const toolExecutor = createToolExecutor(terminalTool, runnableConfig);
+    toolExecutor.registerTool({ name: graphDigestTool.name, description: graphDigestTool.description, execute: (args) => graphDigestTool.execute(args as { query: string; runId?: string }) });
+    toolExecutor.registerTool({ name: graphToolLogTool.name, description: graphToolLogTool.description, execute: (args) => graphToolLogTool.execute(args as { runId: string; toolCallId: string }) });
     extensionTools.registerAll(
       toolExecutor,
     );
@@ -1800,17 +1832,8 @@ export const callChatAgent =
       docsContextPrompt,
     );
 
-    const systemPrompt = addFileManagerRulesToSystemPrompt(
-      docsEnabledSystemPrompt,
-    );
-
-    let messagesToRun:
-      BaseMessage[] = [
-        new SystemMessage(
-          systemPrompt,
-        ),
-        ...chatMessages,
-      ];
+    const systemPrompt = addFileManagerRulesToSystemPrompt(docsEnabledSystemPrompt);
+    let messagesToRun: BaseMessage[] = [new SystemMessage(systemPrompt), ...chatMessages];
 
     /*
      * Streamed, so the user sees the model think and write live while
@@ -1928,6 +1951,7 @@ export const callChatAgent =
               getChatIdFromConfig(
                 runnableConfig,
               ),
+            recorder: runnableConfig.configurable?.suppressMemorySave !== true ? graphRecorder : undefined,
           });
 
         toolMessages.push(
@@ -2139,6 +2163,24 @@ export const callChatAgent =
 
     response.content =
       finalAssistantContent;
+
+    const graphHasToolCalls = graphRecorder.getRecords().some((record) => record.type === "tool_call");
+    if (recordThisRun || graphHasToolCalls) {
+      graphRecorder.finishRun(finalAssistantContent);
+      try {
+        const cleanup = await cleanRunRecords(graphRecorder.getRecords());
+        const graph = buildGraph({
+          runId: graphRecorder.runId,
+          agentKind: graphRecorder.agentKind,
+          chatId: graphRecorder.chatId,
+          getRecords: () => cleanup.kept,
+        });
+        const saved = await runProjectMemoryExclusive(() => saveRunGraph(undefined, graph));
+        console.log(`[Chat Agent] Saved global run graph ${saved.key}; embedded=${saved.embedded}`);
+      } catch (error) {
+        console.warn("[Chat Agent] Graph recording failed; user task already completed:", error);
+      }
+    }
 
     /*
      * Save this completed turn into the global user memory in the

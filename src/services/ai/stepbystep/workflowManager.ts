@@ -372,8 +372,10 @@ export async function handleStepWorkflowMessage(
     projectPath,
     userMessage: message,
   });
-  if (graphTurn.digestTool && !tools.some((item) => item.name === graphTurn.digestTool?.name)) {
-    tools.push(graphTurn.digestTool as unknown as StructuredToolLike);
+  for (const graphTool of [graphTurn.digestTool, graphTurn.toolLogTool]) {
+    if (graphTool && !tools.some((item) => item.name === graphTool.name)) {
+      tools.push(graphTool as unknown as StructuredToolLike);
+    }
   }
 
   return executor.send(

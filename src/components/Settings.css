@@ -184,6 +184,38 @@
   gap: 12px;
 }
 
+.settings-advanced {
+  width: 100%;
+  margin: 0;
+  padding: 13px 15px;
+  border: 1px solid #ece8e2;
+  border-radius: 12px;
+  background: rgba(255, 255, 255, .62);
+}
+
+.settings-advanced > summary {
+  color: #655b52;
+  font-size: 12px;
+  font-weight: 650;
+  cursor: pointer;
+}
+
+.settings-advanced[open] > summary {
+  margin-bottom: 12px;
+}
+
+.settings-advanced > .settings-card-description {
+  margin-bottom: 12px;
+}
+
+.settings-advanced > .settings-card {
+  margin-top: 10px;
+}
+
+.settings-advanced > .settings-field {
+  margin-top: 12px;
+}
+
 .settings-footer {
   display: flex;
   flex: 0 0 auto;

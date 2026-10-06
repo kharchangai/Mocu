@@ -154,8 +154,10 @@ export async function handleFocusMessage(chatId: string, message: string, config
     projectPath,
     userMessage: message,
   });
-  if (graphTurn.digestTool && !tools.some((item) => item.name === graphTurn.digestTool?.name)) {
-    tools.push(graphTurn.digestTool as unknown as FocusToolLike);
+  for (const graphTool of [graphTurn.digestTool, graphTurn.toolLogTool]) {
+    if (graphTool && !tools.some((item) => item.name === graphTool.name)) {
+      tools.push(graphTool as unknown as FocusToolLike);
+    }
   }
   return executor.send(id, message, {
     config: config as unknown as Record<string, unknown>,
