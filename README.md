@@ -59,9 +59,9 @@ Mocu is in an **early stage of development** and is not yet stable. Due to poten
 | Chat, agents, skills, memory | TypeScript | `src/chat/` |
 | Extension runtime & UI | TypeScript | `src/extensions/` |
 | MCP client | TypeScript | `src/mcp/` |
-| Extension SDKs & shared contracts | Node.js (`@mocu/extension-sdk`) and Python (`mocu_extension_sdk`) | `install-resources/extension-system/` |
+| Extension SDKs & shared contracts | Node.js (`@mocu/extension-sdk`) and Python (`mocu_extension_sdk`) | Source: `install-resources/extension-system/`; installed globally under Mocu app data at `extension-system/` |
 
-**Extension system in short:** the Rust host keeps a registry of installed extensions (from their `manifest.json`), spawns the extension process lazily when a command runs, routes JSON-RPC requests, and enforces per-command timeouts. The frontend handles installation, settings forms, and exposes each extension command as an agent tool (e.g. `extension_pi_node_ask`). Full documentation lives in [`docs/extention/`](docs/extention/README.md).
+**Extension system in short:** the Rust host keeps a registry of installed extensions (from their `manifest.json`), spawns the extension process lazily when a command runs, routes JSON-RPC requests, and enforces per-command timeouts. On first launch, Mocu copies its SDK sources to `<Mocu app-data directory>/extension-system/`. Extension packages must vendor the needed SDK and contracts from that global folder into the extension itself; they cannot depend on the global folder at runtime. The frontend handles installation, settings forms, and exposes each extension command as an agent tool. Full documentation lives in [`docs/extention/`](docs/extention/README.md).
 
 **Example extensions** in [`install-resources/extensions-examples/`](install-resources/extensions-examples/): `time-node` (hello world), `sysinfo-node` (system info), `hi-llm-node` (first LLM call), `llm-outside-example`, `pi-node` (advanced: multi-command coding-agent session with streaming activity), and `test` (bare protocol, no SDK).
 
@@ -199,7 +199,7 @@ extension.start();
 }
 ```
 
-Zip the folder (with `manifest.json` inside) and install it from Mocu's **Extensions** page. Node extensions get `npm install` run automatically; Python extensions use `mocu_extension_sdk` and manage their own dependencies.
+Before zipping, copy the required Node or Python SDK (and Node contracts package) from Mocu's global `<app-data directory>/extension-system/` into the extension folder; installed extensions must keep those SDK files locally and cannot use the global path directly. Then install the ZIP from Mocu's **Extensions** page. Node extensions get `npm install` run automatically; Python extensions manage their own Python dependencies.
 
 📖 Full documentation: [`docs/extention/README.md`](docs/extention/README.md) — architecture, manifest reference, Node & Python SDKs, LLM/decision/embedding host APIs, streaming activity, installation, protocol reference, and an AI-agent authoring guide. MCP details: [`docs/mcp.md`](docs/mcp.md).
 

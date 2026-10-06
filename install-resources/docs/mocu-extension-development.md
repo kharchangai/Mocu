@@ -30,9 +30,11 @@ A Mocu extension is a separate **Node.js or Python child process**, not a browse
 The active implementation is located in:
 
 - Runtime: `src/extensions` and `src-tauri/src/extension_host`
-- Public SDKs: `extension-system/sdk-node` and `extension-system/sdk-python`
-- Shared JSON-RPC contracts: `extension-system/contracts`
-- Real examples: `extensions-examples`, notably `hi-llm-node`, `sysinfo-node`, `filesystem`, `youtube`, `telegram`, and `pi-node`
+- SDK source in a development checkout: `install-resources/extension-system/sdk-node` and `install-resources/extension-system/sdk-python`
+- Installed global SDK source: `<Mocu app-data directory>/extension-system/sdk-node` and `<Mocu app-data directory>/extension-system/sdk-python`; shared contracts are in `<Mocu app-data directory>/extension-system/contracts`
+- Real examples: `extensions-default` and `extensions-examples`, notably `hi-llm-node`, `sysinfo-node`, `filesystem`, `youtube`, `telegram`, and `pi-node`
+
+On an installed app, resolve Mocu's app-data directory from the operating system/Tauri app context; do not assume a fixed OS-specific path. At first launch Mocu copies `extension-system` there alongside `agents`, `docs`, and `skills`. Copy the required SDK package(s) from this global directory into each extension's own folder before packaging or installing it; installed extensions must not depend on a path outside their folder.
 
 Use the active runtime scanner, SDK source, and examples as the source of truth. Verify runtime and API details in the corresponding files instead of guessing.
 
@@ -101,14 +103,12 @@ The `hello` command key must match a `commands[].id` declared in `manifest.json`
 
 The registry dependency shown above describes SDK usage for development; it is **not a reliable public-distribution recipe**. As of **2026-10-05**, `npm view @mocu/extension-sdk@0.1.0 version` returned E404. The package is not currently available from public npm; E404 may mean it is unpublished or access-restricted. Repository examples that use a bare version such as `"@mocu/extension-sdk": "0.1.0"` should not be treated as evidence that public npm installation will work. Do not use that bare registry dependency in a distributable extension.
 
-The Mocu installer runs npm in the extracted extension directory, not in Mocu’s repository. A distributable ZIP must therefore include a self-contained local copy of the SDK and its `@mocu/extension-contracts` runtime dependency:
+The Mocu installer runs npm in the extracted extension directory, not in Mocu's global resource directory. A distributable ZIP must therefore include a self-contained local copy of the SDK and its `@mocu/extension-contracts` runtime dependency. Use the installed global source at `<Mocu app-data directory>/extension-system/` (or the corresponding `install-resources/extension-system/` directory in a development checkout) as the source, then copy the packages into the extension before creating the ZIP:
 
-1. Build from `extension-system/sdk-node` and `extension-system/contracts`.
-2. Package the manifests and compiled `dist` output inside the extension, for example under `vendor/extension-sdk` and `vendor/extension-contracts`.
-3. Use a local root dependency such as `"@mocu/extension-sdk": "file:./vendor/extension-sdk"`.
-4. Ensure the SDK’s contracts dependency also resolves within the extension. Do not leave any `file:` dependency path pointing outside the distributed folder.
-5. Exclude `node_modules`; the installer creates it by running npm install.
-6. Verify `npm install` from a clean staged copy, then test the installed ZIP in Mocu.
+1. For Node.js, copy `sdk-node/package.json` and `sdk-node/dist/` into `vendor/extension-sdk/`; copy `contracts/package.json` and `contracts/dist/` into `vendor/extension-contracts/`.
+2. Set the extension root dependency to `"@mocu/extension-sdk": "file:./vendor/extension-sdk"` and make the SDK's contracts dependency resolve to the local `../extension-contracts` package. No dependency path may escape the extension folder.
+3. Exclude `node_modules`; the installer creates it by running npm install.
+4. Verify `npm install` from a clean staged copy, then test the installed ZIP in Mocu.
 
 For the verified self-contained layout and clean staging test, see [SDK Local Vendoring and Packaging](mocu-extension-sdk-local-vendoring-and-packaging.md).
 
@@ -130,10 +130,12 @@ extension.run()
 
 The command ID, here `hello`, must match a command ID declared in the manifest. Python SDK handlers are synchronous in the current implementation: use `def`, not `async def`. The current Python execute dispatcher does not await returned awaitables.
 
-The Python SDK also lives in the repository; do not assume it is available from PyPI. Mocu does not run pip during extension installation. For portable Python extensions, include the SDK package locally or document a tested prerequisite. If the development environment permits it, install the SDK from the repository root with:
+The Python SDK is available globally at `<Mocu app-data directory>/extension-system/sdk-python/` after first launch (in a development checkout, use `install-resources/extension-system/sdk-python/`). Mocu does not run pip during extension installation and the SDK should not be assumed to be on PyPI. For a portable Python extension, copy the `mocu_extension_sdk/` package from that global SDK directory into the extension, for example under `vendor/mocu_extension_sdk/`, and ensure the extension's import path includes `vendor/` (or install that local package into its environment). Do not make a packaged extension depend on Mocu's external app-data path.
+
+For local development from the repository root, you can still install the SDK with:
 
 ```bash
-python -m pip install -e extension-system/sdk-python
+python -m pip install -e install-resources/extension-system/sdk-python
 ```
 
 ## Install and run an extension

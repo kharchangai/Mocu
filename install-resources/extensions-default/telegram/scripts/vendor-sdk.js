@@ -4,15 +4,19 @@ import { fileURLToPath } from "node:url";
 
 const projectDir = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const mocuDir = resolve(projectDir, "..", "..", "..");
+// Installed apps may pass their global SDK source directory explicitly.
+const sdkSourceDir = resolve(
+  process.env.MOCU_EXTENSION_SYSTEM_DIR ?? join(mocuDir, "install-resources", "extension-system"),
+);
 const sources = [
   {
-    source: join(mocuDir, "install-resources", "extension-system", "sdk-node", "dist"),
+    source: join(sdkSourceDir, "sdk-node", "dist"),
     target: join(projectDir, "vendor", "mocu-sdk", "dist"),
     bundledImport: "../../mocu-contracts/dist/index.js",
     replaceContracts: true,
   },
   {
-    source: join(mocuDir, "install-resources", "extension-system", "contracts", "dist"),
+    source: join(sdkSourceDir, "contracts", "dist"),
     target: join(projectDir, "vendor", "mocu-contracts", "dist"),
     replaceContracts: false,
   },

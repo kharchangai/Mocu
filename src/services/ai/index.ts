@@ -107,6 +107,10 @@ export const chatWithMocu = async (
   userInput: string,
   signal?: AbortSignal,
   threadId?: string,
+  previousTurn?: {
+    userMessage: string;
+    agentResponse: string;
+  },
 ): Promise<string> => {
   throwIfAborted(signal);
 
@@ -140,6 +144,7 @@ export const chatWithMocu = async (
         signal,
         configurable: {
           thread_id: threadId ?? crypto.randomUUID(),
+          ...(previousTurn ? { previousConversationTurn: previousTurn } : {}),
         },
       },
     );

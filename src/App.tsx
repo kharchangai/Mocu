@@ -68,6 +68,10 @@ function App() {
 
   const abortControllerRef = useRef<AbortController | null>(null);
   const pipelineIdRef = useRef(0);
+  const previousVoiceTurnRef = useRef<{
+    userMessage: string;
+    agentResponse: string;
+  } | null>(null);
 
   const hasRunAtomicMemoryTestRef = useRef(false);
 
@@ -673,11 +677,15 @@ function App() {
             setMocuState('idle');
             return;
           }
-
           setTranscriptSpeaker('user');
           setTranscriptText(userText);
 
-          const response = await chatWithMocu(userText, signal);
+          const response = await chatWithMocu(
+            userText,
+            signal,
+            undefined,
+            previousVoiceTurnRef.current ?? undefined,
+          );
 
           if (
             pipelineId !== pipelineIdRef.current ||
@@ -700,6 +708,11 @@ function App() {
           }
 
           console.log('Model response:', botResponseText);
+
+          previousVoiceTurnRef.current = {
+            userMessage: userText,
+            agentResponse: botResponseText,
+          };
 
           setTranscriptSpeaker('mocu');
           setTranscriptText(botResponseText);

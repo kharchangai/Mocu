@@ -6,13 +6,14 @@ use std::{
 
 use tauri::{AppHandle, Manager};
 
-const INSTALL_MARKER: &str = ".mocu-install-resources-v2";
+const INSTALL_MARKER: &str = ".mocu-install-resources-v3";
 
-const RESOURCE_FOLDERS: [(&str, &str); 4] = [
+const RESOURCE_FOLDERS: [(&str, &str); 5] = [
     ("agents", "agents"),
     ("docs", "docs"),
     ("skills", "skills"),
     ("extensions-default", "extensions-default"),
+    ("extension-system", "extension-system"),
 ];
 
 pub fn initialize(app: &AppHandle) -> Result<(), Box<dyn std::error::Error>> {

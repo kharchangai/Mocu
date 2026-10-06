@@ -11,10 +11,13 @@ npm run build      # refresh the local SDK copy and create Telegram-Bridge.zip
 npm test           # run a JSON-RPC smoke test without needing a Telegram token
 ```
 
-The build command refreshes `vendor/mocu-sdk` and `vendor/mocu-contracts` from the local Mocu source checkout, then creates `Telegram-Bridge.zip` in this directory. The ZIP contains the manifest, extension code, and a self-contained copy of the unpublished SDK; it does not require downloading an SDK from npm. Upload that ZIP in Mocu's **Extensions** page.
+The build command copies the SDK into `vendor/mocu-sdk` and `vendor/mocu-contracts`, then creates `Telegram-Bridge.zip`. By default, a source checkout reads `install-resources/extension-system/`. To build from the globally installed SDK sources instead, set `MOCU_EXTENSION_SYSTEM_DIR` to Mocu's `<app-data directory>/extension-system` before running the build; the script copies the SDK into this extension before packaging. The ZIP contains the manifest, extension code, and a self-contained copy of the SDK; it does not require downloading the SDK from npm or accessing the global folder after installation.
+For example, in PowerShell, after resolving Mocu's app-data directory into `$AppData`:
 
-The SDK source directories must exist at `../../extension-system/sdk-node/dist` and `../../extension-system/contracts/dist` relative to this extension. If they do not, build the SDK and contracts in the main Mocu repository first. The ZIP does not include the local `scripts` or require the SDK source directories on the machine where it is installed.
-
+```powershell
+$env:MOCU_EXTENSION_SYSTEM_DIR = Join-Path $AppData "extension-system"
+npm run build
+```
 Run `npm test` for a local JSON-RPC smoke test. It does not use a real Telegram bot or require the bot token.
 
 ## Setup

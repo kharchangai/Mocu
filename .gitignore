@@ -39,6 +39,18 @@ settings.json
 # Mocu local data
 .mocu/
 
+# Local backups and agent test artifacts
+.stale-js-backup/
+agent-e2e-test/
+
+# Python-generated files
+__pycache__/
+**/__pycache__/
+*.py[cod]
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
 # OS generated files
 Thumbs.db
 desktop.ini

@@ -299,58 +299,61 @@ export const Settings: React.FC<SettingsProps> = ({
         <section className="settings-section">
           <h5 className="settings-section-title">Models</h5>
 
-          <div className="settings-card">
-            <div className="settings-card-header">
-              <h4 className="settings-card-title">AI Gateway</h4>
-              <p className="settings-card-description">
-                Start with OpenRouter: add your API key and Mocu is ready. You can switch to another OpenAI-compatible gateway anytime.
-              </p>
+          <div className="settings-model-configuration">
+            <div className="settings-card">
+              <div className="settings-card-header">
+                <h4 className="settings-card-title">AI Gateway</h4>
+                <p className="settings-card-description">
+                  Start with OpenRouter: add your API key and Mocu is ready. You can switch to another OpenAI-compatible gateway anytime.
+                </p>
+              </div>
+
+              <div className="settings-field">
+                <label className="settings-label">Gateway</label>
+                <select value={gatewayProvider} disabled={isSaving}
+                  onChange={(event) => changeGatewayProvider(event.target.value as "openrouter" | "custom")}
+                  className="settings-input">
+                  <option value="openrouter">OpenRouter (recommended)</option>
+                  <option value="custom">Custom OpenAI-compatible gateway</option>
+                </select>
+              </div>
+              {gatewayProvider === "custom" && <div className="settings-field">
+                <label className="settings-label">Shared Gateway Base URL</label>
+                <input type="text" value={gatewayBaseUrl} disabled={isSaving}
+                  onChange={(event) => changeGatewayBaseUrl(event.target.value)}
+                  placeholder="https://your-gateway.example/v1" className="settings-input" required />
+              </div>}
+              <div className="settings-field">
+                <label className="settings-label">API Key</label>
+                <input
+                  type="password"
+                  value={apiKey}
+                  disabled={isSaving}
+                  onChange={(event) => { setApiKey(event.target.value); setGatewayError(""); }}
+                  placeholder="Paste your gateway API key"
+                  className="settings-input"
+                />
+                <p className="settings-card-description">
+                  Shared by all models and Decision (Jev), unless you configure a separate key.
+                </p>
+                {gatewayError && <p className="settings-card-description" role="alert">{gatewayError}</p>}
+              </div>
             </div>
 
-            <div className="settings-field">
-              <label className="settings-label">Gateway</label>
-              <select value={gatewayProvider} disabled={isSaving}
-                onChange={(event) => changeGatewayProvider(event.target.value as "openrouter" | "custom")}
-                className="settings-input">
-                <option value="openrouter">OpenRouter (recommended)</option>
-                <option value="custom">Custom OpenAI-compatible gateway</option>
-              </select>
-            </div>
-            {gatewayProvider === "custom" && <div className="settings-field">
-              <label className="settings-label">Shared Gateway Base URL</label>
-              <input type="text" value={gatewayBaseUrl} disabled={isSaving}
-                onChange={(event) => changeGatewayBaseUrl(event.target.value)}
-                placeholder="https://your-gateway.example/v1" className="settings-input" required />
-            </div>}
-            <div className="settings-field">
-              <label className="settings-label">API Key</label>
-              <input
-                type="password"
-                value={apiKey}
-                disabled={isSaving}
-                onChange={(event) => { setApiKey(event.target.value); setGatewayError(""); }}
-                placeholder="Paste your gateway API key"
-                className="settings-input"
-              />
-              <p className="settings-card-description">
-                Shared by all models and Decision (Jev), unless you configure a separate key.
-              </p>
-              {gatewayError && <p className="settings-card-description" role="alert">{gatewayError}</p>}
-            </div>
-          </div>
-
-          <div className="settings-card settings-model-summary">
-            <p className="settings-card-description">Preconfigured models — change any model below if needed. A custom gateway must support the selected models and APIs.</p>
-            <div className="settings-model-list">
-              {[["Main chat", llmModel], ["Cheap", cheapModel], ["Medium", mediumModel], ["Expensive", expensiveModel], ["STT", sttModel], ["TTS", ttsModel], ["Vision", visionModel], ["Embedding", embeddingModel], ["Perplexity", perplexityModel], ["Decision (Jev)", decisionModel]].map(([name, model]) => <div className="settings-model-row" key={name}><span className="settings-model-tier">{name}</span><span className="settings-model-id">{model}</span></div>)}
-            </div>
-          </div>
           <details className="settings-advanced"><summary>Customize models</summary>
             <div className="settings-card"><label className="settings-label">Main Chat Model</label><input type="text" value={llmModel} disabled={isSaving} onChange={(event) => setLlmModel(event.target.value)} className="settings-input" /></div>
             <LlmTierCard title="Cheap LLM" description="Fast, low-cost tasks." model={cheapModel} disabled={isSaving} onModelChange={setCheapModel} />
             <LlmTierCard title="Medium LLM" description="Balanced daily use." model={mediumModel} disabled={isSaving} onModelChange={setMediumModel} />
             <LlmTierCard title="Expensive LLM" description="Complex requests." model={expensiveModel} disabled={isSaving} onModelChange={setExpensiveModel} />
           </details>
+          </div>
+
+          <div className="settings-card settings-model-summary">
+            <p className="settings-card-description">Preconfigured models — change any model below if needed. A custom gateway must support the selected models and APIs.</p>
+            <div className="settings-model-list">
+              {[['Main chat', llmModel], ['Cheap', cheapModel], ['Medium', mediumModel], ['Expensive', expensiveModel], ['STT', sttModel], ['TTS', ttsModel], ['Vision', visionModel], ['Embedding', embeddingModel], ['Perplexity', perplexityModel], ['Decision (Jev)', decisionModel]].map(([name, model]) => <div className="settings-model-row" key={name}><span className="settings-model-tier">{name}</span><span className="settings-model-id">{model}</span></div>)}
+            </div>
+          </div>
         </section>
 
         {/* ---------- Speech ---------- */}
@@ -473,7 +476,7 @@ export const Settings: React.FC<SettingsProps> = ({
 
             <div className="settings-grid-2">
               <div className="settings-field">
-                <label className="settings-label">BM25 Weight (0Î“Ã‡Ã´1)</label>
+                <label className="settings-label">BM25 Weight (0–1)</label>
                 <input
                   type="number"
                   min="0"
@@ -494,7 +497,7 @@ export const Settings: React.FC<SettingsProps> = ({
               </div>
 
               <div className="settings-field">
-                <label className="settings-label">Keyword Weight (0Î“Ã‡Ã´1)</label>
+                <label className="settings-label">Keyword Weight (0–1)</label>
                 <input
                   type="number"
                   min="0"
@@ -515,7 +518,7 @@ export const Settings: React.FC<SettingsProps> = ({
               </div>
 
               <div className="settings-field">
-                <label className="settings-label">Embedding Weight (0Î“Ã‡Ã´1)</label>
+                <label className="settings-label">Embedding Weight (0–1)</label>
                 <input
                   type="number"
                   min="0"
@@ -536,7 +539,7 @@ export const Settings: React.FC<SettingsProps> = ({
               </div>
 
               <div className="settings-field">
-                <label className="settings-label">Relevance Threshold (0Î“Ã‡Ã´1)</label>
+                <label className="settings-label">Relevance Threshold (0–1)</label>
                 <input
                   type="number"
                   min="0"
@@ -557,7 +560,7 @@ export const Settings: React.FC<SettingsProps> = ({
               </div>
 
               <div className="settings-field">
-                <label className="settings-label">Result Cap (1Î“Ã‡Ã´50)</label>
+                <label className="settings-label">Result Cap (1–50)</label>
                 <input
                   type="number"
                   min="1"
@@ -577,7 +580,7 @@ export const Settings: React.FC<SettingsProps> = ({
               </div>
 
               <div className="settings-field">
-                <label className="settings-label">Candidate Depth (1Î“Ã‡Ã´200)</label>
+                <label className="settings-label">Candidate Depth (1–200)</label>
                 <input
                   type="number"
                   min="1"
@@ -600,14 +603,9 @@ export const Settings: React.FC<SettingsProps> = ({
 
           <div className="settings-card">
             <div className="settings-card-header">
-              <h4 className="settings-card-title">Jev Relevance (bounded)</h4>
+              <h4 className="settings-card-title">Jev Relevance Refinement</h4>
               <p className="settings-card-description">
-                Optional: one bounded Jev call per search evaluates the top
-                candidates (compact id/title/description only, short timeout).
-                Its probability gates and refines the hybrid score; on
-                failure search falls back to the deterministic hybrid score.
-                The relevance threshold applies to the final score, then the
-                result cap Î“Ã‡Ã¶ two distinct controls.
+                Optional: one bounded Jev call per search evaluates the top candidates using only compact IDs, titles, and descriptions. Its relevance scores gate and refine the hybrid score; if Jev fails, search falls back to the deterministic hybrid score. The relevance threshold filters final scores, while the result cap separately limits the number of returned results.
               </p>
             </div>
 
@@ -628,11 +626,8 @@ export const Settings: React.FC<SettingsProps> = ({
               </div>
 
               <div className="settings-field">
-                <label className="settings-label">
-                  Jev Candidate Limit (1Î“Ã‡Ã´20)
-                </label>
-                <input
-                  type="number"
+                <label className="settings-label">Jev Candidate Limit (1–20)</label>
+                <input type="number"
                   min="1"
                   max="20"
                   value={docsJevCandidateLimit}
@@ -650,7 +645,7 @@ export const Settings: React.FC<SettingsProps> = ({
               </div>
 
               <div className="settings-field">
-                <label className="settings-label">Jev Timeout (ms, 500Î“Ã‡Ã´30000)</label>
+                <label className="settings-label">Jev Timeout (500–30,000 ms)</label>
                 <input
                   type="number"
                   min="500"
@@ -671,7 +666,7 @@ export const Settings: React.FC<SettingsProps> = ({
               </div>
 
               <div className="settings-field">
-                <label className="settings-label">Jev Weight (0Î“Ã‡Ã´1)</label>
+                <label className="settings-label">Jev Weight (0–1)</label>
                 <input
                   type="number"
                   min="0"

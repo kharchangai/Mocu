@@ -1,6 +1,7 @@
 // main-agent.ts
 
 import {
+  AIMessage,
   BaseMessage,
   HumanMessage,
   SystemMessage,
@@ -22,11 +23,11 @@ import {
 } from "./agent/helpers";
 
 import {
+  buildUserMemoryPrompt,
   getPreviousConversationTurn,
-  retrieveUserMemoryPrompt,
+  retrieveUserMemory,
   saveUserMemoryInBackground,
 } from "./agent/user-memory";
-
 import {
   buildMainAgentSystemPrompt,
   buildToolResultSummaryPrompt,
@@ -279,18 +280,33 @@ export const callMainAgent = async (
    * the global application storage (never in a project file). Failures
    * never block the agent.
    */
+  const configuredPreviousTurn =
+    runnableConfig.configurable?.previousConversationTurn;
+  const previousTurnFromConfig =
+    configuredPreviousTurn &&
+    typeof configuredPreviousTurn === "object" &&
+    "userMessage" in configuredPreviousTurn &&
+    typeof configuredPreviousTurn.userMessage === "string" &&
+    "agentResponse" in configuredPreviousTurn &&
+    typeof configuredPreviousTurn.agentResponse === "string"
+      ? {
+          userMessage: configuredPreviousTurn.userMessage,
+          agentResponse: configuredPreviousTurn.agentResponse,
+        }
+      : null;
   const previousTurn =
-    getPreviousConversationTurn(state.messages);
+    getPreviousConversationTurn(state.messages) ?? previousTurnFromConfig;
 
+  let userMemory: Awaited<ReturnType<typeof retrieveUserMemory>> | null = null;
   let relatedMemoryPrompt = "";
 
   try {
-    relatedMemoryPrompt =
-      await retrieveUserMemoryPrompt(
-        userText,
-        previousTurn,
-        signal,
-      );
+    userMemory = await retrieveUserMemory(
+      userText,
+      previousTurn,
+      signal,
+    );
+    relatedMemoryPrompt = buildUserMemoryPrompt(userMemory);
   } catch (error: unknown) {
     console.warn(
       "[User Memory] Retrieval failed:",
@@ -363,9 +379,19 @@ export const callMainAgent = async (
     .filter((part) => part.trim())
     .join("\n\n");
 
+  // Voice calls use a fresh ephemeral graph thread, so explicitly keep the
+  // last live exchange in the model context regardless of long-term memory gate.
+  const conversationMessages: BaseMessage[] = previousTurn
+    ? [
+        new HumanMessage(previousTurn.userMessage),
+        new AIMessage(previousTurn.agentResponse),
+        ...state.messages,
+      ]
+    : [...state.messages];
+
   let messagesToRun: BaseMessage[] = [
     new SystemMessage(systemPrompt),
-    ...state.messages,
+    ...conversationMessages,
   ];
 
   let response = await llmWithTools.invoke(
@@ -481,7 +507,7 @@ export const callMainAgent = async (
 
     const cleanMessages: BaseMessage[] = [
       new SystemMessage(systemPrompt),
-      ...state.messages,
+      ...conversationMessages,
       new HumanMessage(cleanContextPrompt),
     ];
 
