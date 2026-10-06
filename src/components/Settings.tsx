@@ -19,6 +19,7 @@ import "./Settings.css";
  */
 type SettingsProps = {
   onClose?: () => void;
+  onSaved?: () => void | Promise<void>;
 };
 
 type LlmTierCardProps = {
@@ -76,6 +77,7 @@ const LlmTierCard: React.FC<LlmTierCardProps> = ({
 
 export const Settings: React.FC<SettingsProps> = ({
   onClose,
+  onSaved,
 }) => {
   // Shared LLM gateway settings
   const [apiKey, setApiKey] = useState("");
@@ -303,6 +305,10 @@ export const Settings: React.FC<SettingsProps> = ({
        * Embedded mode: hand control back to the chat page.
        * Standalone fallback: close the settings window.
        */
+      if (onSaved) {
+        await onSaved();
+      }
+
       if (onClose) {
         onClose();
       } else {

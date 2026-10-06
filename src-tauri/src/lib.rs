@@ -22,6 +22,45 @@ mod install_resources;
 use extension_host::manager::ExtensionManager;
 use mcp_stdio::McpStdioHost;
 
+#[derive(serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+struct RuntimeStatus {
+    node_installed: bool,
+    node_version: Option<String>,
+    python_installed: bool,
+    python_version: Option<String>,
+}
+
+fn command_version(program: &str, args: &[&str]) -> Option<String> {
+    let output = std::process::Command::new(program).args(args).output().ok()?;
+    if !output.status.success() {
+        return None;
+    }
+
+    let version = String::from_utf8_lossy(&output.stdout).trim().to_string();
+    if version.is_empty() { None } else { Some(version) }
+}
+
+#[tauri::command]
+fn check_system_runtimes() -> RuntimeStatus {
+    let node_version = command_version("node", &["--version"]);
+
+    #[cfg(target_os = "windows")]
+    let python_version = command_version("python", &["--version"])
+        .or_else(|| command_version("py", &["-3", "--version"]));
+
+    #[cfg(not(target_os = "windows"))]
+    let python_version = command_version("python3", &["--version"])
+        .or_else(|| command_version("python", &["--version"]));
+
+    RuntimeStatus {
+        node_installed: node_version.is_some(),
+        node_version,
+        python_installed: python_version.is_some(),
+        python_version,
+    }
+}
+
 #[tauri::command]
 fn greet(name: &str) -> String {
     format!("Hello, {}! You've been greeted from Rust!", name)
@@ -95,6 +134,7 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             greet,
             toggle_mocu,
+            check_system_runtimes,
             commands::desktop::capture_desktop,
             extension_host::extension_execute,
             extension_host::extension_respond,

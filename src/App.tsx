@@ -10,6 +10,8 @@ import {
 
 import { Mocu, MocuState } from './components/Mocu';
 import { CUBE_DISPLAY_SIZE } from './components/Mocu';
+import { FirstRunSetup } from './components/FirstRunSetup';
+import { getSettingsStore } from './store';
 import ChatPage from './chat/ChatPage';
 import { TranscriptSpeaker } from './components/MocuTranscript';
 
@@ -48,7 +50,7 @@ function getCurrentRouteHash(): string {
 
 function App() {
   const [routeHash, setRouteHash] = useState(getCurrentRouteHash);
-
+  const [firstRunComplete, setFirstRunComplete] = useState<boolean | null>(null);
   const [mocuState, setMocuState] = useState<MocuState>('idle');
   const [, setCurrentActivity] = useState<string | null>(null);
 
@@ -123,6 +125,21 @@ function App() {
       window.removeEventListener('tauri://navigate', syncRoute);
     };
   }, []);
+
+  useEffect(() => {
+    if (!isChatWindow) return;
+    let active = true;
+    void getSettingsStore()
+      .then(async (store) => {
+        const completed = await store.get<boolean>('MOCU_FIRST_RUN_SETUP_COMPLETE');
+        if (active) setFirstRunComplete(completed === true);
+      })
+      .catch((error) => {
+        console.error('[First run] Could not load setup status:', error);
+        if (active) setFirstRunComplete(false);
+      });
+    return () => { active = false; };
+  }, [isChatWindow]);
 
   const stopCurrentAudio = () => {
     const currentAudio = currentAudioRef.current;
@@ -731,6 +748,21 @@ function App() {
   };
 
   if (isChatWindow) {
+    if (firstRunComplete === null) {
+      return <div className="first-run-page" dir="ltr"><div className="first-run-card">Preparing Mocu…</div></div>;
+    }
+    if (!firstRunComplete) {
+      return (
+        <FirstRunSetup
+          onComplete={async () => {
+            const store = await getSettingsStore();
+            await store.set('MOCU_FIRST_RUN_SETUP_COMPLETE', true);
+            await store.save();
+            setFirstRunComplete(true);
+          }}
+        />
+      );
+    }
     return <ChatPage />;
   }
 
