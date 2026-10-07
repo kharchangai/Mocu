@@ -167,13 +167,8 @@ import {
 import {
   hasActiveFocusSession,
   parseFocusStartGoal,
-  runFocusTurn,
-  startFocusFromRequest,
 } from "./focus/focusManager";
-import {
-  hasActiveStepWorkflow,
-  runStepWorkflowTurn,
-} from "./stepbystep/workflowManager";
+import { hasActiveStepWorkflow } from "./stepbystep/workflowManager";
 import { runSpecialistSlashCommand } from "./specialistCommands";
 import { parseSpecialistSlashCommand } from '../../chat/services/specialistSlashCommands';
 const MAX_TOOL_STEPS = 5;
@@ -1458,39 +1453,19 @@ export const callChatAgent =
       return { messages: [specialistResponse] };
     }
 
-    if (await hasActiveFocusSession(focusChatId)) {
-      const focusResponse = await runFocusTurn(
-        focusChatId,
-        rawUserText,
-        runnableConfig,
-      );
-      return { messages: [focusResponse] };
+    const requestedSpecialistCommand = parseSpecialistSlashCommand(rawUserText);
+    if (
+      requestedSpecialistCommand ||
+      parseFocusStartGoal(rawUserText) ||
+      await hasActiveFocusSession(focusChatId) ||
+      await hasActiveStepWorkflow(focusChatId)
+    ) {
+      return {
+        messages: [new AIMessage("Focus and Step-by-Step are available only in project chats. Open a project chat to use /focus or /step.")],
+      };
     }
 
-    if (await hasActiveStepWorkflow(focusChatId)) {
-      const workflowResponse = await runStepWorkflowTurn(
-        focusChatId,
-        rawUserText,
-        runnableConfig,
-      );
-      return { messages: [workflowResponse] };
-    }
-
-    const requestedFocusGoal = parseFocusStartGoal(rawUserText);
-    if (requestedFocusGoal) {
-      const focusResponse = await startFocusFromRequest({
-        chatId: focusChatId,
-        userMessage: rawUserText,
-        goal: requestedFocusGoal,
-        config: runnableConfig,
-      });
-      return { messages: [focusResponse] };
-    }
-
-    const selectedSkillNames =
-      getSelectedSkillNames(
-        runnableConfig,
-      );
+    const selectedSkillNames = getSelectedSkillNames(runnableConfig);
 
     const skillResolution =
       await resolveSelectedSkills(

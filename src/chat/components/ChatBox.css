@@ -252,16 +252,23 @@
   display: flex;
   flex-direction: column;
   width: min(100%, 860px);
-  min-height: 100%;
   margin: 0 auto;
-  padding: 57px 28px 40px;
+  /* Vertical padding is reserved for Virtuoso's offscreen item offsets. */
+  padding: 0 28px;
   box-sizing: border-box;
 }
 
-.chat-box-messages-anchor {
-  flex: 0 0 auto;
+.chat-box-messages-spacer {
   width: 100%;
-  height: 1px;
+  pointer-events: none;
+}
+
+.chat-box-messages-spacer--top {
+  height: 57px;
+}
+
+.chat-box-messages-spacer--bottom {
+  height: 40px;
 }
 
 /* =========================================================
@@ -309,7 +316,7 @@
   display: flex;
   justify-content: flex-end;
   width: 100%;
-  margin: 0 0 25px;
+  margin: 0 0 16px;
 }
 
 /*
@@ -629,8 +636,9 @@
   display: flex;
   flex-direction: column;
   align-self: flex-start;
-  width: min(100%, 760px);
-  margin: 0 0 31px;
+  width: 100%;
+  margin: 0 0 24px;
+  padding: 0;
 }
 
 .assistant-message-content {
@@ -973,7 +981,7 @@
 @media (max-width: 900px) {
   .chat-box-messages-inner {
     width: 100%;
-    padding: 28px 24px 34px;
+    padding-inline: 24px;
   }
 
   .user-message-group {
@@ -996,7 +1004,11 @@
 
 @media (max-width: 640px) {
   .chat-box-messages-inner {
-    padding: 57px 13px 27px;
+    padding-inline: 13px;
+  }
+
+  .chat-box-messages-spacer--bottom {
+    height: 27px;
   }
 
   .chat-box-empty {
@@ -1010,7 +1022,7 @@
   }
 
   .user-message {
-    margin-bottom: 22px;
+    margin-bottom: 14px;
   }
 
   .user-message-group {
@@ -1032,7 +1044,7 @@
 
   .assistant-message {
     width: 100%;
-    margin-bottom: 26px;
+    margin-bottom: 22px;
   }
 
   .assistant-message-content {

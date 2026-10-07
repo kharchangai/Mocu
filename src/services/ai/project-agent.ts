@@ -61,7 +61,6 @@ import {
 } from "./focus/focusManager";
 
 import { runSpecialistSlashCommand } from "./specialistCommands";
-import { parseSpecialistSlashCommand } from '../../chat/services/specialistSlashCommands';
 import {
   CHAT_EMPTY_RESPONSE,
   CHAT_EMPTY_TOOL_RESULT,
@@ -1746,19 +1745,14 @@ export const callProjectAgent =
     );
 
     const focusChatId = getChatIdFromConfig(runnableConfig) || "default";
-    // Specialist executors are text-only; never silently discard user images.
-    if (hasImageInput(currentUserMessage) && (
-      parseSpecialistSlashCommand(rawUserText) || parseFocusStartGoal(rawUserText) ||
-      await hasActiveFocusSession(focusChatId) || await hasActiveStepWorkflow(focusChatId)
-    )) {
-      throw new Error('Image attachments are supported in regular project chat, not Focus or Step-by-Step. Exit the specialist session or remove the images.');
-    }
+    const sourceMessage = currentUserMessage?.getType() === "human" ? currentUserMessage : undefined;
     const specialistResponse = await runSpecialistSlashCommand({
       chatId: focusChatId,
       userText: rawUserText,
       historyMessages: state.messages.slice(0, -1),
       config: runnableConfig,
       projectPath: normalizedProjectPath,
+      sourceMessage,
     });
     if (specialistResponse) {
       return { messages: [specialistResponse] };
@@ -1769,7 +1763,7 @@ export const callProjectAgent =
         focusChatId,
         rawUserText,
         runnableConfig,
-        { projectPath: normalizedProjectPath },
+        { projectPath: normalizedProjectPath, sourceMessage },
       );
       return { messages: [focusResponse] };
     }
@@ -1795,6 +1789,7 @@ export const callProjectAgent =
           runnableConfig,
           {
             projectPath: normalizedProjectPath,
+            sourceMessage,
           },
         );
 
@@ -1811,6 +1806,7 @@ export const callProjectAgent =
         goal: requestedFocusGoal,
         config: runnableConfig,
         projectPath: normalizedProjectPath,
+        sourceMessage,
       });
       return { messages: [focusResponse] };
     }

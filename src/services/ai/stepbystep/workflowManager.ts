@@ -21,12 +21,7 @@ import {
 import { terminalExecutionTool } from "../tools/terminal_execution_tool";
 import { perplexitySearchTool } from "../tools/perplexity_search_tool";
 import { skillLoaderTool } from "../tools/skill_loader_tool";
-import { desktopVisionTool } from "../tools/desktop-vision-tool";
 import { scheduleTool } from "../../../schedule/schedule-tool";
-import {
-  textToSpeechTool,
-  speechControlTool,
-} from "../tools/text_to_speech_tool";
 import { createAgentTool } from "../tools/create_agent_tool";
 import { agentManagementTools } from "../tools/agent-management-tools";
 import {
@@ -47,6 +42,10 @@ import {
 import {
   loadAgentTools,
 } from "../../../chat/agent/agent-tools";
+import {
+  createFindSpecialistProjectMemoryTool,
+  createReadSpecialistSectionHistoryTool,
+} from "../agent/specialist-memory-tools";
 
 /*
  * Shared store and executor -----------------------------------------------
@@ -63,6 +62,13 @@ const executor = new StepExecutor(store, {
 /*
  * Config helpers ------------------------------------------------------------
  */
+
+function getChatIdFromConfig(
+  config: RunnableConfig | undefined,
+): string {
+  const value = config?.configurable?.chatId;
+  return typeof value === "string" && value.trim() ? value.trim() : "default";
+}
 
 function getConfigReferences(
   config: RunnableConfig | undefined,
@@ -90,24 +96,21 @@ function getConfigReferences(
  * Builds the tool runtime for the execution agent.
  *
  * The workflow agent gets the same task tools as the main project agent
- * (file tools, terminal, screen, web, skills, scheduling, speech, agent
- * creation, knowledge docs, notes, extensions, MCP, specialists) plus its
- * own workflow tools. Compact tool summaries keep the prompt small.
+ * (terminal, web, skills, scheduling, agent creation, file tools, knowledge
+ * docs, notes, specialist memory, extensions, MCP) plus its own workflow
+ * tools. Compact tool summaries keep the prompt small.
  */
 async function buildMainAgentToolRuntime(
   config: RunnableConfig,
   projectPath?: string,
 ): Promise<StructuredToolLike[]> {
   const tools: StructuredToolInterface[] = [
-    desktopVisionTool,
     terminalExecutionTool({
       ...(projectPath ? { projectPath } : {}),
     }),
     perplexitySearchTool,
     skillLoaderTool,
     scheduleTool,
-    textToSpeechTool,
-    speechControlTool,
     createAgentTool,
     ...agentManagementTools,
     readFileTool,
@@ -116,6 +119,8 @@ async function buildMainAgentToolRuntime(
     findFileTool,
     ...docTools,
     ...notesTools,
+    createFindSpecialistProjectMemoryTool(projectPath || ""),
+    createReadSpecialistSectionHistoryTool(getChatIdFromConfig(config)),
   ];
 
   const selectedExtensionIds = getConfigReferences(
@@ -226,10 +231,15 @@ export async function startStepByStepWorkflow(input: {
   taskDescription: string;
   selectedModel?: string;
   projectPath?: string;
+  sourceMessage?: BaseMessage;
 }): Promise<StepPlan> {
   const plan = await createStepPlan({
     userMessage: input.userMessage,
     agentResponse: input.taskDescription,
+    sourceMessage: input.sourceMessage,
+  }, {
+    ...(input.selectedModel ? { model: input.selectedModel } : {}),
+    tier: input.sourceMessage ? "expensive" : "cheap",
   });
 
   const workflowId = await executor.start(
@@ -320,7 +330,7 @@ export async function handleStepWorkflowMessage(
   chatId: string,
   message: string,
   config: RunnableConfig,
-  options: { projectPath?: string } = {},
+  options: { projectPath?: string; sourceMessage?: BaseMessage } = {},
 ): Promise<SendResult> {
   const workflowId = await store.getChatWorkflow(chatId);
 
@@ -371,10 +381,12 @@ export async function handleStepWorkflowMessage(
     chatId,
     projectPath,
     userMessage: message,
+    sourceMessage: options.sourceMessage,
   });
-  for (const graphTool of [graphTurn.digestTool, graphTurn.toolLogTool]) {
+  const graphTools = [graphTurn.digestTool, graphTurn.toolLogTool] as unknown as StructuredToolLike[];
+  for (const graphTool of graphTools) {
     if (graphTool && !tools.some((item) => item.name === graphTool.name)) {
-      tools.push(graphTool as unknown as StructuredToolLike);
+      tools.push(graphTool);
     }
   }
 
@@ -386,9 +398,9 @@ export async function handleStepWorkflowMessage(
       tools,
       selectedModel: selectedModel || undefined,
       graphTurn,
+      sourceMessage: options.sourceMessage,
     },
   );
-
 }
 
 /**
@@ -399,7 +411,7 @@ export async function runStepWorkflowTurn(
   chatId: string,
   userMessage: string,
   config: RunnableConfig,
-  options: { projectPath?: string } = {},
+  options: { projectPath?: string; sourceMessage?: BaseMessage } = {},
 ): Promise<BaseMessage> {
   const result: SendResult = await handleStepWorkflowMessage(
     chatId,
@@ -453,10 +465,8 @@ export async function getStepWorkflowStepHistory(
   if (!(await store.getChatWorkflowIds(chatId)).includes(workflowId)) {
     return [];
   }
-
   const state = await store.load(workflowId);
   if (state.chatId !== chatId) return [];
-
   const entries = await store.readStepHistory(workflowId, stepNumber);
   return entries.map((entry) => ({
     id: entry.id,

@@ -27,7 +27,7 @@ Use the guide that matches the extension question:
 
 - **Create an extension:** [Mocu Extension Development](mocu-extension-development.md) covers architecture, manifests, SDK entry points, protocol, and workflow.
 - **Runtime and installation:** [Mocu Extension Runtime](mocu-extension-runtime.md) covers manifest fields, configuration, installation, extension selection, and process lifecycle.
-- **SDK APIs:** [Mocu Extension SDK Reference](mocu-extension-sdk-reference.md) covers verified Node and Python API methods, parameters, host behavior, and limits.
+- **SDK APIs:** [Mocu Extension SDK Reference](mocu-extension-sdk-reference.md) covers verified Node and Python API methods, parameters, host behavior, and limits. For distributing the SDK within an extension, read the explicit packaging guide below.
 - **SDK packaging and distribution:** [Mocu Extension SDK Local Vendoring and Packaging](mocu-extension-sdk-local-vendoring-and-packaging.md) covers npm E404, copying the Node SDK and contracts into an extension, local dependencies, Python package caveats, and clean ZIP verification.
 
 ## Independent extensions and SDK availability

@@ -2,12 +2,10 @@ import { AIMessage, type BaseMessage } from "@langchain/core/messages";
 import { prepareAgentGraphTurn } from "../../../graphStructure/agentTurn";
 import type { RunnableConfig } from "@langchain/core/runnables";
 import { getAsyncLLM, getMainAgentLlm, getSelectedChatModel } from "../llm";
-import { desktopVisionTool } from "../tools/desktop-vision-tool";
 import { terminalExecutionTool } from "../tools/terminal_execution_tool";
 import { perplexitySearchTool } from "../tools/perplexity_search_tool";
 import { skillLoaderTool } from "../tools/skill_loader_tool";
 import { scheduleTool } from "../../../schedule/schedule-tool";
-import { textToSpeechTool, speechControlTool } from "../tools/text_to_speech_tool";
 import { createAgentTool } from "../tools/create_agent_tool";
 import { agentManagementTools } from "../tools/agent-management-tools";
 import { readFileTool, writeFileTool, editFileTool, findFileTool } from "../tools/filesystem";
@@ -21,7 +19,10 @@ import { FocusExecutor } from "./FocusExecutor";
 import { FocusStore } from "./focusStore";
 export { parseFocusStartGoal } from "./focusCommand";
 import type { FocusLogEntry, FocusMemory, FocusState, FocusToolLike, FocusTurnResult } from "./types";
-
+import {
+  createFindSpecialistProjectMemoryTool,
+  createReadSpecialistSectionHistoryTool,
+} from "../agent/specialist-memory-tools";
 const store = new FocusStore();
 const executor = new FocusExecutor(store, {
   buildTurnLlm: async (selectedModel?: string) => getMainAgentLlm(selectedModel ?? "", {}, "expensive"),
@@ -34,16 +35,18 @@ function references(config: RunnableConfig | undefined, key: string): string[] {
   return Array.isArray(value) ? value.filter((item): item is string => typeof item === "string" && item.trim().length > 0) : [];
 }
 
-/** Same task tools as the main project agent, plus the Focus control tools. */
+function getChatIdFromConfig(config: RunnableConfig | undefined): string {
+  const value = config?.configurable?.chatId;
+  return typeof value === "string" && value.trim() ? value.trim() : "default";
+}
+
+/** Task tools for Focus, plus specialist memory tools. */
 async function buildTaskTools(config: RunnableConfig, projectPath?: string): Promise<FocusToolLike[]> {
   const tools: FocusToolLike[] = [
-    desktopVisionTool as FocusToolLike,
     terminalExecutionTool(projectPath ? { projectPath } : {}) as FocusToolLike,
     perplexitySearchTool as FocusToolLike,
     skillLoaderTool as FocusToolLike,
     scheduleTool as FocusToolLike,
-    textToSpeechTool as FocusToolLike,
-    speechControlTool as FocusToolLike,
     createAgentTool as FocusToolLike,
     ...(agentManagementTools as unknown as FocusToolLike[]),
     readFileTool as FocusToolLike,
@@ -52,6 +55,8 @@ async function buildTaskTools(config: RunnableConfig, projectPath?: string): Pro
     findFileTool as FocusToolLike,
     ...(docTools as unknown as FocusToolLike[]),
     ...(notesTools as unknown as FocusToolLike[]),
+    createFindSpecialistProjectMemoryTool(projectPath || "") as unknown as FocusToolLike,
+    createReadSpecialistSectionHistoryTool(getChatIdFromConfig(config)) as unknown as FocusToolLike,
   ];
   const extensionIds = references(config, "selectedExtensions");
   try {
@@ -135,7 +140,12 @@ export async function resumeFocusSession(chatId: string, focusId?: string): Prom
   await store.setChatFocus(chatId, state.id);
 }
 
-export async function handleFocusMessage(chatId: string, message: string, config: RunnableConfig, options: { projectPath?: string } = {}): Promise<FocusTurnResult> {
+export async function handleFocusMessage(
+  chatId: string,
+  message: string,
+  config: RunnableConfig,
+  options: { projectPath?: string; sourceMessage?: BaseMessage } = {},
+): Promise<FocusTurnResult> {
   const id = await store.getChatFocus(chatId);
   if (!id) throw new Error("There is no active Focus session in this chat.");
   const state = await store.load(id);
@@ -153,10 +163,12 @@ export async function handleFocusMessage(chatId: string, message: string, config
     chatId,
     projectPath,
     userMessage: message,
+    sourceMessage: options.sourceMessage,
   });
-  for (const graphTool of [graphTurn.digestTool, graphTurn.toolLogTool]) {
+  const graphTools = [graphTurn.digestTool, graphTurn.toolLogTool] as unknown as FocusToolLike[];
+  for (const graphTool of graphTools) {
     if (graphTool && !tools.some((item) => item.name === graphTool.name)) {
-      tools.push(graphTool as unknown as FocusToolLike);
+      tools.push(graphTool);
     }
   }
   return executor.send(id, message, {
@@ -164,6 +176,7 @@ export async function handleFocusMessage(chatId: string, message: string, config
     tools,
     selectedModel: selectedModel || undefined,
     graphTurn,
+    sourceMessage: options.sourceMessage,
   });
 }
 
@@ -173,6 +186,7 @@ export async function startFocusFromRequest(input: {
   goal: string;
   config: RunnableConfig;
   projectPath?: string;
+  sourceMessage?: BaseMessage;
 }): Promise<BaseMessage> {
   const selectedModel = getSelectedChatModel(input.config);
   await startFocusSession({
@@ -181,11 +195,19 @@ export async function startFocusFromRequest(input: {
     selectedModel,
     projectPath: input.projectPath,
   });
-  const result = await handleFocusMessage(input.chatId, input.userMessage, input.config, { projectPath: input.projectPath });
+  const result = await handleFocusMessage(input.chatId, input.userMessage, input.config, {
+    projectPath: input.projectPath,
+    sourceMessage: input.sourceMessage,
+  });
   return new AIMessage({ content: result.reply, additional_kwargs: { mocuFocus: true } });
 }
 
-export async function runFocusTurn(chatId: string, userMessage: string, config: RunnableConfig, options: { projectPath?: string } = {}): Promise<BaseMessage> {
+export async function runFocusTurn(
+  chatId: string,
+  userMessage: string,
+  config: RunnableConfig,
+  options: { projectPath?: string; sourceMessage?: BaseMessage } = {},
+): Promise<BaseMessage> {
   const result = await handleFocusMessage(chatId, userMessage, config, options);
   return new AIMessage({ content: result.reply, additional_kwargs: { mocuFocus: true } });
 }

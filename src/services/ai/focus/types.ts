@@ -55,6 +55,8 @@ export interface FocusTurnContext {
   tools: FocusToolLike[];
   selectedModel?: string;
   graphTurn?: PreparedAgentGraphTurn;
+  /** Original multimodal user message (text + optional images). */
+  sourceMessage?: BaseMessage;
 }
 
 export interface FocusTurnResult {

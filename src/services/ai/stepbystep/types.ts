@@ -88,6 +88,8 @@ export interface ExecutorTurnContext {
   selectedModel?: string;
   /** Project-scoped prior-run graph retrieval and optional recording. */
   graphTurn?: PreparedAgentGraphTurn;
+  /** Original multimodal user message (text + optional images). */
+  sourceMessage?: BaseMessage;
 }
 
 /**

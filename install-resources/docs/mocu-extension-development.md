@@ -30,11 +30,11 @@ A Mocu extension is a separate **Node.js or Python child process**, not a browse
 The active implementation is located in:
 
 - Runtime: `src/extensions` and `src-tauri/src/extension_host`
-- SDK source in a development checkout: `install-resources/extension-system/sdk-node` and `install-resources/extension-system/sdk-python`
-- Installed global SDK source: `<Mocu app-data directory>/extension-system/sdk-node` and `<Mocu app-data directory>/extension-system/sdk-python`; shared contracts are in `<Mocu app-data directory>/extension-system/contracts`
-- Real examples: `extensions-default` and `extensions-examples`, notably `hi-llm-node`, `sysinfo-node`, `filesystem`, `youtube`, `telegram`, and `pi-node`
+- SDK source in a development checkout: `install-resources/extension-system/sdk-node` and `install-resources/extension-system/sdk-python`; shared JSON-RPC contracts: `install-resources/extension-system/contracts`
+- Installed global SDK source: `<Mocu app-data directory>/extension-system/` (resolve app data from the OS/Tauri context rather than hard-coding a platform path)
+- Real examples: `extensions-examples` at the repository root, notably `hi-llm-node`, `sysinfo-node`, `filesystem`, `youtube`, `telegram`, and `pi-node`
 
-On an installed app, resolve Mocu's app-data directory from the operating system/Tauri app context; do not assume a fixed OS-specific path. At first launch Mocu copies `extension-system` there alongside `agents`, `docs`, and `skills`. Copy the required SDK package(s) from this global directory into each extension's own folder before packaging or installing it; installed extensions must not depend on a path outside their folder.
+On first launch Mocu copies `extension-system` into its global app-data directory alongside `agents`, `docs`, and `skills`. Use these SDK packages as development sources, then copy the required SDK package(s) into each extension's own folder before packaging or installing it; an installed extension must not depend on a path outside its own folder. See [SDK Local Vendoring and Packaging](mocu-extension-sdk-local-vendoring-and-packaging.md) for verified Node and Python packaging steps.
 
 Use the active runtime scanner, SDK source, and examples as the source of truth. Verify runtime and API details in the corresponding files instead of guessing.
 

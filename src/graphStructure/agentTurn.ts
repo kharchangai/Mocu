@@ -1,4 +1,5 @@
 import type { StructuredToolInterface } from "@langchain/core/tools";
+import type { BaseMessage } from "@langchain/core/messages";
 
 import { runProjectMemoryExclusive } from "../chat/project/memory/projectMemoryOperationQueue";
 import { cleanRunRecords } from "./cleanup";
@@ -15,6 +16,8 @@ export interface PreparedAgentGraphTurn {
   digestTool: StructuredToolInterface | null;
   toolLogTool: StructuredToolInterface | null;
   persistRequested: boolean;
+  /** Original multimodal user request for the specialist agent. */
+  sourceMessage?: BaseMessage;
 }
 
 /** Prepare global prior-run retrieval and capture one specialist turn. */
@@ -23,6 +26,8 @@ export async function prepareAgentGraphTurn(input: {
   chatId: string;
   projectPath?: string;
   userMessage: string;
+  /** The source message may contain text plus image blocks. */
+  sourceMessage?: BaseMessage;
 }): Promise<PreparedAgentGraphTurn> {
   const projectPath = input.projectPath?.trim() ?? "";
   const retrievalPath = projectPath || undefined;
@@ -56,7 +61,7 @@ export async function prepareAgentGraphTurn(input: {
   } catch (error) {
     console.warn(`[${input.agentKind}] Could not create prior-run graph tools:`, error);
   }
-  return { projectPath, recorder, graphHint, digestTool, toolLogTool, persistRequested };
+  return { projectPath, recorder, graphHint, digestTool, toolLogTool, persistRequested, sourceMessage: input.sourceMessage };
 }
 
 /** Save one useful specialist turn best-effort; never fail the user task. */

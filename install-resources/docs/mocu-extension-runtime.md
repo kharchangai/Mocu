@@ -126,22 +126,17 @@ Uninstalling stops the extension process and then removes the installation.
 
 ## SDK dependency installation and packaging caveats
 
-Mocu's Node installer runs `npm install` inside the installed extension folder. It does not have access to Mocu's global resource directory or source repository, so an extension cannot rely on SDK dependencies being available there at runtime.
+Mocu’s Node installer runs `npm install` inside the installed extension folder. It does not have access to Mocu’s SDK resource directory or source repository, so an extension cannot rely on dependencies available there at runtime.
 
-After first launch, SDK source packages are available at `<Mocu app-data directory>/extension-system/`: `sdk-node`, `sdk-python`, and shared `contracts`. Resolve the app-data directory for the current platform rather than hard-coding it. When preparing an extension, copy the needed SDK package(s) from this global folder into the extension's own directory before packaging/installing it.
-
-The Node package `@mocu/extension-sdk@0.1.0` was checked against the public npm registry on 2026-10-05 and returned E404. Do not assume this SDK dependency can be fetched publicly. For a distributable Node extension:
-
-- Copy `sdk-node/package.json` and `sdk-node/dist/` from the global `extension-system` folder into the extension, for example as `vendor/extension-sdk/`.
-- Copy `contracts/package.json` and `contracts/dist/` alongside it as `vendor/extension-contracts/`.
-- Use local `file:` dependencies that resolve only within the extension package; never reference the global SDK path from an installed extension.
-- Include built `dist` files and manifests in the ZIP.
-- Exclude `node_modules`; Mocu recreates it by running `npm install`.
+- In a development checkout, SDK packages are under `install-resources/extension-system` (`sdk-node`, `sdk-python`, and `contracts`). On an installed app, resolve the app-data directory and find the corresponding `<Mocu app-data directory>/extension-system/`; do not hard-code a platform-specific path.
+- For Node.js, copy `sdk-node/package.json` and `sdk-node/dist/` into the extension, for example as `vendor/extension-sdk/`. Copy `contracts/package.json` and `contracts/dist/` alongside it as `vendor/extension-contracts/`.
+- Set local `file:` dependencies that resolve only within the extension package; never reference the Mocu global SDK path from an installed extension.
+- Include built `dist` files and manifests in the ZIP. Exclude `node_modules`; Mocu recreates it by running `npm install`.
 - Validate installation from a clean staged copy before distributing the package.
 
-For Python extensions, copy `sdk-python/mocu_extension_sdk/` from the same global folder into the extension, and make that local copy importable. The Python installer does not run `pip`; do not assume Python SDK dependencies are available on PyPI.
+For Python, copy `sdk-python/mocu_extension_sdk/` from the same SDK source into the extension, and make that local copy importable. The Python installer does not run `pip`; do not assume Python SDK dependencies are available on PyPI.
 
-See [SDK Local Vendoring and Packaging](mocu-extension-sdk-local-vendoring-and-packaging.md) for the canonical packaging instructions, [Extension Development](mocu-extension-development.md) for creation steps, and [SDK API Reference](mocu-extension-sdk-reference.md) for API details.
+See [SDK Local Vendoring and Packaging](mocu-extension-sdk-local-vendoring-and-packaging.md) for the canonical copy commands and clean-install verification, [Extension Development](mocu-extension-development.md) for creation steps, and [SDK API Reference](mocu-extension-sdk-reference.md) for API details.
 
 ## Selecting extensions for chat
 

@@ -107,6 +107,7 @@ export type ChatInputProps = {
   value?: string;
   chatId?: string | null;
   projectPath?: string;
+  projectChat?: boolean;
   isLoading?: boolean;
   agentName?: string;
   modelLabel?: string;
@@ -185,6 +186,7 @@ export function ChatInput({
   value = '',
   chatId = null,
   projectPath = '',
+  projectChat = false,
   isLoading = false,
   agentName = 'Mocu',
   modelLabel = 'Mocu · Standard',
@@ -540,8 +542,7 @@ export function ChatInput({
    * for the query after the command.
    */
   const isDirectSlashCommand =
-    activeCommand?.command === 'focus' ||
-    activeCommand?.command === 'step';
+    !projectChat && (activeCommand?.command === 'focus' || activeCommand?.command === 'step');
   const commandMenuMode: CommandMenuMode | null =
     activeCommand === null || isDirectSlashCommand
       ? null
@@ -565,6 +566,7 @@ export function ChatInput({
   const activeCommandNameQuery =
     commandMenuMode === 'commands' ? activeCommand?.command ?? '' : '';
   const filteredCommands = COMMANDS.filter((command) =>
+    (projectChat || (command.command !== 'focus' && command.command !== 'step')) &&
     command.command.startsWith(activeCommandNameQuery.toLowerCase()),
   );
 
@@ -1315,7 +1317,8 @@ export function ChatInput({
         command !== 'agent' &&
         command !== 'mcp' &&
         command !== 'focus' &&
-        command !== 'step')
+        command !== 'step') ||
+      (!projectChat && (command === 'focus' || command === 'step'))
     ) {
       return;
     }

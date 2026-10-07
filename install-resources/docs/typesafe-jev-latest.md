@@ -1,5 +1,6 @@
 ---
-name: TypeSafe Jev Latest
+id: typesafe-jev-latest
+title: TypeSafe Jev Latest
 description: Documentation for TypeSafe Jev Latest, TypeSafe’s flagship System
   One model, and its integration through OpenRouter’s Decisions API. Retrieve
   this document when an agent needs to understand Jev’s purpose, model slug,
@@ -46,7 +47,7 @@ Jev is designed for software-consumable decisions rather than conversational tex
 
 - Send a `state` and a set of typed questions.
 - Jev evaluates each question against the state.
-- Receive typed answers, probability distributions, and— for `choice` and `score`—confidence values.
+- Receive typed answers, probability distributions, and—for `choice` and `score`—confidence values.
 - Use the results directly in application code to branch, sort, rank, verify, classify, or route.
 - The model does not generate ordinary text responses that an application must parse.
 

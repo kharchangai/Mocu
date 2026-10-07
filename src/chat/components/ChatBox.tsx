@@ -7,7 +7,12 @@ import {
   useState,
   type UIEvent,
 } from 'react';
-import { Virtuoso, type ListProps, type VirtuosoHandle } from 'react-virtuoso';
+import { Virtuoso, type VirtuosoHandle } from 'react-virtuoso';
+import {
+  ChatMessageList,
+  ChatMessageListHeader,
+  ChatMessageListFooter,
+} from './ChatMessageList';
 import { Eye, EyeOff, List } from 'lucide-react';
 
 import {
@@ -60,6 +65,7 @@ import {
 } from '../services/toolActivity';
 import {
   getStepWorkflowLogs,
+  hasActiveStepWorkflow,
   getStepWorkflowOverviews,
   resumeStepByStepWorkflow,
   type StepWorkflowLogPage,
@@ -178,11 +184,6 @@ const MESSAGE_WINDOW_SIZE = 80;
 const MESSAGE_PAGE_SIZE = 50;
 const VIRTUOSO_INDEX_BASE = 1_000_000;
 
-const ChatMessageList = ({ children, style, ...props }: ListProps) => (
-  <div {...props} className="chat-box-messages-inner" style={style}>
-    {children}
-  </div>
-);
 
 
 type EnsureChatResult = {
@@ -668,6 +669,7 @@ type ChatBoxProps = {
   messages: ChatMessage[];
   agentName?: string;
   projectPath?: string;
+  projectChat?: boolean;
   projectDescription?: string;
 
   onEnsureChat: (
@@ -705,11 +707,14 @@ export function ChatBox({
   messages,
   agentName = 'Mocu',
   projectPath = '',
+  projectChat = false,
   projectDescription = '',
   onEnsureChat,
   onAppendMessage,
   onReplaceMessage,
 }: ChatBoxProps) {
+  const isProjectChat = projectChat || projectPath.trim().length > 0;
+
   /*
    * True only while a send is creating/resuming its conversation (before
    * a chat id exists that the run store can track). Once the run starts,
@@ -763,13 +768,13 @@ export function ChatBox({
   );
 
   useEffect(() => {
-    const savedThreadKey = readSavedThreadKey(chatId);
+    const savedThreadKey = isProjectChat ? readSavedThreadKey(chatId) : null;
     setSectionsMenuOpen(false);
     setCurrentThreadKey(savedThreadKey);
     setSectionOnlyVisible(savedThreadKey !== null);
     setLiveSectionThreadKey(null);
     setSectionTransientMessageThreadKeys(new Map());
-  }, [chatId]);
+  }, [chatId, isProjectChat]);
 
   useEffect(() => {
     const handleSavedWorkChanged = (event: Event): void => {
@@ -783,7 +788,7 @@ export function ChatBox({
   }, [chatId]);
 
   useEffect(() => {
-    if (!chatId) {
+    if (!chatId || !isProjectChat) {
       setResumableWorkflows([]);
       setResumableFocuses([]);
       setAllWorkflows([]);
@@ -817,7 +822,7 @@ export function ChatBox({
     });
 
     return () => { cancelled = true; };
-  }, [chatId, messages.length, savedWorkRefreshKey]);
+  }, [chatId, isProjectChat, messages.length, savedWorkRefreshKey]);
 
   const handleResumeWorkflow = async (workflowId: string): Promise<void> => {
     if (!chatId || !resumableWorkflows.some((workflow) => workflow.id === workflowId) || resumingType) return;
@@ -886,7 +891,7 @@ export function ChatBox({
    * message in real time.
    */
   useEffect(() => {
-    if (!chatId) {
+    if (!chatId || !isProjectChat) {
       setStepWorkflowLogEntries([]);
       return;
     }
@@ -951,7 +956,7 @@ export function ChatBox({
       cancelled = true;
       window.clearInterval(interval);
     };
-  }, [chatId, isLoading, messages.length]);
+  }, [chatId, isProjectChat, isLoading, messages.length]);
 
   /*
    * Names of every available skill, extension, and agent, so sent user
@@ -1175,11 +1180,6 @@ export function ChatBox({
     }
 
     /*
-     * Lock the input while the chat is being created or resumed.
-     */
-    setIsPreparingChat(true);
-
-    /*
      * Prefer the path sent directly by ChatInput. This handles the case
      * where the projectPath prop has not been updated by React yet.
      */
@@ -1194,6 +1194,23 @@ export function ChatBox({
     const hasSelectedProject =
       effectiveProjectPath.length > 0;
 
+    if (!hasSelectedProject) {
+      const asksForSpecialist = Boolean(
+        parseSpecialistSlashCommand(normalizedText) ||
+        parseFocusStartGoal(normalizedText) !== null
+      );
+      const specialistIsActive = Boolean(chatId && (
+        await hasActiveFocusSession(chatId) ||
+        await hasActiveStepWorkflow(chatId)
+      ));
+      if (asksForSpecialist || specialistIsActive) {
+        throw new Error('Focus and Step-by-Step are available only in project chats. Open a project chat to use /focus or /step.');
+      }
+    }
+
+    /* Lock the composer only after project-only modes have been validated. */
+    setIsPreparingChat(true);
+
     let requestChatId: string;
     let wasCreated: boolean;
 
@@ -1203,6 +1220,7 @@ export function ChatBox({
         parseSpecialistSlashCommand(normalizedText);
       const isFocusTurn =
         requestedSpecialistCommand?.command === 'focus' ||
+        requestedSpecialistCommand?.command === 'step' ||
         parseFocusStartGoal(normalizedText) !== null ||
         Boolean(chatId && await hasActiveFocusSession(chatId));
 
@@ -1823,10 +1841,11 @@ export function ChatBox({
     [focusChatTurns, displayMessages, resumableFocuses],
   );
   const chatThreadMarkers = useMemo(() => {
+    if (!isProjectChat) return new Map<string, ChatThreadMarker>();
     const markers = new Map(stepWorkflowMessageMapping.threadMarkers);
     focusMessageMapping.forEach((marker, messageId) => markers.set(messageId, marker));
     return markers;
-  }, [stepWorkflowMessageMapping.threadMarkers, focusMessageMapping]);
+  }, [isProjectChat, stepWorkflowMessageMapping.threadMarkers, focusMessageMapping]);
 
   useEffect(() => {
     if (sectionTransientMessageThreadKeys.size === 0) return;
@@ -2053,7 +2072,7 @@ export function ChatBox({
   };
 
   const visibleMessageIndexes = useMemo(() => {
-    if (!sectionOnlyVisible || !currentThreadKey) {
+    if (!isProjectChat || !sectionOnlyVisible || !currentThreadKey) {
       return displayMessages.map((_message, index) => index);
     }
     const selectedThreadGroupKey = getThreadGroupKeyFromSectionKey(currentThreadKey);
@@ -2066,6 +2085,7 @@ export function ChatBox({
       return visible;
     }, []);
   }, [
+    isProjectChat,
     chatThreadMarkers,
     currentThreadKey,
     displayMessages,
@@ -2091,6 +2111,8 @@ export function ChatBox({
   );
   const virtuosoComponents = useMemo(() => ({
     List: ChatMessageList,
+    Header: ChatMessageListHeader,
+    Footer: ChatMessageListFooter,
   }), []);
 
   useEffect(() => {
@@ -2172,6 +2194,7 @@ export function ChatBox({
       className="chat-box"
       aria-label={`Chat with ${agentName}`}
     >
+      {isProjectChat && (
       <div className="chat-box-thread-controls">
         <button
           type="button"
@@ -2239,6 +2262,7 @@ export function ChatBox({
           </div>
         ) : null}
       </div>
+      )}
       {hasMessages ? (
         <Virtuoso
           key={chatId ?? 'new'}
@@ -2454,6 +2478,7 @@ export function ChatBox({
       <ChatInput
         key={`chat-input-${chatId ?? 'new-chat'}`}
         chatId={chatId}
+        projectChat={isProjectChat}
         value={draftMessage}
         onValueChange={setDraftMessage}
         onSend={handleSendMessage}

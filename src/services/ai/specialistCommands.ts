@@ -69,6 +69,7 @@ export async function runSpecialistSlashCommand(input: {
   historyMessages: BaseMessage[];
   config: RunnableConfig;
   projectPath?: string;
+  sourceMessage?: BaseMessage;
 }): Promise<BaseMessage | null> {
   const command = parseSpecialistSlashCommand(input.userText);
   if (!command) return null;
@@ -95,6 +96,7 @@ export async function runSpecialistSlashCommand(input: {
       goal: task,
       config: input.config,
       projectPath: input.projectPath,
+      sourceMessage: input.sourceMessage,
     });
   }
 
@@ -104,6 +106,7 @@ export async function runSpecialistSlashCommand(input: {
     taskDescription: task,
     selectedModel: selectedModel || undefined,
     projectPath: input.projectPath,
+    sourceMessage: input.sourceMessage,
   });
   const reply = [
     `Step-by-Step started with ${plan.steps.length} steps.`,

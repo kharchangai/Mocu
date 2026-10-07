@@ -22,11 +22,12 @@ import { saveSpecialistSectionMemoryInBackground } from "../agent/specialist-mem
 import { withShortDescription } from "../agent/tool-summaries";
 import { FileToolRecovery, isFileToolError } from "../agent/file-tool-recovery";
 import { buildDocsContextPrompt } from "../../../chat/docs";
+import { assertImageModelSupport, buildHumanMessageFromRequest } from "../agent/image-content";
+import { persistAgentGraphTurn } from "../../../graphStructure/agentTurn";
 import {
   createStepToolCallFailureMessage,
   parseStepToolCallFailureMessage,
 } from "./toolCallFailure";
-import { persistAgentGraphTurn } from "../../../graphStructure/agentTurn";
 import {
   emptyMemory,
   type ExecutorTurnContext,
@@ -672,6 +673,7 @@ export class StepExecutor {
     // fail-open: buildDocsContextPrompt returns "" on no match/failure.
     const docsContextPrompt = await buildDocsContextPrompt(message);
     const llm = await this.options.buildTurnLlm(turn.selectedModel);
+    await assertImageModelSupport(llm.model, turn.sourceMessage);
     const llmWithTools =
       llmTools.length > 0 ? llm.bindTools(llmTools) : llm;
 
@@ -683,7 +685,7 @@ export class StepExecutor {
           .join("\n\n")),
       ),
       ...buildMessagesFromStepHistory(history),
-      new HumanMessage(message),
+      buildHumanMessageFromRequest(message, turn.sourceMessage),
     ];
 
     await this.store.append(state.id, stepNumber, "user", {

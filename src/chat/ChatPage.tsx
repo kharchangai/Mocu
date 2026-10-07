@@ -737,6 +737,7 @@ function ChatPage() {
             activeChat?.messages ?? []
           }
           agentName="Mocu"
+          projectChat={hasProjectFolder}
           projectPath={
             currentProjectPath
           }
@@ -753,7 +754,7 @@ function ChatPage() {
         />
       </div>
 
-      <RightPanelDock hidden={!stepWorkflowActive && !focusActive}>
+      <RightPanelDock hidden={!hasProjectFolder || (!stepWorkflowActive && !focusActive)}>
         <StepWorkflowPanel
           key={`step-workflow-sidebar-${activeChatId ?? 'new-chat'}`}
           chatId={activeChatId}

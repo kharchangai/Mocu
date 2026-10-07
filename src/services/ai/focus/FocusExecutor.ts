@@ -5,14 +5,15 @@ import { z } from "zod";
 
 import { dispatchAgentToolActivity } from "../../../chat/services/toolActivity";
 import { invokeAgentModelWithTrace } from "../../../chat/services/agentTrace";
-import type { FocusMemory, FocusState, FocusToolLike, FocusTurnContext, FocusTurnResult } from "./types";
-import { emptyFocusMemory } from "./types";
+import { assertImageModelSupport, buildHumanMessageFromRequest } from "../agent/image-content";
 import { FocusStore } from "./focusStore";
 import { saveSpecialistSectionMemoryInBackground } from "../agent/specialist-memory";
 import { withShortDescription } from "../agent/tool-summaries";
 import { FileToolRecovery, isFileToolError } from "../agent/file-tool-recovery";
 import { buildDocsContextPrompt } from "../../../chat/docs";
 import { persistAgentGraphTurn } from "../../../graphStructure/agentTurn";
+import type { FocusMemory, FocusState, FocusToolLike, FocusTurnContext, FocusTurnResult } from "./types";
+import { emptyFocusMemory } from "./types";
 
 const FocusMemorySchema = z.object({
   summary: z.string(),
@@ -247,11 +248,12 @@ export class FocusExecutor {
       .filter((item) => item.trim())
       .join("\n\n");
     const llm = await this.options.buildTurnLlm(turn.selectedModel);
+    await assertImageModelSupport(llm.model, turn.sourceMessage);
     const llmWithTools = llmTools.length ? llm.bindTools(llmTools) : llm;
     const messages: BaseMessage[] = [
       new SystemMessage(focusPrompt(state, descriptions, docsContextPrompt)),
       ...historyMessages(previousHistory),
-      new HumanMessage(userMessage),
+      buildHumanMessageFromRequest(userMessage, turn.sourceMessage),
     ];
     await this.store.append(state.id, sectionNumber, "user", { message: userMessage });
 

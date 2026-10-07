@@ -5,7 +5,7 @@
 .assistant-message {
   width: 100%;
   min-width: 0;
-  padding: 20px 24px;
+  padding: 0;
   background: transparent;
 }
 
@@ -261,20 +261,12 @@
 /* Responsive */
 
 @media (max-width: 900px) {
-  .assistant-message {
-    padding-inline: 22px;
-  }
-
   .assistant-message__inner {
     max-width: 720px;
   }
 }
 
 @media (max-width: 640px) {
-  .assistant-message {
-    padding: 16px;
-  }
-
   .assistant-message__actions {
     opacity: 1;
     transform: none;

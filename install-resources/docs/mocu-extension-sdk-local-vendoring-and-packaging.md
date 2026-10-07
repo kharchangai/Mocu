@@ -1,26 +1,26 @@
 ---
 id: mocu-extension-sdk-local-vendoring-and-packaging
-title: "# Mocu Extension SDK: Local Vendoring and Packaging"
-description: Canonical guide for distributing Mocu extensions with the
-  unpublished SDK bundled locally, including npm E404 context, Node SDK and
-  contracts vendoring, Python packaging, ZIP contents and clean-install
-  verification.
+title: Mocu SDK Local Packaging
+description: Explains how to bundle Mocu’s unpublished Node or Python extension
+  SDK locally, package it in an extension ZIP, and verify a clean install.
+  Retrieve it when an extension author asks about npm E404, SDK availability,
+  vendoring, or extension distribution.
 keywords:
   - Mocu extension SDK
-  - unpublished npm
+  - unpublished npm package
   - npm E404
-  - vendoring
-  - local file dependency
-  - SDK copy
-  - extension ZIP
+  - local SDK vendoring
+  - file dependency
+  - extension ZIP packaging
   - Node.js SDK
   - extension-contracts
   - Python SDK
+  - clean install verification
   - اکستنشن
   - افزونه
   - SDK منتشر نشده
 ---
-# Mocu SDK Packaging
+# Mocu SDK Local Packaging
 
 ## Public package availability
 
@@ -34,7 +34,10 @@ For API usage, see [Mocu Extension SDK Reference](mocu-extension-sdk-reference.m
 
 ## Package the Node SDK locally
 
-After Mocu's first launch, use the installed global sources at `<Mocu app-data directory>/extension-system/sdk-node` and `<Mocu app-data directory>/extension-system/contracts`. In a development checkout, the equivalent sources are `install-resources/extension-system/sdk-node` and `install-resources/extension-system/contracts`. Resolve the app-data directory for the current OS; do not hard-code one platform's path. Copy both packages' built outputs and manifests into the extension before packaging. For example, from the extension root in PowerShell, with `$AppData` set to Mocu's resolved app-data directory:
+In a development checkout, the source packages are under `install-resources/extension-system` (`sdk-node`, `sdk-python`, and `contracts`). On an installed app, resolve Mocu’s app-data directory from the operating system/Tauri app context; do not assume a fixed OS-specific path. The global SDK source is under `<Mocu app-data directory>/extension-system`. Copy the required SDK package(s) into each extension’s own folder before packaging or installing it; installed extensions must not depend on a path outside their folder.
+
+For example, from the extension root in PowerShell, with `$AppData` set to Mocu’s resolved app-data directory:
+
 ```powershell
 $sdkRoot = Join-Path $AppData "extension-system"
 New-Item -ItemType Directory -Force "vendor/extension-sdk", "vendor/extension-contracts" | Out-Null
@@ -44,6 +47,7 @@ Copy-Item (Join-Path $sdkRoot "contracts/package.json") "vendor/extension-contra
 Copy-Item (Join-Path $sdkRoot "contracts/dist") "vendor/extension-contracts/" -Recurse
 ```
 
+The packaged structure should look like:
 
 ```text
 my-extension/
@@ -68,11 +72,11 @@ The extension root should reference the SDK as a local file dependency:
 }
 ```
 
-The SDK package must also resolve its `@mocu/extension-contracts` runtime dependency from the copied local `vendor/extension-contracts` package (for example, set the SDK package dependency to `"file:../extension-contracts"` and verify this with the npm version used for packaging).
+The SDK package must also resolve its `@mocu/extension-contracts` runtime dependency from the copied local `vendor/extension-contracts` package. For example, set the SDK package dependency to `"file:../extension-contracts"` and verify this with the npm version used for packaging.
 
 Do not use any `file:` path that points outside the distributed extension. Include package manifests, package exports, and compiled `dist` files for both packages. Copying TypeScript source alone or omitting the contracts package can cause imports to fail. In `index.js`, continue importing from `@mocu/extension-sdk`.
 
-The Node SDK requires Node.js >=20. Mocu’s installer skips `node_modules` and runs `npm install` after installing the extension. Therefore, include `vendor` and the package manifests in the ZIP, but exclude `node_modules`.
+The Node SDK requires Node.js >=20. Mocu’s installer skips `node_modules` and runs `npm install` after installing the extension. Include `vendor` and the package manifests in the ZIP, but exclude `node_modules`.
 
 ## Verify before distribution
 
@@ -87,9 +91,9 @@ A repository example that vendors the built SDK and contracts is `extensions-exa
 
 ## Python SDK distinction
 
-After Mocu's first launch, the Python SDK source is globally available at `<Mocu app-data directory>/extension-system/sdk-python`. In a development checkout, use `install-resources/extension-system/sdk-python`. Do not assume that `pip install mocu-extension-sdk` is available on PyPI; Mocu's extension installer does not run pip.
+On an installed app, the Python SDK source is under `<Mocu app-data directory>/extension-system/sdk-python`; in a development checkout, use `install-resources/extension-system/sdk-python`. Do not assume that `pip install mocu-extension-sdk` is available on PyPI; Mocu’s extension installer does not run pip.
 
-For a portable Python extension, copy the `mocu_extension_sdk/` package from the global SDK source into the extension (for example, `vendor/mocu_extension_sdk/`) and make that local copy importable. Do not let an installed extension depend on Mocu's global app-data path. See [Mocu Extension Development](mocu-extension-development.md) for the Python SDK entry point and runtime.
+For a portable Python extension, copy the `mocu_extension_sdk/` package from the SDK source into the extension (for example, `vendor/mocu_extension_sdk/`) and make that local copy importable. Do not let an installed extension depend on Mocu’s global app-data path. See [Mocu Extension Development](mocu-extension-development.md) for the Python SDK entry point and runtime.
 
 ## When to use this document
 

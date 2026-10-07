@@ -52,7 +52,9 @@ vi.mock('../../../graphStructure/recorder', () => ({ createGraphRecorder: () => 
 
 import { callChatAgent } from '../chat-agent';
 import { callProjectAgent } from '../project-agent';
-import { buildHumanMessageWithImages } from './image-content';
+import { buildHumanMessageFromRequest, buildHumanMessageWithImages, hasImageInput } from './image-content';
+import { FocusExecutor } from '../focus/FocusExecutor';
+import { StepExecutor } from '../stepbystep/StepExecutor';
 
 beforeEach(() => {
   mocks.stream.mockReset().mockResolvedValue(new AIMessage('I can see the images.'));
@@ -94,12 +96,18 @@ describe.each(['chat', 'project'] as const)('%s agent image input', (kind) => {
     const content = finalMessages[finalMessages.length - 1].content as Array<{ type: string }>;
     expect(content.filter((part) => part.type === 'image_url')).toHaveLength(3);
   });
-  it('explicitly rejects images routed to text-only specialist sessions', async () => {
-    const state = { messages: [buildHumanMessageWithImages('/focus inspect image', attachments)], memoryContext: '' };
-    const result = kind === 'chat'
-      ? callChatAgent(state, config)
-      : callProjectAgent(state, 'E:\\demo', config);
-    await expect(result).rejects.toThrow('not Focus or Step-by-Step');
-    expect(mocks.stream).not.toHaveBeenCalled();
+  it('forwards text and attached images through the shared specialist message builder', () => {
+    const source = buildHumanMessageWithImages('Inspect these', attachments);
+    const focusMessages = [buildHumanMessageFromRequest('Inspect these', source)];
+    const stepMessages = [buildHumanMessageFromRequest('Inspect these', source)];
+    for (const messages of [focusMessages, stepMessages]) {
+      expect(hasImageInput(messages[0])).toBe(true);
+      expect(messages[0].content).toEqual([
+        { type: 'text', text: 'Inspect these' },
+        ...attachments.map((image) => ({ type: 'image_url', image_url: { url: image.dataUrl } })),
+      ]);
+    }
+    expect(FocusExecutor).toBeDefined();
+    expect(StepExecutor).toBeDefined();
   });
 });

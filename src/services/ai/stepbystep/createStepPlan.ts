@@ -1,4 +1,6 @@
+import { HumanMessage, type BaseMessage } from "@langchain/core/messages";
 import { z } from "zod";
+import { assertImageModelSupport, buildHumanMessageFromRequest } from "../agent/image-content";
 import {
   getAsyncLLM,
   getAsyncLLMByModel,
@@ -41,6 +43,8 @@ export type UpdatedStepPlan = z.infer<typeof UpdatedStepPlanSchema>;
 export interface CreateStepPlanInput {
   userMessage: string;
   agentResponse: string;
+  /** Original user message, including any attached images. */
+  sourceMessage?: BaseMessage;
 }
 
 export interface UpdateStepPlanInput {
@@ -245,20 +249,21 @@ export async function createStepPlan(
         temperature: 0,
       });
 
+  await assertImageModelSupport(llm.model, input.sourceMessage);
   const structuredLlm = llm.withStructuredOutput(StepPlanSchema);
+  const planRequest = JSON.stringify({
+    user_message: userMessage,
+    agent_response: agentResponse,
+  });
 
   const result = await structuredLlm.invoke([
     {
       role: "system",
       content: SYSTEM_PROMPT,
     },
-    {
-      role: "user",
-      content: JSON.stringify({
-        user_message: userMessage,
-        agent_response: agentResponse,
-      }),
-    },
+    input.sourceMessage
+      ? buildHumanMessageFromRequest(planRequest, input.sourceMessage)
+      : new HumanMessage(planRequest),
   ]);
 
   if (!result) {

@@ -1,4 +1,5 @@
 import { BaseMessage, HumanMessage } from '@langchain/core/messages';
+import type { GatewayModel } from '../model-catalog';
 import type { ChatImageAttachment } from '../../../chat/types/imageAttachment';
 import { listGatewayModels, modelSupportsImageInput } from '../model-catalog';
 import { getTextContent } from './helpers';
@@ -60,16 +61,18 @@ export const buildHumanMessageFromRequest = (
 export const assertImageModelSupport = async (
   modelId: string,
   message?: BaseMessage,
+  models?: GatewayModel[],
 ): Promise<void> => {
   if (!hasImageInput(message)) return;
-  let models: Awaited<ReturnType<typeof listGatewayModels>> = [];
-  try {
-    models = await listGatewayModels();
-  } catch {
-    // OpenAI-compatible model lists often omit capabilities or are unavailable.
-    // Known vision families can still be used; unknown models fail explicitly.
+  let availableModels = models ?? [];
+  if (!models) {
+    try {
+      availableModels = await listGatewayModels();
+    } catch {
+      // OpenAI-compatible model lists may be unavailable; known vision families remain supported.
+    }
   }
-  if (!modelSupportsImageInput(modelId, models)) {
+  if (!modelSupportsImageInput(modelId, availableModels)) {
     throw new Error(`Model "${modelId}" does not support image input or its capability is unknown. Choose a vision-capable model or remove the attached images.`);
   }
 };
