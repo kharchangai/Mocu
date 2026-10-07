@@ -1,5 +1,7 @@
 # Mocu — More capability. Still you.
 
+**Languages:** [English](README.md) · [فارسی](README.fa.md)
+
 <p align="center">
   <img src="public/mocugit.png" alt="Mocu — a personal AI workspace built to amplify your capabilities" width="100%" />
 </p>
