@@ -1,216 +1,277 @@
-# Mocu — Your Smart Personal Desktop Assistant
+# Mocu — More capability. Still you.
 
 <p align="center">
-  <img src="public/mocu.png" alt="Mocu — Your Smart Personal Desktop Assistant" />
+  <img src="public/mocugit.png" alt="Mocu — a personal AI workspace built to amplify your capabilities" width="100%" />
 </p>
 
 <p align="center">
-  <img src="https://img.shields.io/badge/Status-Early%20Alpha-red?style=for-the-badge" alt="Status: Early Alpha" />
-  <img src="https://img.shields.io/badge/Built%20with-Tauri%202-24c8db?style=for-the-badge&logo=tauri" alt="Tauri 2" />
+  <img src="https://img.shields.io/badge/Status-Alpha-orange?style=for-the-badge" alt="Status: Alpha" />
+  <img src="https://img.shields.io/badge/Download-Windows-0078D4?style=for-the-badge" alt="Installer available for Windows" />
   <img src="https://img.shields.io/badge/License-Apache%202.0-green?style=for-the-badge" alt="License: Apache 2.0" />
 </p>
 
-**Mocu** is a personal AI desktop assistant built with **Tauri 2** — a Rust backend paired with a React + TypeScript frontend. It combines chat, projects, scheduling, memory, a multi-agent system, skills, a full extension system, and MCP (Model Context Protocol) support into a single native desktop app for Windows, macOS, and Linux.
+> **Mocu wasn't built to replace you. It was built to amplify what you can do.**
 
-Mocu is **model-agnostic**: bring your own API key from any OpenAI-compatible provider and configure models per tier (cheap / medium / expensive) in Settings.
+Your ideas, judgment, and goals stay at the center. Mocu brings personal AI agents, tools, knowledge, and memory together so you can move your work forward with greater productivity—not hand over your role in it.
 
----
+Build an AI team around the way **you** work. Teach it your methods. Give it the tools and up-to-date knowledge it needs. Then work with it in one desktop workspace, from a quick task to a long-running project.
 
-## ⚠️ Disclaimer (Please Read)
+**[Download for Windows](https://github.com/kharchangai/Mocu/releases) · [Build from source](#build-from-source) · [Report a bug](https://github.com/kharchangai/Mocu/issues)**
 
-> **Project Status: Early Alpha — Unstable**
-
-Mocu is in an **early stage of development** and is not yet stable. Due to potential bugs and unfinished features, **it is not recommended for daily use at this time**. Expect significant changes, breaking updates, and frequent iteration. This version is intended for testing, feedback, and observation only. Use at your own risk.
+> **Alpha release:** Mocu is under active development. Bugs, unfinished features, and breaking changes are possible. Back up important work and review AI-generated output and actions before relying on them.
 
 ---
 
-## ✨ Features
+## Your own AI team—without learning to program
 
-### Core
-- 💬 **Chat** — Full-featured chat with markdown rendering, code highlighting, chat history, and live tool-activity feeds.
-- 🎯 **Focus** — Start a goal directly, work in flexible user-controlled sections, and carry forward concise section memories without loading global memory or a generated plan. Say “Focus on …” to begin, “next section” to move on, and “end Focus” to return to normal chat.
-- 📁 **Projects** — Organize work into projects with their own chat history and **project memory** (episodes, turns, and retrieval).
-- 📅 **Schedule** — Set and manage schedules and tasks, with a built-in scheduler and schedule tools available to the AI.
-- 🧠 **Memory** — Layered memory system: short-term conversation memory, long-term personal memory (atomic memory extraction, relationship analysis, memory evolution), and project-level memory. Mocu remembers context across sessions.
-- 🎯 **Jev Decision Model** — A built-in probabilistic decision model the agent (and extensions) can query for typed choices and scores.
+A generic assistant doesn't know how you want every job done. With Mocu, you can create **personal specialist agents** for your work simply by describing what you need in natural language.
 
-### Agent & Extensibility
-- 🤖 **Agents** — Create custom agents from a natural-language description; Mocu parses them into structured definitions (tools, skills, sub-agents, extensions, model) that you can invoke from chat with `/agent`.
-- 🛠️ **Skills** — Write reusable skills as markdown files; the agent loads them on demand via a skill loader tool. Create and edit skills directly in the app.
-- 🧩 **Extension System** — Install extensions as ZIP files from the Extensions page. Extensions are independent **Node.js or Python** programs that talk to the Mocu host over **JSON-RPC 2.0 (stdin/stdout)**, are spawned lazily on first use, and expose commands that become callable agent tools. Extensions can call back into Mocu's LLM, the Jev decision model, the embedding model, and stream live progress into the chat.
-- 🔌 **MCP Host** — Connect external MCP servers (stdio, Streamable HTTP, or legacy HTTP+SSE transports) and import them in the common `mcpServers` JSON format. Their tools are exposed to Mocu's agents through the same tool pipeline as native tools.
+> “Create a research agent that uses my reference documents, a writing agent that follows my style, and a reviewer that checks the result. Let the writing agent delegate research and review to the other two.”
 
-### Built-in Agent Tools
-- 🌐 **Web Search** — Internet search via the Perplexity API (bring your own Perplexity key).
-- 👁️ **Desktop Vision** — Capture and analyze your screen.
-- 💻 **Terminal Execution** — Run OS commands through the terminal.
-- 📂 **Filesystem Tools** — File management and folder operations.
-- 🧱 **Agent Builder** — Mocu can create and manage new agents for you from within a conversation.
+Each agent can have its own instructions, tools, skills, extensions, model, and sub-agents. Start with one useful specialist, then connect agents into more sophisticated systems as your needs grow—without writing their definitions by hand.
+
+- **Make them yours:** define their role, working style, and the tools they may use.
+- **Build reusable systems:** combine specialists and let an agent delegate to other agents.
+- **Use them when you need them:** select a saved agent with `/agent` or ask Mocu to delegate a task in plain language.
+- **Refine them over time:** ask Mocu to update an agent as your workflow changes.
+
+These are your reusable assistants, built around your responsibilities—not a one-size-fits-all AI persona. Agents run when invoked; scheduled runs let you automate specific work at times you choose.
+
+## Extend Mocu around your needs
+
+Your workflow shouldn't stop where an app's built-in features end. **Extensions add new tools and integrations**, so Mocu can grow with the work you want to do.
+
+Install bundled extensions from the Extensions page, or add an extension from a folder or ZIP. Select the extensions you want to use with `/extension`, and their tools become available for that request. Installation alone does not activate them in chat.
+
+**You don't have to write the code yourself.** Describe the capability you want and ask Mocu to help build a custom extension, including its code and packaging. This is an AI-assisted development workflow: generated extensions still need testing, and integrations may require API keys, permissions, or external services. It is not a guarantee that every integration will work in one click.
+
+Under the hood, extensions run as Node.js or Python programs. Developers can also build them directly using the included SDKs, and MCP support offers another way to connect external tools.
+
+### Agents + skills + extensions = your own intelligent workflow
+
+| Building block | What it contributes |
+|---|---|
+| **Agents** | Who does the work: specialists with roles, tools, and delegation. |
+| **Skills** | How the work should be done: reusable instructions and methods. |
+| **Extensions** | What the system can do: new tools and integrations. |
+
+Together, they let you build complex AI workflows without needing to be a programmer yourself. The complexity can live in the system you build—not in the instructions you repeat every day.
+
+For example, a content workflow could combine a research agent, a writer, and a reviewer; a skill for your editorial process; and an extension for your publishing tools. Your documents provide the current product facts, while your notes keep personal priorities in view.
+
+## Give your agents current knowledge—not just model training
+
+Models don't automatically know your latest product changes, internal processes, or project conventions. **Mocu Docs** lets you supply that knowledge and keep it up to date.
+
+Save reference material, procedures, product information, or guidance as searchable knowledge documents. Mocu finds relevant document references for the current request, then reads the full documents when it needs their details.
+
+- **Keep knowledge current:** update documents as your work changes.
+- **Give agents context:** provide the rules, facts, and methods they need to understand the task.
+- **Avoid pasting the same background repeatedly:** make useful knowledge available across conversations.
+- **Start without a separate RAG stack:** use Mocu's built-in knowledge workflow instead of assembling an external retrieval system yourself.
+
+This is still a retrieval-based system: it combines keyword and semantic search, with optional Jev reranking, and reads document bodies on demand. It doesn't retrain the model or automatically refresh information you haven't updated.
+
+## Notes that bring your intentions back into the conversation
+
+Not everything needs a full document. **Notes** are for the important things you want to keep close: preferences, decisions, plans, and things you don't want to forget.
+
+> “Remember this: before publishing a release announcement, I want to update the screenshots and check the download link.”
+
+Notes are saved **exactly as you write them**. When a conversation touches a related topic, Mocu can retrieve and use relevant notes to account for what you wanted to do—or remind you of it while helping with the task.
+
+Use **Docs** for structured reference knowledge. Use **Notes** for your personal context and intentions. For a reminder at a specific time, use **Schedule**.
+
+## Plan your day—and schedule your agents
+
+Mocu's scheduling system supports both everyday reminders and **automatic runs of your saved agents**.
+
+- Set a reminder for a meeting, deadline, or task.
+- Schedule a specialist agent to run with an instruction at a chosen date and time.
+- Repeat reminders or agent runs daily, weekly, or monthly.
+- Manage schedules and inspect past triggers from the Schedule page.
+
+Want a morning briefing? Create an agent for it, then schedule it with the input and exact time you choose. Want help remembering a commitment? Set a reminder instead.
+
+**Mocu must be open for schedules to run at their scheduled time.** On startup it catches up recently missed items; recurring schedules advance to their next future occurrence rather than replaying every missed run.
+
+## Built for work that lasts longer than one conversation
+
+Long projects shouldn't mean starting from zero every time you return. **Mocu Projects** connect a workspace to a folder on your computer and give it its own chat history and project memory.
+
+Mocu saves project conversations and retrieves relevant past work when you continue. Global personal memory adds context about you across sessions, while project-scoped memory keeps ongoing work tied to the right workspace.
+
+Completed Focus sections and Step-by-Step steps leave **compact memory handoffs**. Later work can use those summaries—and retrieve specific details when needed—instead of carrying the entire transcript into every model call.
+
+The goal is continuity across long-running, multi-session projects, with less repeated explanation and more manageable context. Memory helps preserve progress; it does not promise perfect recall or remove model context limits.
+
+## Focus or go step by step—in the same project chat
+
+Big tasks don't always need the same working style. Mocu gives you two ways to work through them without juggling separate chats.
+
+### Focus: stay with one goal
+
+Start with `/focus <goal>` in a project chat. Work in flexible sections that you control, adding sections as the work develops. Say **“next section”** to move on or **“end Focus”** to finish.
+
+Choose Focus when you know the goal but want room to explore and decide the next section along the way.
+
+### Step-by-Step: turn a task into a manageable plan
+
+Start with `/step <task>` in a project chat. Mocu proposes a plan of small steps. Review it, then work through the steps one at a time, with visible progress and saved handoffs.
+
+Choose Step-by-Step when you want a clear plan before you begin and a structured path through the work.
+
+**Both modes work only in project chats.** Each completed section or step is saved to project memory so the next part can build on what you've already done.
 
 ---
 
-## 🏗️ Architecture
+## Get started
 
-| Layer | Technology | Location |
-|-------|------------|----------|
-| Desktop shell & native capabilities (windows, tray, screenshots, input, process spawning) | Rust / Tauri 2 | `src-tauri/` (incl. `src-tauri/src/extension_host/` and MCP stdio bridge) |
-| Frontend UI | React 19 + TypeScript + Vite + Tailwind CSS | `src/` |
-| AI orchestration | LangChain / LangGraph | `src/services/ai/` |
-| Chat, agents, skills, memory | TypeScript | `src/chat/` |
-| Extension runtime & UI | TypeScript | `src/extensions/` |
-| MCP client | TypeScript | `src/mcp/` |
-| Extension SDKs & shared contracts | Node.js (`@mocu/extension-sdk`) and Python (`mocu_extension_sdk`) | Source: `install-resources/extension-system/`; installed globally under Mocu app data at `extension-system/` |
+### Download the Windows alpha
 
-**Extension system in short:** the Rust host keeps a registry of installed extensions (from their `manifest.json`), spawns the extension process lazily when a command runs, routes JSON-RPC requests, and enforces per-command timeouts. On first launch, Mocu copies its SDK sources to `<Mocu app-data directory>/extension-system/`. Extension packages must vendor the needed SDK and contracts from that global folder into the extension itself; they cannot depend on the global folder at runtime. The frontend handles installation, settings forms, and exposes each extension command as an agent tool. Full documentation lives in [`docs/extention/`](docs/extention/README.md).
+**[Get the Windows installer from GitHub Releases →](https://github.com/kharchangai/Mocu/releases)**
 
-**Example extensions** in [`install-resources/extensions-examples/`](install-resources/extensions-examples/): `time-node` (hello world), `sysinfo-node` (system info), `hi-llm-node` (first LLM call), `llm-outside-example`, `pi-node` (advanced: multi-command coding-agent session with streaming activity), and `test` (bare protocol, no SDK).
+Prebuilt installers are currently available **only for Windows**. A **macOS installer is coming soon**. In the meantime, you can clone the repository and build Mocu yourself on macOS or Linux using the instructions below. Platform-specific build or runtime issues may still occur in this alpha.
 
----
+### Set up your workspace
 
-## 📋 Prerequisites
+1. Open **Settings** and configure an OpenAI-compatible AI provider: API key, base URL, and model names. Mocu is model-agnostic; you choose the provider and models.
+2. Describe your first personal agent and ask Mocu to create it.
+3. Add a useful knowledge document and a note about how you want to work.
+4. Install and select any extensions you need. Node.js is required for Node extensions; Python is required for Python extensions.
+5. Open a **Project** for ongoing work, then try `/focus` or `/step`.
 
-Building and running Mocu from source requires:
+An API key is required for AI features, and provider usage may incur charges. Web search additionally requires a Perplexity API key configured in Settings.
 
-| Requirement | Needed for | Notes |
-|-------------|-----------|-------|
-| **Rust** (stable, with `rustup`) | Building the Tauri/Rust backend (`src-tauri/`) | Install the OS prerequisites for [Tauri 2](https://tauri.app/start/prerequisites/) for your platform. |
-| **Node.js** (LTS, includes npm) | Building the frontend, the dev server, and running **Node.js extensions** | Node extensions are the most common extension runtime; the installer runs `npm install` for them automatically. |
-| **Python** (optional) | Running **Python extensions** | Only needed if you use Python-based extensions (the SDK is in `install-resources/extension-system/sdk-python/`). Mocu does **not** run `pip install` for you — manage Python extension dependencies yourself. |
-| **AI provider API key** | All AI features | Any **OpenAI-compatible** endpoint; configure base URL, model names, and API key in Mocu's Settings. |
-| **Perplexity API key** (optional) | Web search tool | Configure in Settings. |
+## Build from source
 
-### Installing the toolchain
+Mocu uses **Tauri 2 + Rust** for its desktop backend and **React + TypeScript + Vite** for its interface.
 
-**Windows (PowerShell):**
+You'll need **Git**, **Rust stable**, **Node.js 22.12+** (or a newer compatible LTS release), and the native build dependencies for your operating system. Install **Python 3** if you plan to use Python extensions; it is not required to compile Mocu itself.
+
+See the [Tauri prerequisites](https://v2.tauri.app/start/prerequisites/) for platform-specific requirements and troubleshooting. The commands below install development tools on your machine; review them before running them.
+
+### Windows · PowerShell
+
+Install the toolchain:
 
 ```powershell
-# Rust (installs rustup + stable toolchain)
+winget install --id Git.Git -e
 winget install --id Rustlang.Rustup -e
-# If rustup is already present, update the toolchain instead:
-# rustup update stable
-
-# Node.js LTS
 winget install --id OpenJS.NodeJS.LTS -e
 
-# Python (only needed for Python extensions)
+# Optional: needed for Python extensions
 winget install --id Python.Python.3.12 -e
-
-# Microsoft C++ Build Tools are required to compile Rust on Windows:
-# https://tauri.app/start/prerequisites/
 ```
 
-**macOS:**
+Install [Microsoft C++ Build Tools](https://visualstudio.microsoft.com/visual-cpp-build-tools/) with the **Desktop development with C++** workload and a Windows SDK. Tauri also requires **Microsoft Edge WebView2**, usually already installed on modern Windows.
+
+Open a new terminal after installation so the tools are available on `PATH`.
+
+### macOS · Terminal
+
+Install the Xcode Command Line Tools, and wait for installation to finish:
 
 ```bash
-# Xcode Command Line Tools (Rust prerequisite)
 xcode-select --install
-
-# Rust
-curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
-
-# Node.js and Python (optional) via Homebrew
-brew install node
-brew install python   # only needed for Python extensions
 ```
 
-**Linux (Debian/Ubuntu):**
+With [Homebrew](https://brew.sh/) installed:
 
 ```bash
-# Rust
-curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
+brew install git node@22
+brew link --overwrite node@22
 
-# Node.js and Python
+# Optional: needed for Python extensions
+brew install python
+
+# Install Rust, then follow the installer prompts
+curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
+source "$HOME/.cargo/env"
+```
+
+If another Node version is already installed, use your version manager or follow Homebrew's PATH instructions instead of relinking it. Desktop and screen-related tools may need macOS privacy permissions.
+
+### Linux · Ubuntu / Debian
+
+Install native dependencies (package names may vary by distribution):
+
+```bash
 sudo apt update
-sudo apt install -y nodejs npm python3 python3-pip
+sudo apt install -y git curl wget file build-essential pkg-config \
+  libwebkit2gtk-4.1-dev libssl-dev libayatana-appindicator3-dev \
+  librsvg2-dev libxdo-dev libx11-dev libxi-dev libxtst-dev
 
-# Tauri system dependencies (see Tauri docs for your distro):
-sudo apt install -y libwebkit2gtk-4.1-dev build-essential curl wget file \
-  libxdo-dev libssl-dev libayatana-appindicator3-dev librsvg2-dev
+# Optional: needed for Python extensions
+sudo apt install -y python3 python3-pip python3-venv
+
+# Install Rust, then follow the installer prompts
+curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
+source "$HOME/.cargo/env"
+
+# Install Node.js 22 using nvm; review the installer before running it
+curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.40.3/install.sh | bash
+export NVM_DIR="$HOME/.nvm"
+[ -s "$NVM_DIR/nvm.sh" ] && . "$NVM_DIR/nvm.sh"
+nvm install 22
+nvm use 22
 ```
 
----
+Use a distribution that provides WebKitGTK 4.1. Other distributions need equivalent packages; see the Tauri prerequisites. Screen capture and input tools may have limitations depending on your desktop session, especially Wayland.
 
-## 🚀 Getting Started
+### Clone, run, and build
 
-Clone the repository, then from the project root:
+After installing the prerequisites, run these commands on **Windows, macOS, or Linux**:
 
 ```bash
-# 1. Install frontend dependencies
+git clone https://github.com/kharchangai/Mocu.git
+cd Mocu
 npm install
 
-# 2. Run Mocu in development mode
-#    (starts the Vite dev server on port 1431, then launches the Tauri desktop app)
+# Launch the full desktop app in development mode
 npm run tauri dev
+```
 
-# 3. Build an installable package for your operating system
+To create an installable package for the operating system you're building on, stop the development app and run:
+
+```bash
 npm run tauri build
 ```
 
-### First run
+Build output is normally under `src-tauri/target/release/bundle/`. Build on the target operating system; this command is not a cross-platform installer generator. Signing or distribution requirements may need additional platform-specific setup.
 
-1. Open **Settings** and configure your AI provider (API key, base URL, and model names for the cheap/medium/expensive tiers).
-2. Optionally add a Perplexity API key for web search.
-3. Import MCP servers from the **MCP** page (paste a `mcpServers` JSON document), install extensions from the **Extensions** page, and create agents or skills from their pages.
-
-### Other scripts
-
-| Command | Description |
-|---------|-------------|
-| `npm run dev` | Frontend only — Vite dev server on port `1431`. |
-| `npm run build` | Type-check (`tsc`) and build the production frontend bundle. |
-| `npm run preview` | Preview the production frontend build. |
-| `npm test` | Run the Vitest test suite. |
-| `npm run tauri dev` | Run the full desktop app in development mode. |
-| `npm run tauri build` | Build the bundled desktop application. |
+Python extension dependencies must be installed separately according to each extension's instructions; Mocu does not automatically run `pip install`.
 
 ---
 
-## 🧩 Building an Extension (Quick Start)
+## Help shape the alpha
 
-An extension is a folder with a `manifest.json` and an entry file. Minimal Node.js example:
+Mocu is still an **alpha**, not a finished or production-stable product. Your feedback helps turn the idea into a better everyday workspace.
 
-```js
-// index.js
-import { createExtension } from "@mocu/extension-sdk";
+**[Report bugs and share feedback on GitHub Issues →](https://github.com/kharchangai/Mocu/issues)**
 
-const extension = createExtension({
-  commands: {
-    hello(input) {
-      return `Hello, ${input?.name ?? "world"}!`;
-    },
-  },
-});
+A useful bug report includes:
 
-extension.start();
-```
+- Your operating system and Mocu version.
+- What you expected and what actually happened.
+- Steps to reproduce the issue.
+- Relevant logs or screenshots, with API keys and personal information removed.
 
-```json
-// manifest.json
-{
-  "id": "com.example.hello",
-  "name": "Hello Extension",
-  "description": "Says hello.",
-  "version": "1.0.0",
-  "runtime": "node",
-  "entry": "index.js",
-  "commands": [
-    { "id": "hello", "title": "Say hello", "description": "Greets the caller." }
-  ]
-}
-```
+Review generated code and tool actions, use trusted extensions, and back up important files before testing workflows that modify them.
 
-Before zipping, copy the required Node or Python SDK (and Node contracts package) from Mocu's global `<app-data directory>/extension-system/` into the extension folder; installed extensions must keep those SDK files locally and cannot use the global path directly. Then install the ZIP from Mocu's **Extensions** page. Node extensions get `npm install` run automatically; Python extensions manage their own Python dependencies.
+## Learn more
 
-📖 Full documentation: [`docs/extention/README.md`](docs/extention/README.md) — architecture, manifest reference, Node & Python SDKs, LLM/decision/embedding host APIs, streaming activity, installation, protocol reference, and an AI-agent authoring guide. MCP details: [`docs/mcp.md`](docs/mcp.md).
+- [User guide](install-resources/docs/mocu-user-guide.md)
+- [Agents](install-resources/docs/mocu-agents.md) · [Skills](install-resources/docs/mocu-skills.md)
+- [Extensions](install-resources/docs/mocu-extensions.md) · [Extension development](install-resources/docs/mocu-extension-development.md)
+- [Knowledge docs](install-resources/docs/mocu-knowledge-docs.md) · [Notes](install-resources/docs/mocu-notes.md)
+- [Scheduling](install-resources/docs/mocu-schedule.md) · [Projects and memory](install-resources/docs/mocu-projects.md)
+- [Focus and Step-by-Step](install-resources/docs/mocu-chat-commands.md) · [MCP](install-resources/docs/mocu-mcp.md)
+
+## License
+
+Mocu is licensed under the [Apache License 2.0](LICENSE).
 
 ---
 
-## 📄 License
-
-Licensed under the [Apache License 2.0](LICENSE).
-
----
-
-<p align="center">
-  Built with ❤️ — under active development
-</p>
+**Your work. Your AI team. More of what you can do.**
