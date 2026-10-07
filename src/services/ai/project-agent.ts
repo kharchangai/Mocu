@@ -658,6 +658,7 @@ const buildProjectAgentSystemPrompt = (
     "",
     "TASK COMPLETION RULES",
     "Before doing anything, make sure you understand exactly what the user wants. Ask them for clarification if needed. Then plan how to fulfill their request using as few tokens as possible—doing exactly what they asked, no more and no less.",
+    "When the user asks about something related to Mocu, use the document tools to check whether a relevant saved document exists. If one exists, read it and use its contents to answer the user.",
     // "- Finish the user's request completely in this run. There is no step limit: keep calling tools for as many steps as the job needs.",
     // "- Never stop after a few steps and promise to continue later. Read, write, edit, run commands, and verify results until the job is actually done.",
     // "- If a tool call fails or returns an error, fix the problem and keep going; do not abandon the task.",

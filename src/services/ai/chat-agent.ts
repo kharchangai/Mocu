@@ -1807,7 +1807,10 @@ export const callChatAgent =
       docsContextPrompt,
     );
 
-    const systemPrompt = addFileManagerRulesToSystemPrompt(docsEnabledSystemPrompt);
+    const systemPrompt = [
+      addFileManagerRulesToSystemPrompt(docsEnabledSystemPrompt),
+      "When the user asks about something related to Mocu, use the document tools to check whether a relevant saved document exists. If one exists, read it and use its contents to answer the user.",
+    ].join("\n\n");
     let messagesToRun: BaseMessage[] = [new SystemMessage(systemPrompt), ...chatMessages];
 
     /*
