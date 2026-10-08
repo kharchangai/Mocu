@@ -1,4 +1,4 @@
-import { dispatchMemorySaveActivity } from "../../../chat/services/memoryActivity";
+import { createMemorySaveId, dispatchMemorySaveActivity } from "../../../chat/services/memoryActivity";
 import { databaseManager } from "../../../chat/project/memory/storage/databaseManager";
 import type { Turn } from "../../../chat/project/memory/createTurn";
 import { runProjectMemoryExclusive } from "../../../chat/project/memory/projectMemoryOperationQueue";
@@ -123,8 +123,10 @@ export function saveSpecialistSectionMemoryInBackground(
 
   const tag = createSpecialistMemoryTag(input);
   const { userMessage, agentResponse } = buildSpecialistHandoffText(input, tag);
+  const saveId = createMemorySaveId();
 
   dispatchMemorySaveActivity({
+    saveId,
     status: "saving",
     chatId: input.chatId,
     projectPath,
@@ -136,10 +138,10 @@ export function saveSpecialistSectionMemoryInBackground(
       turnId: result.processResult.turnId,
       databasePath: result.databasePath,
     });
-    dispatchMemorySaveActivity({ status: "done", chatId: input.chatId, projectPath });
+    dispatchMemorySaveActivity({ saveId, status: "done", chatId: input.chatId, projectPath });
   }).catch((error: unknown) => {
     console.error("[Project Memory] Failed to save specialist section handoff:", error);
-    dispatchMemorySaveActivity({ status: "error", chatId: input.chatId, projectPath });
+    dispatchMemorySaveActivity({ saveId, status: "error", chatId: input.chatId, projectPath });
   });
 }
 

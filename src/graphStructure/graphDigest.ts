@@ -15,21 +15,19 @@ const toolEntries = (nodes: GraphNode[]) => nodes
   .filter((node) => node.kind === "tool_call")
   .map((node) => ({ toolCallId: getToolCallId(node), name: getToolName(node), args: getToolArgs(node) }));
 
-/** Search the global graph store and expose only prior tool names and inputs. */
+/** Search the global graph store and expose only compact identifiers for prior runs. */
 export const searchRunGraphHints = async (_projectPath: string | undefined, query: string): Promise<string> => {
   try {
     const result = await runProjectMemoryExclusive(() =>
-      searchRunGraphs(undefined, query, { limit: MAX_HINT_RUNS, includeGraph: true }),
+      searchRunGraphs(undefined, query, { limit: MAX_HINT_RUNS }),
     );
     if (!result.matches.length) return "";
     const matches = result.matches.map((match) => ({
       runId: match.runId,
       score: Number(match.score.toFixed(3)),
-      toolCalls: toolEntries(match.graph?.nodes ?? []),
     }));
     return [
-      "Similar prior run graph(s) may be useful. The entries below contain only tool names and inputs; prior user messages, answers, and tool results are intentionally omitted.",
-      "Treat saved inputs as historical evidence, adapt paths/arguments to the current request, and do not blindly repeat side-effecting calls. If you need a specific prior result, call get_run_graph_tool_log with its runId and toolCallId.",
+      "Similar prior run graph(s) were found. This hint contains only run IDs and relevance scores; inspect a graph with get_relevant_run_graph_digest only if useful.",
       JSON.stringify(matches),
     ].join("\n");
   } catch (error) {

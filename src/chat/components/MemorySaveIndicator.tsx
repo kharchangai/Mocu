@@ -11,7 +11,7 @@
 // useMemorySaveStatus hook in ChatBox, which is always mounted and
 // therefore never misses the "saving" event.
 
-import type { MemorySaveStatus } from '../services/memoryActivity';
+import type { MemorySaveItem } from '../hooks/useMemorySaveStatus';
 
 import './MemorySaveIndicator.css';
 
@@ -36,38 +36,31 @@ function MindIcon() {
   );
 }
 
-const STATUS_LABELS: Record<
-  MemorySaveStatus,
-  string
-> = {
+const STATUS_LABELS = {
   saving: 'Saving to memory…',
   done: 'Memory saved',
   error: 'Memory save failed',
-};
+} as const;
 
 type MemorySaveIndicatorProps = {
-  status: MemorySaveStatus | null;
+  status: MemorySaveItem[];
 };
 
-export function MemorySaveIndicator({
-  status,
-}: MemorySaveIndicatorProps) {
-  if (!status) {
-    return null;
-  }
+export function MemorySaveIndicator({ status }: MemorySaveIndicatorProps) {
+  if (status.length === 0) return null;
 
   return (
-    <div
-      className={`memory-save-indicator memory-save-indicator--${status}`}
-      role="status"
-      aria-label={
-        STATUS_LABELS[status]
-      }
-      title={STATUS_LABELS[status]}
-    >
-      <span className="memory-save-indicator__icon">
-        <MindIcon />
-      </span>
+    <div className="memory-save-list" role="status" aria-label={`${status.length} memory save${status.length === 1 ? '' : 's'} in progress or requiring attention`}>
+      {status.map((item) => (
+        <div
+          key={item.saveId}
+          className={`memory-save-indicator memory-save-indicator--${item.status}`}
+          aria-label={STATUS_LABELS[item.status]}
+          title={STATUS_LABELS[item.status]}
+        >
+          <span className="memory-save-indicator__icon"><MindIcon /></span>
+        </div>
+      ))}
     </div>
   );
 }

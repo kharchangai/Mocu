@@ -3,7 +3,7 @@
   "id": "telegram",
   "name": "Telegram Bridge",
   "description": "Connect a private Telegram bot to saved Mocu agents. Send and receive files as well as messages; Telegram attachments are downloaded locally and can be routed to the selected agent.",
-  "version": "1.0.0",
+  "version": "0.1.0",
   "runtime": "node",
   "entry": "index.js",
   "engines": {

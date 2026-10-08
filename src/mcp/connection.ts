@@ -23,7 +23,7 @@ import type {
 } from './types';
 import { McpTransportError } from './types';
 
-const MOCU_CLIENT_INFO = { name: 'Mocu', version: '0.1.0' } as const;
+const MOCU_CLIENT_INFO = { name: 'Mocu', version: '0.1.1' } as const;
 
 /**
  * Builds the HTTP headers for a remote connection from the server's auth

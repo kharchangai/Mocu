@@ -1,4 +1,3 @@
-// src/services/ai/agent/user-memory.ts
 
 /**
  * User memory system for the chat agent (chat-agent.ts) and the main
@@ -22,10 +21,7 @@ import type { BaseMessage } from "@langchain/core/messages";
 
 import { getTextContent } from "./helpers";
 
-import {
-  dispatchMemorySaveActivity,
-} from "../../../chat/services/memoryActivity";
-
+import { createMemorySaveId, dispatchMemorySaveActivity } from "../../../chat/services/memoryActivity";
 import {
   saveProjectMemory,
 } from "../../../chat/project/memory/saveProjectMemory";
@@ -218,7 +214,9 @@ export const saveUserMemoryInBackground = (
    * starts blinking below the agent response. The event is scoped to
    * the chat that owns this run.
    */
+  const saveId = createMemorySaveId();
   dispatchMemorySaveActivity({
+    saveId,
     status: "saving",
     chatId,
     projectPath: "",
@@ -230,11 +228,7 @@ export const saveUserMemoryInBackground = (
     projectPath: null,
   })
     .then((result) => {
-      dispatchMemorySaveActivity({
-        status: "done",
-        chatId,
-        projectPath: "",
-      });
+      dispatchMemorySaveActivity({ saveId, status: "done", chatId, projectPath: "" });
 
       console.log(
         "[User Memory] Turn saved successfully:",
@@ -248,11 +242,7 @@ export const saveUserMemoryInBackground = (
       );
     })
     .catch((error: unknown) => {
-      dispatchMemorySaveActivity({
-        status: "error",
-        chatId,
-        projectPath: "",
-      });
+      dispatchMemorySaveActivity({ saveId, status: "error", chatId, projectPath: "" });
 
       console.error(
         "[User Memory] Failed to save turn:",

@@ -74,7 +74,7 @@ export function FocusPanel({ chatId, refreshKey, onActiveChange }: FocusPanelPro
       </button>
       {expanded ? (
         <div className="focus-panel__body">
-          <p className="focus-panel__goal" title={overview.goal}>{overview.goal}</p>
+          <p className="focus-panel__goal" title={overview.title}>{overview.title}</p>
           <div className="focus-panel__sections" aria-label="Focus sections">
             <span className="focus-panel__eyebrow">SECTIONS</span>
             <ol>

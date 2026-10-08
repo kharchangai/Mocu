@@ -34,17 +34,19 @@ describe("global run-graph agent retrieval", () => {
     getRunGraphByIdMock.mockResolvedValue(stored);
   });
 
-  it("puts only tool names and inputs in the automatic hint", async () => {
+  it("keeps the automatic hint compact and excludes graph tool details", async () => {
     searchRunGraphsMock.mockResolvedValue({
       matches: [{ runId: "run-1", score: 0.8, searchable: { userMessage: "private question" }, graph: stored.graph }],
       totalGraphs: 1,
     });
     const hint = await searchRunGraphHints(undefined, "how does memory work?");
-    expect(hint).toContain("read_file");
-    expect(hint).toContain("src/a.ts");
-    expect(hint).toContain("call-a");
+    expect(hint).toContain("run-1");
+    expect(hint).toContain("0.8");
+    expect(hint).not.toContain("read_file");
+    expect(hint).not.toContain("src/a.ts");
+    expect(hint).not.toContain("call-a");
     expect(hint).not.toContain("private question");
-    expect(hint).not.toContain("read src/a.ts");
+    expect(searchRunGraphsMock).toHaveBeenCalledWith(undefined, "how does memory work?", { limit: 2 });
   });
 
   it("returns only prior tool names and inputs from the digest tool", async () => {

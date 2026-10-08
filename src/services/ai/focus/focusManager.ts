@@ -102,7 +102,8 @@ export async function getActiveFocusSession(chatId: string): Promise<FocusState 
 
 export async function startFocusSession(input: {
   chatId: string;
-  goal: string;
+  goal?: string;
+  title?: string;
   selectedModel?: string;
   projectPath?: string;
 }): Promise<FocusState> {
@@ -179,7 +180,6 @@ export async function handleFocusMessage(
     sourceMessage: options.sourceMessage,
   });
 }
-
 export async function startFocusFromRequest(input: {
   chatId: string;
   userMessage: string;
@@ -202,6 +202,28 @@ export async function startFocusFromRequest(input: {
   return new AIMessage({ content: result.reply, additional_kwargs: { mocuFocus: true } });
 }
 
+/** Starts a titled Focus session and waits for the user's next message. */
+export async function startFocusSessionFromCommand(input: {
+  chatId: string;
+  title: string;
+  config: RunnableConfig;
+  projectPath?: string;
+}): Promise<BaseMessage> {
+  const title = input.title.trim();
+  if (!title) throw new Error("A title is required to start Focus.");
+  const selectedModel = getSelectedChatModel(input.config);
+  await startFocusSession({
+    chatId: input.chatId,
+    title,
+    selectedModel,
+    projectPath: input.projectPath,
+  });
+  return new AIMessage({
+    content: `Focus session “${title}” started. Send your next message with the task you want to work on.`,
+    additional_kwargs: { mocuFocus: true },
+  });
+}
+
 export async function runFocusTurn(
   chatId: string,
   userMessage: string,
@@ -221,6 +243,8 @@ export interface FocusChatTurn {
 
 export interface FocusOverview {
   id: string;
+  /** Display label for the session; falls back to the goal for older sessions. */
+  title: string;
   goal: string;
   status: FocusState["status"];
   currentSectionNumber: number;
@@ -232,6 +256,7 @@ function toFocusOverview(state: FocusState): FocusOverview {
   const lastSection = Math.max(state.currentSectionNumber, ...Object.keys(state.memories).map(Number), 1);
   return {
     id: state.id,
+    title: state.title?.trim() || state.goal,
     goal: state.goal,
     status: state.status,
     currentSectionNumber: state.currentSectionNumber,

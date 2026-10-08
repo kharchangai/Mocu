@@ -95,12 +95,8 @@ import {
   parseCancelledRunMessage,
   type CancelledRunData,
 } from '../services/cancelledRun';
-
 import { CancelledRunCard } from './CancelledRunCard';
-import {
-  clearMemorySaveStatus,
-  useMemorySaveStatus,
-} from '../hooks/useMemorySaveStatus';
+import { useMemorySaveStatus } from '../hooks/useMemorySaveStatus';
 import { useMentionResources } from './useMentionResources';
 import type { MentionResourceNames } from './SlashMentionText';
 import {
@@ -1256,13 +1252,7 @@ export function ChatBox({
       requestChatId = result.chatId;
       wasCreated = result.wasCreated;
 
-      /*
-       * New turn in this chat: drop the previous turn's memory-save
-       * status, so its mind icon does not linger below the response
-       * that is about to be generated.
-       */
-      clearMemorySaveStatus(requestChatId);
-
+      // Leave ongoing memory saves untouched while a new chat turn begins.
       /*
        * A brand-new chat keeps its pinned resources under the reserved
        * "new chat" key until the first message creates it. Hand the
@@ -1886,7 +1876,7 @@ export function ChatBox({
           sessionId: focus.id,
           sectionNumber: section.sectionNumber,
           title: `Focus · Section ${section.sectionNumber}`,
-          subtitle: focus.goal,
+          subtitle: focus.title,
           firstIndex: firstMessageIndexBySection.get(key) ?? null,
           canResume: resumableFocuses.some((item) => item.id === focus.id),
         });

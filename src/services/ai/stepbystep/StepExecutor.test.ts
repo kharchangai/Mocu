@@ -16,6 +16,103 @@ const docsContextMock = vi.hoisted(() => ({
 vi.mock("../../../chat/docs", () => docsContextMock);
 
 describe("StepExecutor tool rounds", () => {
+  it("truncates long tool results in live and restored history while retaining the full log", async () => {
+    const state: WorkflowState = {
+      id: "workflow-preview-test",
+      chatId: "chat-preview-test",
+      plan: {
+        final_goal: "Inspect output",
+        steps: [{ step_number: 1, title: "Inspect", summary: "", goal: "Inspect output", tips: [] }],
+      },
+      currentStepIndex: 0,
+      status: "active",
+      memories: {},
+      recentTurns: [],
+    };
+    const fullOutput = `${"important-start ".repeat(100)}full-output-tail`;
+    let capturedMessages: unknown[] = [];
+    const append = vi.fn(async (_id: string, _step: number, _kind: string, _data: unknown) => ({
+      id: "result-log-id",
+      workflowId: state.id,
+    }));
+    const store = {
+      load: vi.fn(async () => state),
+      save: vi.fn(async () => undefined),
+      append,
+      readStepHistory: vi.fn(async () => []),
+    } as unknown as WorkflowStore;
+    const tool = {
+      name: "long_tool",
+      description: "Returns long output",
+      invoke: vi.fn(async () => fullOutput),
+    };
+    let calls = 0;
+    const modelWithTools = {
+      async *stream(messages: unknown[]) {
+        capturedMessages = messages;
+        calls += 1;
+        if (calls === 1) {
+          yield new AIMessageChunk({
+            content: "",
+            tool_calls: [{ id: "call-long", name: "long_tool", args: {}, type: "tool_call" }],
+          });
+        } else {
+          yield new AIMessageChunk({ content: "Finished." });
+        }
+      },
+    };
+    const llm = { bindTools: vi.fn(() => modelWithTools) } as unknown as ChatOpenAI;
+    const executor = new StepExecutor(store, {
+      buildTurnLlm: async () => llm,
+      buildSummaryLlm: async () => llm,
+    });
+
+    await executor.send(state.id, { message: "Run the tool" }, { tools: [tool] });
+
+    const liveHistory = JSON.stringify(capturedMessages);
+    expect(liveHistory).toContain("Tool output truncated");
+    expect(liveHistory).toContain("result-log-id");
+    expect(liveHistory).not.toContain("full-output-tail");
+    expect(append).toHaveBeenCalledWith(
+      state.id,
+      1,
+      "tool_result",
+      expect.objectContaining({ result: fullOutput }),
+    );
+
+    const historyStore = {
+      load: vi.fn(async () => state),
+      save: vi.fn(async () => undefined),
+      append: vi.fn(async () => ({ id: "new-log", workflowId: state.id })),
+      readStepHistory: vi.fn(async () => [{
+        id: "history-result-id",
+        workflowId: state.id,
+        stepNumber: 1,
+        time: new Date().toISOString(),
+        kind: "tool_result" as const,
+        data: { callId: "prior-call", name: "long_tool", result: fullOutput },
+      }]),
+    } as unknown as WorkflowStore;
+    let restoredMessages: unknown[] = [];
+    const historyModel = {
+      async *stream(messages: unknown[]) {
+        restoredMessages = messages;
+        yield new AIMessageChunk({ content: "Done." });
+      },
+    };
+    const historyLlm = { bindTools: vi.fn(() => historyModel) } as unknown as ChatOpenAI;
+    const historyExecutor = new StepExecutor(historyStore, {
+      buildTurnLlm: async () => historyLlm,
+      buildSummaryLlm: async () => historyLlm,
+    });
+
+    await historyExecutor.send(state.id, { message: "Continue" }, { tools: [tool] });
+
+    const restoredHistory = JSON.stringify(restoredMessages);
+    expect(restoredHistory).toContain("Tool output truncated");
+    expect(restoredHistory).toContain("history-result-id");
+    expect(restoredHistory).not.toContain("full-output-tail");
+  });
   it("skips an identical failed edit, then continues using terminal fallback", async () => {
     const state: WorkflowState = {
       id: "workflow-file-recovery", chatId: "chat-file-recovery",

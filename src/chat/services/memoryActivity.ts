@@ -14,17 +14,18 @@ export type MemorySaveStatus =
   | 'error';
 
 export type MemorySaveActivity = {
+  /** Stable id pairs the start/completion events for one save operation. */
+  saveId: string;
   status: MemorySaveStatus;
-
-  /*
-   * The chat conversation the save belongs to. The UI keeps one
-   * indicator per chat, so events without a chat id cannot be shown
-   * under the correct response.
-   */
   chatId?: string;
-
   projectPath?: string;
 };
+
+export function createMemorySaveId(): string {
+  return typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function'
+    ? crypto.randomUUID()
+    : `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`;
+}
 
 export const dispatchMemorySaveActivity = (
   activity: MemorySaveActivity,

@@ -14,6 +14,8 @@ export interface StepMemory {
   decisions: string[];
   artifacts: string[];
   openItems: string[];
+  /** Log IDs of tool results that hold exact details needed later. Optional for older memories. */
+  evidenceLogIds?: string[];
 }
 
 export interface ConversationTurn {
@@ -114,5 +116,6 @@ export function emptyMemory(): StepMemory {
     decisions: [],
     artifacts: [],
     openItems: [],
+    evidenceLogIds: [],
   };
 }

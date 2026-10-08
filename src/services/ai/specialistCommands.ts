@@ -5,7 +5,7 @@ import { z } from "zod";
 import { parseSpecialistSlashCommand } from "../../chat/services/specialistSlashCommands";
 import { getTextContent } from "./agent/helpers";
 import { getMainAgentLlm, getSelectedChatModel } from "./llm";
-import { hasActiveFocusSession, startFocusFromRequest } from "./focus/focusManager";
+import { hasActiveFocusSession, startFocusSessionFromCommand } from "./focus/focusManager";
 import {
   hasActiveStepWorkflow,
   recordStepWorkflowStartReply,
@@ -81,6 +81,19 @@ export async function runSpecialistSlashCommand(input: {
     return new AIMessage(SPECIALIST_SESSION_ACTIVE_REPLY);
   }
 
+  if (command.command === "focus") {
+    const title = command.task.trim();
+    if (!title) {
+      return new AIMessage("Please provide a title after /focus, for example: /focus Fix command handling.");
+    }
+    return startFocusSessionFromCommand({
+      chatId: input.chatId,
+      title,
+      config: input.config,
+      projectPath: input.projectPath,
+    });
+  }
+
   const selectedModel = getSelectedChatModel(input.config);
   const task = command.task || await inferSpecialistGoalFromHistory(
     input.historyMessages,
@@ -88,17 +101,6 @@ export async function runSpecialistSlashCommand(input: {
   );
 
   if (!task) return new AIMessage(SPECIALIST_GOAL_MISSING_REPLY);
-
-  if (command.command === "focus") {
-    return startFocusFromRequest({
-      chatId: input.chatId,
-      userMessage: task,
-      goal: task,
-      config: input.config,
-      projectPath: input.projectPath,
-      sourceMessage: input.sourceMessage,
-    });
-  }
 
   const plan = await startStepByStepWorkflow({
     chatId: input.chatId,

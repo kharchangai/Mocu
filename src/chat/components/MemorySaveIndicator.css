@@ -6,12 +6,19 @@
    still once the save is complete.
    ========================================================= */
 
+.memory-save-list {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 3px;
+  margin: 1px 0 0;
+  padding: 2px 0;
+}
+
 .memory-save-indicator {
   display: flex;
   align-items: center;
   width: fit-content;
-  margin: 1px 0 0;
-  padding: 2px 0;
 }
 
 .memory-save-indicator__icon {
@@ -32,7 +39,6 @@
   animation: memory-save-blink 1.2s ease-in-out infinite;
 }
 
-/* Completed: calm, solid, subtle green */
 .memory-save-indicator--done
   .memory-save-indicator__icon {
   color: #4d8f5a;

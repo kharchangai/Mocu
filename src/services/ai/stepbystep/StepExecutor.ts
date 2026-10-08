@@ -16,6 +16,12 @@ import {
 } from "./createStepPlan";
 import { buildStepPrompt } from "./buildStepPrompt";
 import type { WorkflowStore } from "./workflowStore";
+import {
+  STEP_HISTORY_MAX_CHARS,
+  fallbackStepMemory,
+  limitHistoryToBudget,
+  summarizeStepHistory,
+} from "./stepSummary";
 import { dispatchAgentToolActivity } from "../../../chat/services/toolActivity";
 import { invokeAgentModelWithTrace } from "../../../chat/services/agentTrace";
 import { saveSpecialistSectionMemoryInBackground } from "../agent/specialist-memory";
@@ -40,12 +46,6 @@ import {
   type WorkflowStatus,
 } from "./types";
 
-const MemorySchema = z.object({
-  outcome: z.string(),
-  decisions: z.array(z.string()),
-  artifacts: z.array(z.string()),
-  openItems: z.array(z.string()),
-});
 
 const MAX_MODEL_RETRIES = 3;
 const MODEL_RETRY_DELAY_MS = 500;
@@ -154,12 +154,18 @@ function asRecord(value: unknown): Record<string, unknown> {
     : {};
 }
 
+const TOOL_RESULT_PREVIEW_CHARS = 800;
+
+function previewToolResult(result: string, logId: string): string {
+  if (result.length <= TOOL_RESULT_PREVIEW_CHARS) return result;
+
+  return `${result.slice(0, TOOL_RESULT_PREVIEW_CHARS)}\n\n[Tool output truncated. Full log entry ID: ${logId}. Use read_log_entry with this ID to inspect the complete result.]`;
+}
 function buildMessagesFromStepHistory(entries: LogEntry[]): BaseMessage[] {
   const messages: BaseMessage[] = [];
 
-  for (const entry of entries) {
+  for (const entry of limitHistoryToBudget(entries, STEP_HISTORY_MAX_CHARS)) {
     const data = asRecord(entry.data);
-
     if (entry.kind === "user" && typeof data.message === "string") {
       messages.push(new HumanMessage(data.message));
     } else if (entry.kind === "assistant" && typeof data.reply === "string") {
@@ -183,11 +189,11 @@ function buildMessagesFromStepHistory(entries: LogEntry[]): BaseMessage[] {
       }));
     } else if (entry.kind === "tool_result") {
       const callId = typeof data.callId === "string" ? data.callId : entry.id;
-      const content = typeof data.result === "string"
+      const fullContent = typeof data.result === "string"
         ? data.result
         : JSON.stringify(data.result ?? "");
       messages.push(new ToolMessage({
-        content,
+        content: previewToolResult(fullContent, entry.id),
         tool_call_id: callId,
         ...(typeof data.name === "string" ? { name: data.name } : {}),
       }));
@@ -800,7 +806,7 @@ export class StepExecutor {
           status: activityStatus,
         });
 
-        await this.store.append(state.id, stepNumber, "tool_result", {
+        const resultLog = await this.store.append(state.id, stepNumber, "tool_result", {
           callId: toolCallId,
           name: toolCall.name,
           result: resultText,
@@ -817,7 +823,7 @@ export class StepExecutor {
 
         messages.push(
           new ToolMessage({
-            content: resultText,
+            content: previewToolResult(resultText, resultLog.id),
             tool_call_id: toolCallId,
             name: toolCall.name,
           }),
@@ -882,7 +888,9 @@ export class StepExecutor {
 
     await this.store.save(state);
     if (turn.graphTurn?.recorder) {
-      await persistAgentGraphTurn(turn.graphTurn, reply, "[Step Workflow]");
+      // Graph persistence shares the SQLite memory queue; don't keep the
+      // conversation locked while it saves this completed turn.
+      void persistAgentGraphTurn(turn.graphTurn, reply, "[Step Workflow]");
     }
 
     const status: WorkflowStatus = state.status;
@@ -899,9 +907,7 @@ export class StepExecutor {
   }
 
   /**
-   * Ends the current step: writes the concise step summary (included in
-   * the next step's prompt), logs the transition and advances or closes
-   * the workflow.
+   * Persists a lightweight checkpoint and advances or closes the workflow.
    */
   private async finalizeStep(
     state: WorkflowState,
@@ -911,13 +917,27 @@ export class StepExecutor {
     const isLastStep =
       state.currentStepIndex === state.plan.steps.length - 1;
 
-    const memory = await this.generateStepSummary(state, stepNumber);
+    // The summary is built from the complete history of this step, including
+    // the final turn that triggered the transition. A failed summarizer must
+    // not block the workflow, so it falls back to the last reply.
+    const stepDefinition = state.plan.steps[stepNumber - 1];
+    const stepHistory = await this.store.readStepHistory(state.id, stepNumber);
+    let memory: StepMemory;
 
+    try {
+      memory = await summarizeStepHistory({
+        model: await this.options.buildSummaryLlm(),
+        entries: stepHistory,
+        stepTitle: stepDefinition?.title ?? "Step",
+        stepGoal: stepDefinition?.goal ?? "",
+      });
+    } catch (error) {
+      console.warn("[Step-by-step Agent] Step summary failed; using fallback:", error);
+      memory = fallbackStepMemory(stepHistory);
+    }
     state.memories[String(stepNumber)] = memory;
     await this.store.saveStepMemory(state.id, stepNumber, memory);
-
     await this.store.append(state.id, stepNumber, "summary", memory);
-
     saveSpecialistSectionMemoryInBackground({
       sessionType: "step-by-step",
       sessionId: state.id,
@@ -964,94 +984,4 @@ export class StepExecutor {
     });
   }
 
-  /**
-   * Writes the concise summary of a finished step from its detailed logs.
-   */
-  private async generateStepSummary(
-    state: WorkflowState,
-    stepNumber: number,
-  ): Promise<StepMemory> {
-    const step = state.plan.steps[stepNumber - 1];
-
-    const fallback: StepMemory = {
-      outcome:
-        state.recentTurns.length > 0
-          ? state.recentTurns[state.recentTurns.length - 1].assistant
-          : "",
-      decisions: [],
-      artifacts: [],
-      openItems: [],
-    };
-
-    try {
-      const logs = await this.store.readStepHistory(state.id, stepNumber);
-      const relevantKinds = new Set([
-        "user",
-        "assistant",
-        "tool_call",
-        "tool_result",
-        "error",
-      ]);
-
-      const logText = logs
-        .filter((entry) => relevantKinds.has(entry.kind))
-        .map((entry) => `[${entry.kind}] ${JSON.stringify(entry.data)}`)
-        .join("\n\n");
-
-      if (!logText.trim()) {
-        return fallback;
-      }
-
-      const summaryLlm = await this.options.buildSummaryLlm();
-      const structuredLlm =
-        summaryLlm.withStructuredOutput(MemorySchema);
-
-      const result = await structuredLlm.invoke([
-        {
-          role: "system",
-          content: `
-Summarize the work completed during one step of a step-by-step workflow.
-
-Rules:
-- outcome: what was actually done and what state the work is in now.
-- decisions: confirmed decisions relevant to continuing the workflow.
-- artifacts: exact useful references (file paths, function names, log IDs).
-- openItems: unresolved work, limitations, or uncertainties.
-- Distinguish proposed work from completed work. Never invent actions.
-- Keep it concise; do not copy raw tool outputs.
-- Reply in English.
-`.trim(),
-        },
-        {
-          role: "user",
-          content: JSON.stringify({
-            step: {
-              step_number: step.step_number,
-              title: step.title,
-              goal: step.goal,
-            },
-            final_goal: state.plan.final_goal,
-            detailed_logs: logText,
-          }),
-        },
-      ]);
-
-      if (
-        !result ||
-        typeof result.outcome !== "string" ||
-        !result.outcome.trim()
-      ) {
-        return fallback;
-      }
-
-      return result;
-    } catch (error) {
-      console.warn(
-        "[StepExecutor] Failed to generate the step summary:",
-        error,
-      );
-
-      return fallback;
-    }
-  }
 }

@@ -542,7 +542,7 @@ export function ChatInput({
    * for the query after the command.
    */
   const isDirectSlashCommand =
-    !projectChat && (activeCommand?.command === 'focus' || activeCommand?.command === 'step');
+    activeCommand?.command === 'focus' || activeCommand?.command === 'step';
   const commandMenuMode: CommandMenuMode | null =
     activeCommand === null || isDirectSlashCommand
       ? null

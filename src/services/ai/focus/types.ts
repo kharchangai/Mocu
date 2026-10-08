@@ -9,13 +9,18 @@ export interface FocusMemory {
   decisions: string[];
   artifacts: string[];
   openItems: string[];
+  /** Log IDs of tool results that hold exact details needed later. Optional for older memories. */
+  evidenceLogIds?: string[];
 }
 
 export interface FocusState {
   id: string;
   chatId: string;
-  createdAt: string;
+  /** User-provided session label; older sessions may not have one. */
+  title?: string;
+  /** Main task goal, populated from the first message for title-only sessions. */
   goal: string;
+  createdAt: string;
   projectPath?: string;
   selectedModel?: string;
   currentSectionNumber: number;
@@ -70,5 +75,5 @@ export interface FocusTurnResult {
 export type { BaseMessage };
 
 export function emptyFocusMemory(): FocusMemory {
-  return { summary: "", decisions: [], artifacts: [], openItems: [] };
+  return { summary: "", decisions: [], artifacts: [], openItems: [], evidenceLogIds: [] };
 }

@@ -1,6 +1,6 @@
 {
   "name": "plan-code-runner",
-  "version": "0.3.2",
+  "version": "0.1.0",
   "private": true,
   "type": "module",
   "description": "Mocu extension that executes and resumes implementation plans through the coder agent.",

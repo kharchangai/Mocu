@@ -2,7 +2,7 @@
   "id": "plan-code-runner",
   "name": "Plan Code Runner",
   "description": "Runs or resumes implementation plans through the coder agent. Persisted checkpoints recover completed steps, interrupted coder calls, and pending deviation revisions.",
-  "version": "0.3.2",
+  "version": "0.1.0",
   "runtime": "node",
   "entry": "index.js",
   "engines": { "node": ">=20" },
