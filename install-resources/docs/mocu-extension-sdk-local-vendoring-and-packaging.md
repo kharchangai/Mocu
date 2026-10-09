@@ -1,10 +1,10 @@
 ---
 id: mocu-extension-sdk-local-vendoring-and-packaging
 title: Mocu SDK Local Packaging
-description: Explains how to bundle Mocu’s unpublished Node or Python extension
-  SDK locally, package it in an extension ZIP, and verify a clean install.
-  Retrieve it when an extension author asks about npm E404, SDK availability,
-  vendoring, or extension distribution.
+description: Explains how to locate Mocu SDK sources and default extension
+  examples, vendor unpublished Node or Python SDK packages locally, package an
+  extension ZIP, and verify a clean install. Retrieve it when an extension
+  author asks about SDK paths, npm E404, vendoring, or extension distribution.
 keywords:
   - Mocu extension SDK
   - unpublished npm package
@@ -16,9 +16,11 @@ keywords:
   - extension-contracts
   - Python SDK
   - clean install verification
+  - MOCU GLOBAL DIRECTORY
+  - extensions-default
+  - appDataDir
+  - SDK source location
   - اکستنشن
-  - افزونه
-  - SDK منتشر نشده
 ---
 # Mocu SDK Local Packaging
 
@@ -32,11 +34,26 @@ Mocu’s extension installer runs `npm install` in the extracted extension folde
 
 For API usage, see [Mocu Extension SDK Reference](mocu-extension-sdk-reference.md). For the full extension workflow, see [Mocu Extension Development](mocu-extension-development.md) and [Mocu Extension Runtime](mocu-extension-runtime.md).
 
+## Locate SDK sources and default examples
+
+Use the **MOCU GLOBAL DIRECTORY** context provided at runtime as the only source for Mocu’s global app-data root. Join that root with the relevant directory name; do not hard-code a username, platform-specific app-data path, or guessed location.
+
+- `<resolved global app-data>/extension-system` contains the `sdk-node`, `sdk-python`, and `contracts` source packages for development and build-time use.
+- `<resolved global app-data>/extensions-default` contains shipped extension child folders. Inspect their `manifest.json` files and source as real examples or installable defaults.
+- `<resolved global app-data>/extensions-default` is **not** the installed-extension directory.
+- Installed extensions are under `<resolved global app-data>/extensions/<sanitized id>`.
+
+In a development checkout, the corresponding source directories are `install-resources/extension-system` and `install-resources/extensions-default`. These repository paths are distinct from user-specific app-data paths.
+
+When working in Tauri code without the injected MOCU GLOBAL DIRECTORY context, resolve app-data dynamically with `appDataDir()` or `BaseDirectory.AppData`. Do not guess or hard-code an OS-specific path.
+
+Do not assume extension child processes receive a Mocu global path environment variable. The host currently supplies only `MOCU_EXTENSION_ID` and `MOCU_EXTENSION_ROOT`. Installed runtime code must not rely on the global app-data directory.
+
 ## Package the Node SDK locally
 
-In a development checkout, the source packages are under `install-resources/extension-system` (`sdk-node`, `sdk-python`, and `contracts`). On an installed app, resolve Mocu’s app-data directory from the operating system/Tauri app context; do not assume a fixed OS-specific path. The global SDK source is under `<Mocu app-data directory>/extension-system`. Copy the required SDK package(s) into each extension’s own folder before packaging or installing it; installed extensions must not depend on a path outside their folder.
+Copy the required SDK package and its dependencies from `extension-system` into the extension’s own folder before packaging or installing it. The installed extension must not depend on a path outside its folder.
 
-For example, from the extension root in PowerShell, with `$AppData` set to Mocu’s resolved app-data directory:
+For example, from the extension root in PowerShell, with `$AppData` set to the resolved global app-data directory:
 
 ```powershell
 $sdkRoot = Join-Path $AppData "extension-system"
@@ -91,10 +108,10 @@ A repository example that vendors the built SDK and contracts is `extensions-exa
 
 ## Python SDK distinction
 
-On an installed app, the Python SDK source is under `<Mocu app-data directory>/extension-system/sdk-python`; in a development checkout, use `install-resources/extension-system/sdk-python`. Do not assume that `pip install mocu-extension-sdk` is available on PyPI; Mocu’s extension installer does not run pip.
+The Python SDK source is under `<resolved global app-data>/extension-system/sdk-python` on an installed app. In a development checkout, use `install-resources/extension-system/sdk-python`. Do not assume that `pip install mocu-extension-sdk` is available on PyPI; Mocu’s extension installer does not run pip.
 
 For a portable Python extension, copy the `mocu_extension_sdk/` package from the SDK source into the extension (for example, `vendor/mocu_extension_sdk/`) and make that local copy importable. Do not let an installed extension depend on Mocu’s global app-data path. See [Mocu Extension Development](mocu-extension-development.md) for the Python SDK entry point and runtime.
 
 ## When to use this document
 
-Retrieve this document when a user asks whether the Mocu SDK can be installed from npm or PyPI, encounters npm E404, asks whether the SDK must be included in the extension folder, or is packaging or distributing a Node or Python extension.
+Retrieve this document when a user asks where SDK sources or shipped default extension examples are located, encounters npm E404, asks whether the SDK must be included in the extension folder, or is packaging or distributing a Node or Python extension.

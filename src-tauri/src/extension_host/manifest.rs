@@ -16,6 +16,18 @@ pub struct ExtensionManifest {
 
     #[serde(default)]
     pub commands: Vec<ExtensionCommand>,
+
+    /// Optional UI entry point hosted in a sandboxed app iframe.
+    #[serde(default)]
+    pub app: Option<ExtensionApp>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ExtensionApp {
+    pub entry: String,
+    #[serde(default)]
+    pub title: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

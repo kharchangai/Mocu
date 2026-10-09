@@ -1,8 +1,4 @@
-use std::{
-    fs,
-    io,
-    path::Path,
-};
+use std::{fs, io, path::Path};
 
 use tauri::{AppHandle, Manager};
 
@@ -47,7 +43,10 @@ pub fn initialize(app: &AppHandle) -> Result<(), Box<dyn std::error::Error>> {
         if !source.is_dir() {
             return Err(io::Error::new(
                 io::ErrorKind::NotFound,
-                format!("Bundled resource folder was not found: {}", source.display()),
+                format!(
+                    "Bundled resource folder was not found: {}",
+                    source.display()
+                ),
             )
             .into());
         }
@@ -102,6 +101,5 @@ fn copy_missing_files(source: &Path, destination: &Path) -> io::Result<()> {
         }
     }
 
- 
     Ok(())
 }

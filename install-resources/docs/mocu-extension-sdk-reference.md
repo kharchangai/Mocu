@@ -2,9 +2,9 @@
 id: mocu-extension-sdk-reference
 title: Mocu Extension SDK Reference
 description: Reference for verified Mocu extension SDK APIs, host behavior,
-  validation limits, and packaging requirements. Retrieve it when building or
-  reviewing a Node or Python extension, or when checking SDK availability and
-  local vendoring.
+  validation limits, packaging requirements, and shared global resource folders.
+  Retrieve it when building or reviewing a Node or Python extension, checking
+  SDK availability, or locating SDK source and Mocu-shipped extensions.
 keywords:
   - Mocu extension SDK
   - Node SDK
@@ -18,8 +18,9 @@ keywords:
   - streaming progress
   - SDK packaging
   - local vendoring
+  - global extension resources
+  - MOCU GLOBAL DIRECTORY
   - npm E404
-  - PyPI availability
 ---
 # Mocu Extension SDK Reference
 
@@ -190,6 +191,22 @@ Cancellation can arrive through `mocu.extension.interaction.cancel`. The SDK sup
 - Node `AbortSignal` for agent and UI calls.
 - Python `cancel_event` for agent and UI calls.
 
+## Shared global resource folders
+
+When an agent or extension author needs Mocu’s shared global resources, use the absolute app-data root supplied in the `MOCU GLOBAL DIRECTORY` context. Append the relevant folder name, such as `extension-system` or `extensions-default`. Do not hard-code a user, profile, or platform-specific path, and do not guess the global path from the project directory.
+
+For Tauri-side code that does not receive injected context, resolve the app-data directory with `appDataDir()` or `BaseDirectory.AppData`.
+
+Do not assume a child extension process receives a global-path environment variable. The host currently sets `MOCU_EXTENSION_ID` and `MOCU_EXTENSION_ROOT`.
+
+The global folders serve different purposes:
+
+- `extension-system` contains SDK source packages: `sdk-node`, `sdk-python`, and `contracts`. These are useful as build-time dependencies or source references.
+- `extensions-default` contains Mocu-shipped, browsable and installable extension folders. Inspect each extension’s `manifest.json` and source to verify its APIs and capabilities.
+- User-installed extensions are stored separately under global app data at `extensions/<sanitized id>`.
+
+The source checkout contains copies under `install-resources/extension-system` and `install-resources/extensions-default`. These locations are source-checkout paths, not a substitute for resolving the user’s global app-data root at runtime. For a portable extension, vendor required SDK packages locally and do not depend on any global resource folder after installation.
+
 ## Packaging and SDK availability
 
 The import examples in this reference show SDK package names; they do not guarantee that those packages can currently be fetched from a public registry.
@@ -218,4 +235,4 @@ The import examples in this reference show SDK package names; they do not guaran
 
 ## When to use this document
 
-Retrieve this reference when building or reviewing a Mocu extension that needs official SDK capabilities in Node or Python, or when checking API identifiers, manifest requirements, input limits, host behavior, chat interaction, cancellation, or streaming progress. Also use it when determining whether the SDK can be installed publicly and how to package local SDK dependencies for a distributable extension.
+Retrieve this reference when building or reviewing a Mocu extension that needs official SDK capabilities in Node or Python, or when checking API identifiers, manifest requirements, input limits, host behavior, chat interaction, cancellation, or streaming progress. Use it as well to check public SDK availability and local vendoring requirements, or to locate shared global resource folders, distinguish global SDK source from shipped and user-installed extensions, and determine which path-resolution approach is appropriate.

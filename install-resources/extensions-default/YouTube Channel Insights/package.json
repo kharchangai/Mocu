@@ -1,0 +1,16 @@
+{
+  "name": "mocu-youtube-channel-insights",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Mocu extension for YouTube channel insights.",
+  "scripts": {
+    "test": "node --test"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "dependencies": {
+    "@mocu/extension-sdk": "file:./vendor/extension-sdk"
+  }
+}

@@ -171,6 +171,7 @@ import {
 import { hasActiveStepWorkflow } from "./stepbystep/workflowManager";
 import { runSpecialistSlashCommand } from "./specialistCommands";
 import { parseSpecialistSlashCommand } from '../../chat/services/specialistSlashCommands';
+import { buildGlobalDirectoryPrompt } from "./global-directory-prompt";
 const MAX_TOOL_STEPS = 5;
 const OPTIONAL_CONTEXT_TIMEOUT_MS = 10_000;
 const LONG_TERM_MEMORY_TIMEOUT_MS = 30_000;
@@ -1807,8 +1808,10 @@ export const callChatAgent =
       docsContextPrompt,
     );
 
+    const globalDirectoryPrompt = await buildGlobalDirectoryPrompt();
     const systemPrompt = [
       addFileManagerRulesToSystemPrompt(docsEnabledSystemPrompt),
+      globalDirectoryPrompt,
       "When the user asks about something related to Mocu, use the document tools to check whether a relevant saved document exists. If one exists, read it and use its contents to answer the user.",
     ].join("\n\n");
     let messagesToRun: BaseMessage[] = [new SystemMessage(systemPrompt), ...chatMessages];

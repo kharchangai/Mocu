@@ -1,0 +1,14 @@
+{
+  "id": "com.mocu.demo.app-ui",
+  "name": "Extension App Demo",
+  "description": "Small sample showing an isolated extension UI and the one-shot selection.get permission flow.",
+  "version": "1.0.0",
+  "runtime": "node",
+  "entry": "index.js",
+  "permissions": ["selection.read"],
+  "commands": [],
+  "app": {
+    "entry": "ui/index.html",
+    "title": "Selection API Demo"
+  }
+}

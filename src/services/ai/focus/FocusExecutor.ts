@@ -11,6 +11,7 @@ import { saveSpecialistSectionMemoryInBackground } from "../agent/specialist-mem
 import { withShortDescription } from "../agent/tool-summaries";
 import { FileToolRecovery, isFileToolError } from "../agent/file-tool-recovery";
 import { buildDocsContextPrompt } from "../../../chat/docs";
+import { buildGlobalDirectoryPrompt } from "../global-directory-prompt";
 import { persistAgentGraphTurn } from "../../../graphStructure/agentTurn";
 import type { FocusMemory, FocusState, FocusToolLike, FocusTurnContext, FocusTurnResult } from "./types";
 import type { StepMemory } from "../stepbystep/types";
@@ -52,7 +53,7 @@ function historyMessages(entries: Awaited<ReturnType<FocusStore["readSectionHist
   return messages;
 }
 
-function focusPrompt(state: FocusState, toolDescriptions: string, docsContextPrompt = ""): string {
+function focusPrompt(state: FocusState, toolDescriptions: string, docsContextPrompt = "", globalDirectoryPrompt = ""): string {
   const previousSections = Object.entries(state.memories)
     .map(([sectionNumber, memory]) => ({ sectionNumber: Number(sectionNumber), ...memory }))
     .filter((section) => section.sectionNumber < state.currentSectionNumber)
@@ -74,9 +75,10 @@ FOCUS RULES
 PREVIOUS SECTION MEMORIES (compact carry-over only)
 ${JSON.stringify(previousSections)}
 
+${globalDirectoryPrompt}
+
 AVAILABLE TOOLS
 ${toolDescriptions || "No task tools are available."}
-
 FOCUS TITLE
 ${state.title?.trim() || state.goal}
 
@@ -247,14 +249,18 @@ export class FocusExecutor {
     const descriptions = llmTools.map((item) => `- ${item.name}: ${item.description}`).join("\n");
     /* Doc context = capped references + metadata only (never content);
      * fail-open: buildDocsContextPrompt returns "" on no match/failure. */
-    const docsContextPrompt = [await buildDocsContextPrompt(userMessage), turn.graphTurn?.graphHint ?? ""]
+    const [docsContext, globalDirectoryPrompt] = await Promise.all([
+      buildDocsContextPrompt(userMessage),
+      buildGlobalDirectoryPrompt(),
+    ]);
+    const docsContextPrompt = [docsContext, turn.graphTurn?.graphHint ?? ""]
       .filter((item) => item.trim())
       .join("\n\n");
     const llm = await this.options.buildTurnLlm(turn.selectedModel);
     await assertImageModelSupport(llm.model, turn.sourceMessage);
     const llmWithTools = llmTools.length ? llm.bindTools(llmTools) : llm;
     const messages: BaseMessage[] = [
-      new SystemMessage(focusPrompt(state, descriptions, docsContextPrompt)),
+      new SystemMessage(focusPrompt(state, descriptions, docsContextPrompt, globalDirectoryPrompt)),
       ...historyMessages(previousHistory),
       buildHumanMessageFromRequest(userMessage, turn.sourceMessage),
     ];

@@ -1,15 +1,15 @@
 ---
 id: mocu-extension-runtime
 title: Mocu Extension Runtime
-description: Explains the active Mocu extension manifest, commands,
-  configuration, installation, selection, process lifecycle, and SDK dependency
-  packaging caveats. Retrieve it when implementing, packaging, installing, or
-  troubleshooting a Mocu extension and its tools or settings.
+description: Explains Mocu’s active extension manifest, commands, configuration,
+  installation, resource discovery, selection, process lifecycle, and SDK
+  dependency packaging caveats. Retrieve it when implementing, packaging,
+  installing, or troubleshooting a Mocu extension, its tools, settings, or
+  global resources.
 keywords:
   - manifest.json
   - commands
   - config
-  - permissions
   - streaming
   - interactive
   - timeoutSeconds
@@ -20,7 +20,8 @@ keywords:
   - lifecycle
   - SDK dependency installation
   - local SDK vendoring
-  - extension packaging
+  - global extension resources
+  - extensions-default
 ---
 # Mocu Extension Runtime
 
@@ -124,11 +125,27 @@ The active UI supports **Install from Folder** and **Install from ZIP**.
 
 Uninstalling stops the extension process and then removes the installation.
 
+## Discovering Mocu’s global extension resources
+
+When agent instructions provide a user-specific absolute root in the **MOCU GLOBAL DIRECTORY** context, use that exact root to discover global extension resources. Append the relevant directory name—`extension-system`, `extensions-default`, or `extensions`—and inspect the actual contents. Do not hard-code a user’s home directory, use a platform-specific path, or infer a global path from the current project.
+
+The global app-data directories have distinct roles:
+
+- `extension-system` contains the SDK and contracts source tree: `sdk-node`, `sdk-python`, and `contracts`.
+- `extensions-default` contains shipped, browsable, installable default extension source folders. Each default extension folder has its own `manifest.json`.
+- `extensions/<sanitized id>` contains installed extensions.
+
+The bundled default catalog at `extensions-default` is not the installed extensions directory. Inspect a default extension’s manifest and source files to verify what it offers; do not assume capabilities from its name alone. Use Mocu’s install and management flow rather than modifying bundled defaults in place.
+
+A distributed or installed extension must not depend on the global SDK or default-extension folders at runtime. Vendor the SDK and any required dependencies into the extension package. In a source checkout, the corresponding resource directories are `install-resources/extension-system` and `install-resources/extensions-default`; these are not the installed user’s global paths.
+
+When writing Tauri-side code without injected directory context, resolve the app-data directory using `appDataDir()` or `BaseDirectory.AppData`. Extension child processes are not given a global-app-data environment variable, so do not assume one exists.
+
 ## SDK dependency installation and packaging caveats
 
 Mocu’s Node installer runs `npm install` inside the installed extension folder. It does not have access to Mocu’s SDK resource directory or source repository, so an extension cannot rely on dependencies available there at runtime.
 
-- In a development checkout, SDK packages are under `install-resources/extension-system` (`sdk-node`, `sdk-python`, and `contracts`). On an installed app, resolve the app-data directory and find the corresponding `<Mocu app-data directory>/extension-system/`; do not hard-code a platform-specific path.
+- In a development checkout, SDK packages are under `install-resources/extension-system` (`sdk-node`, `sdk-python`, and `contracts`). In an installed app, discover the global app-data root as described above and inspect its `extension-system/` directory; do not hard-code a platform-specific path.
 - For Node.js, copy `sdk-node/package.json` and `sdk-node/dist/` into the extension, for example as `vendor/extension-sdk/`. Copy `contracts/package.json` and `contracts/dist/` alongside it as `vendor/extension-contracts/`.
 - Set local `file:` dependencies that resolve only within the extension package; never reference the Mocu global SDK path from an installed extension.
 - Include built `dist` files and manifests in the ZIP. Exclude `node_modules`; Mocu recreates it by running `npm install`.
@@ -166,4 +183,4 @@ Communication over stdin and stdout uses newline-delimited JSON-RPC. Keep stdout
 
 ## When to use this document
 
-Retrieve this document when creating or validating a Mocu extension `manifest.json`, implementing command handlers or configuration, packaging and installing an extension, diagnosing why a tool is unavailable in chat, resolving SDK dependency or distribution issues, or understanding the extension process and JSON-RPC lifecycle.
+Retrieve this document when creating or validating a Mocu extension `manifest.json`, implementing command handlers or configuration, discovering global SDK/default/installed extension resources, packaging and installing an extension, diagnosing why a tool is unavailable in chat, resolving SDK dependency or distribution issues, or understanding the extension process and JSON-RPC lifecycle.

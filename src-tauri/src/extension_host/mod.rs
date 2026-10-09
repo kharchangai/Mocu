@@ -3,15 +3,14 @@ pub mod manager;
 pub mod manifest;
 pub mod process;
 
-use std::path::PathBuf;
+use std::path::{Component, Path, PathBuf};
 
 use serde::Deserialize;
 use serde_json::Value;
-use tauri::{AppHandle, State};
+use tauri::{AppHandle, Manager, State};
 
 use manager::{ExtensionManager, JsonRpcErrorObject};
-use manifest::ExtensionManifest;
-
+use manifest::{ExtensionApp, ExtensionManifest};
 /// Execute an extension command. The extension is registered, spawned on
 /// demand (if not already running), invoked, and its output returned.
 ///
@@ -74,6 +73,153 @@ pub async fn extension_execute(
     })
     .await
     .map_err(|error| format!("Extension execution task failed: {error}"))?
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ExtensionAppUrlInput {
+    pub extension_id: String,
+    pub extension_path: String,
+}
+
+#[derive(Debug, Clone, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ExtensionAppListing {
+    pub path: String,
+    pub manifest: ExtensionManifest,
+}
+
+fn resolve_app_entry(extension_path: &str, app: &ExtensionApp) -> Result<PathBuf, String> {
+    let entry = app.entry.trim().replace('\\', "/");
+    let relative = Path::new(&entry);
+    if entry.is_empty()
+        || relative.is_absolute()
+        || entry.contains(':')
+        || entry.contains('?')
+        || entry.contains('#')
+        || relative
+            .components()
+            .any(|component| !matches!(component, Component::Normal(_)))
+    {
+        return Err("Extension app entry must be a safe relative file path.".to_string());
+    }
+
+    let root = PathBuf::from(extension_path)
+        .canonicalize()
+        .map_err(|error| format!("Invalid extension directory: {error}"))?;
+    let resolved = root
+        .join(relative)
+        .canonicalize()
+        .map_err(|error| format!("Extension app entry could not be found: {error}"))?;
+    if !resolved.starts_with(&root) || !resolved.is_file() {
+        return Err(
+            "Extension app entry must resolve to a file inside its extension directory."
+                .to_string(),
+        );
+    }
+    Ok(resolved)
+}
+
+#[tauri::command]
+pub fn extension_list_apps(app: AppHandle) -> Result<Vec<ExtensionAppListing>, String> {
+    let root = app
+        .path()
+        .app_data_dir()
+        .map_err(|error| error.to_string())?
+        .join("extensions");
+    let mut apps = Vec::new();
+    let directories = std::fs::read_dir(&root)
+        .map_err(|error| format!("Could not scan installed extensions: {error}"))?;
+    for directory in directories {
+        let directory = directory.map_err(|error| error.to_string())?;
+        if !directory
+            .file_type()
+            .map_err(|error| error.to_string())?
+            .is_dir()
+        {
+            continue;
+        }
+        let path = directory.path();
+        let manifest_path = path.join("manifest.json");
+        let Ok(contents) = std::fs::read_to_string(&manifest_path) else {
+            continue;
+        };
+        let Ok(manifest) = serde_json::from_str::<ExtensionManifest>(&contents) else {
+            continue;
+        };
+        if manifest.app.is_some() {
+            apps.push(ExtensionAppListing {
+                path: path.to_string_lossy().into_owned(),
+                manifest,
+            });
+        }
+    }
+    apps.sort_by(|a, b| a.manifest.name.cmp(&b.manifest.name));
+    Ok(apps)
+}
+
+#[tauri::command]
+pub fn extension_app_url(app: AppHandle, input: ExtensionAppUrlInput) -> Result<String, String> {
+    let app_data = app
+        .path()
+        .app_data_dir()
+        .map_err(|error| error.to_string())?;
+
+    let root = app_data
+        .join("extensions")
+        .join(&input.extension_id)
+        .canonicalize()
+        .map_err(|error| format!("Extension is not installed: {error}"))?;
+    let supplied = PathBuf::from(&input.extension_path)
+        .canonicalize()
+        .map_err(|error| format!("Invalid extension path: {error}"))?;
+    if root != supplied {
+        return Err("Extension path did not match the installed extension ID.".to_string());
+    }
+    let contents = std::fs::read_to_string(root.join("manifest.json"))
+        .map_err(|error| format!("Cannot read extension manifest: {error}"))?;
+    let manifest: ExtensionManifest = serde_json::from_str(&contents)
+        .map_err(|error| format!("Invalid extension manifest: {error}"))?;
+    let app_manifest = manifest
+        .app
+        .as_ref()
+        .ok_or_else(|| "Extension has no app UI.".to_string())?;
+    if manifest.id != input.extension_id {
+        return Err("Extension ID does not match its manifest.".to_string());
+    }
+    let entry = resolve_app_entry(root.to_string_lossy().as_ref(), app_manifest)?;
+    let asset_directory = entry
+        .parent()
+        .ok_or_else(|| "App entry has no parent folder.".to_string())?;
+    app.asset_protocol_scope()
+        .allow_directory(asset_directory, true)
+        .map_err(|error| format!("Could not authorize extension app assets: {error}"))?;
+    Ok(entry.to_string_lossy().into_owned())
+}
+
+#[cfg(test)]
+mod app_tests {
+    use super::resolve_app_entry;
+    use crate::extension_host::manifest::ExtensionApp;
+
+    #[test]
+    fn rejects_extension_app_path_traversal() {
+        for entry in [
+            "../outside.html",
+            "ui/../../outside.html",
+            "C:/outside.html",
+            "https://example.test/app",
+        ] {
+            let app = ExtensionApp {
+                entry: entry.to_string(),
+                title: None,
+            };
+            assert!(
+                resolve_app_entry("unused", &app).is_err(),
+                "accepted unsafe app entry {entry}"
+            );
+        }
+    }
 }
 
 #[derive(Debug, Deserialize)]

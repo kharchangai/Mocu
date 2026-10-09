@@ -1,0 +1,261 @@
+.extension-apps-page {
+  display: flex;
+  flex: 1;
+  min-width: 0;
+  min-height: 0;
+  flex-direction: column;
+  gap: 20px;
+  overflow: auto;
+  padding: 28px clamp(20px, 4vw, 52px);
+  color: #292823;
+  background: #fafaf9;
+}
+
+.extension-apps-heading h1 {
+  margin: 0;
+  font-size: 24px;
+  letter-spacing: -0.03em;
+}
+
+.extension-apps-heading p,
+.extension-apps-card p {
+  margin: 7px 0 0;
+  color: #79776f;
+  font-size: 13px;
+  line-height: 1.55;
+}
+
+.extension-apps-status,
+.extension-apps-error {
+  margin: 0;
+  color: #77756e;
+  font-size: 13px;
+}
+
+.extension-apps-error {
+  color: #a13f3e;
+}
+
+.extension-apps-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+  align-content: start;
+  gap: 14px;
+}
+
+.extension-apps-card {
+  display: flex;
+  min-height: 210px;
+  flex-direction: column;
+  align-items: flex-start;
+  padding: 18px;
+  border: 1px solid #e9e7e2;
+  border-radius: 14px;
+  background: #fff;
+  box-shadow: 0 5px 18px rgba(35, 33, 29, 0.035);
+}
+
+.extension-apps-icon {
+  display: grid;
+  width: 44px;
+  height: 44px;
+  place-items: center;
+  border-radius: 12px;
+  color: #ae5c44;
+  background: #fff1eb;
+}
+
+.extension-apps-card h2 {
+  margin: 14px 0 0;
+  font-size: 15px;
+  font-weight: 650;
+}
+
+.extension-apps-card p {
+  margin-top: 4px;
+  font-size: 12px;
+}
+
+.extension-apps-permission,
+.extension-apps-no-permission {
+  margin-top: 13px;
+  padding: 5px 8px;
+  border-radius: 99px;
+  color: #4e775e;
+  background: #edf6ef;
+  font-size: 10.5px;
+}
+
+.extension-apps-no-permission {
+  color: #87745d;
+  background: #f8f2e8;
+}
+
+.extension-apps-open,
+.extension-apps-consent button {
+  min-height: 35px;
+  margin-top: auto;
+  padding: 0 12px;
+  border: 1px solid #e5e1da;
+  border-radius: 8px;
+  color: #49463f;
+  background: #fff;
+  cursor: pointer;
+  font: inherit;
+  font-size: 12px;
+}
+
+.extension-apps-open:hover,
+.extension-apps-consent button:hover {
+  background: #f7f5f1;
+}
+
+.extension-apps-viewer {
+  position: relative;
+  gap: 0;
+  padding: 0;
+  background: #fff;
+}
+
+.extension-apps-toolbar {
+  display: flex;
+  flex: 0 0 auto;
+  align-items: center;
+  gap: 16px;
+  min-height: 50px;
+  padding: 7px 15px;
+  border-bottom: 1px solid #eceae6;
+  background: #fff;
+}
+
+.extension-apps-toolbar > span {
+  overflow: hidden;
+  color: #85827b;
+  font-size: 12px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.extension-apps-back {
+  display: inline-flex;
+  flex: 0 0 auto;
+  align-items: center;
+  gap: 7px;
+  min-height: 34px;
+  padding: 0 9px;
+  border: 0;
+  border-radius: 7px;
+  color: #514f49;
+  background: transparent;
+  cursor: pointer;
+  font: inherit;
+  font-size: 12px;
+}
+
+.extension-apps-back:hover {
+  background: #f2f1ee;
+}
+
+.extension-apps-frame {
+  display: block;
+  flex: 1;
+  width: 100%;
+  min-height: 0;
+  border: 0;
+  background: #fff;
+}
+
+.extension-apps-consent-backdrop {
+  position: absolute;
+  z-index: 3;
+  inset: 50px 0 0;
+  display: grid;
+  padding: 20px;
+  background: rgba(29, 27, 25, 0.34);
+  place-items: center;
+}
+
+.extension-apps-consent {
+  width: min(430px, 100%);
+  padding: 22px;
+  border: 1px solid #e8e3dc;
+  border-radius: 14px;
+  background: #fff;
+  box-shadow: 0 18px 55px rgba(24, 22, 19, 0.2);
+}
+.extension-apps-consent h2 {
+  margin: 0;
+  font-size: 17px;
+}
+
+.extension-apps-consent p {
+  margin: 11px 0 18px;
+  color: #6f6b63;
+  font-size: 12px;
+  line-height: 1.6;
+}
+
+.extension-apps-consent-preview {
+  max-height: 120px;
+  margin: 0 0 16px;
+  padding: 10px;
+  overflow: auto;
+  border-radius: 8px;
+  color: #554f48;
+  background: #f5f2ee;
+  font-size: 11px;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.extension-apps-consent code {
+  color: #9a4e3c;
+}
+
+.extension-apps-consent > div {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+.extension-apps-consent button {
+  min-height: 36px;
+  margin: 0;
+}
+
+.extension-apps-consent button.is-primary {
+  border-color: #ae5c44;
+  color: #fff;
+  background: #ae5c44;
+}
+
+.extension-apps-result {
+  position: absolute;
+  z-index: 2;
+  right: 18px;
+  bottom: 18px;
+  display: flex;
+  width: min(420px, calc(100% - 36px));
+  max-height: 150px;
+  flex-direction: column;
+  gap: 7px;
+  padding: 12px;
+  border: 1px solid #e9e4dd;
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.97);
+  box-shadow: 0 6px 24px rgba(25, 23, 20, 0.1);
+  font-size: 11px;
+}
+
+.extension-apps-result code {
+  overflow: auto;
+  color: #625d55;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+@media (max-width: 520px) {
+  .extension-apps-page { padding: 20px 15px; }
+  .extension-apps-toolbar { gap: 9px; }
+  .extension-apps-consent { padding: 18px; }
+}

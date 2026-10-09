@@ -85,13 +85,7 @@ impl JobStore {
     }
 
     /// Record that a job started waiting for its extension command.
-    pub fn begin(
-        &self,
-        app_handle: &AppHandle,
-        job_id: &str,
-        extension_id: &str,
-        command: &str,
-    ) {
+    pub fn begin(&self, app_handle: &AppHandle, job_id: &str, extension_id: &str, command: &str) {
         self.ensure_dir(app_handle);
 
         let Ok(mut jobs) = self.jobs.lock() else {
@@ -116,13 +110,7 @@ impl JobStore {
     }
 
     /// Record the final outcome of a job.
-    pub fn finish(
-        &self,
-        job_id: &str,
-        status: &str,
-        result: Option<Value>,
-        error: Option<String>,
-    ) {
+    pub fn finish(&self, job_id: &str, status: &str, result: Option<Value>, error: Option<String>) {
         let Ok(mut jobs) = self.jobs.lock() else {
             return;
         };

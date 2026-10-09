@@ -99,10 +99,7 @@ fn verify_entry_path(root_path: &Path, entry: &str) -> Result<PathBuf, String> {
     Ok(canonical_entry)
 }
 
-fn build_command(
-    root_path: &Path,
-    manifest: &ExtensionManifest,
-) -> Result<Command, String> {
+fn build_command(root_path: &Path, manifest: &ExtensionManifest) -> Result<Command, String> {
     let entry_path = verify_entry_path(root_path, &manifest.entry)?;
 
     let mut command = match manifest.runtime {

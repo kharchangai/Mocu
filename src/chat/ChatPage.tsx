@@ -57,6 +57,7 @@ import {
 } from '../mcp/components/McpPage';
 
 import { AgentsPage } from './components/agents/AgentsPage';
+import { ExtensionAppsPage } from '../extensions/components/ExtensionAppsPage';
 import { ProjectLanding } from './components/ProjectLanding';
 import { deleteProjectConversationFile } from './services/projectChatHistory';
 import {
@@ -108,6 +109,7 @@ const CHAT_PAGE_ITEMS: readonly ChatSidebarItemId[] = [
   'extensions',
   'mcp',
   'agents',
+  'app',
   'settings',
 ];
 
@@ -613,6 +615,13 @@ function ChatPage() {
             return;
           }
 
+          case 'app': {
+            setActiveItem('app');
+            setIsChatsOpen(false);
+            setIsProjectsOpen(false);
+            return;
+          }
+
           case 'settings': {
             setActiveItem('settings');
             setIsChatsOpen(false);
@@ -811,6 +820,9 @@ function ChatPage() {
         return (
           <McpPage />
         );
+
+      case 'app':
+        return <ExtensionAppsPage />;
 
       case 'agents':
         return <AgentsPage />;

@@ -145,11 +145,7 @@ impl ExtensionManager {
     /// Re-registering the same extension at the same path is a no-op (keeps a
     /// running process alive). Registering a *different* path for an existing
     /// id stops the old process so the next call starts from the new files.
-    pub fn register(
-        &self,
-        path: PathBuf,
-        manifest: ExtensionManifest,
-    ) -> Result<(), String> {
+    pub fn register(&self, path: PathBuf, manifest: ExtensionManifest) -> Result<(), String> {
         let id = manifest.id.trim().to_string();
 
         if id.is_empty() {
@@ -184,10 +180,7 @@ impl ExtensionManager {
 
         let mut registry = self.lock_registry()?;
 
-        registry.insert(
-            id,
-            RegisteredExtension { path, manifest },
-        );
+        registry.insert(id, RegisteredExtension { path, manifest });
 
         Ok(())
     }
@@ -247,23 +240,20 @@ impl ExtensionManager {
 
             if !running {
                 let registry = self.lock_registry()?;
-                let entry = registry.get(&id).cloned().ok_or_else(|| {
-                    format!("Extension '{id}' is not registered")
-                })?;
+                let entry = registry
+                    .get(&id)
+                    .cloned()
+                    .ok_or_else(|| format!("Extension '{id}' is not registered"))?;
 
-                let process = spawn_extension(
-                    app_handle,
-                    entry.path,
-                    entry.manifest,
-                    self.rpc.clone(),
-                )?;
+                let process =
+                    spawn_extension(app_handle, entry.path, entry.manifest, self.rpc.clone())?;
 
                 processes.insert(id.clone(), process);
             }
 
-            let process = processes.get(&id).ok_or_else(|| {
-                format!("Extension '{id}' process is missing")
-            })?;
+            let process = processes
+                .get(&id)
+                .ok_or_else(|| format!("Extension '{id}' process is missing"))?;
 
             process.send_json(&request)?;
         }
@@ -294,7 +284,8 @@ impl ExtensionManager {
         if let Some(job_id) = job_id.as_deref() {
             match &outcome {
                 Ok(result) => {
-                    self.jobs.finish(job_id, "completed", Some(result.clone()), None);
+                    self.jobs
+                        .finish(job_id, "completed", Some(result.clone()), None);
                 }
                 Err(message) => {
                     let status = if message.contains("timed out") {
@@ -303,7 +294,8 @@ impl ExtensionManager {
                         "failed"
                     };
 
-                    self.jobs.finish(job_id, status, None, Some(message.clone()));
+                    self.jobs
+                        .finish(job_id, status, None, Some(message.clone()));
                 }
             }
         }
@@ -348,9 +340,9 @@ impl ExtensionManager {
 
         let processes = self.lock_processes()?;
 
-        let process = processes.get(extension_id).ok_or_else(|| {
-            format!("Extension '{extension_id}' is not running")
-        })?;
+        let process = processes
+            .get(extension_id)
+            .ok_or_else(|| format!("Extension '{extension_id}' is not running"))?;
 
         process.send_json(&Value::Object(response))
     }

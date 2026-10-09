@@ -7,13 +7,13 @@ import {
 } from "@tauri-apps/plugin-fs";
 
 import { appDataDir, join } from "@tauri-apps/api/path";
-
 import type {
   ExtensionConfigField,
   ExtensionManifest,
   ExtensionRuntime,
   InstalledExtension,
 } from "../types/extension";
+import { parseExtensionApp } from "./extension-apps";
 
 const EXTENSIONS_DIRECTORY = "extensions";
 const MANIFEST_FILE = "manifest.json";
@@ -65,10 +65,6 @@ function parseManifest(
     );
   }
 
-  /*
-   * Config fields the extension asks the user to fill in (API keys, URLs,
-   * ...). Entries without a usable key/label pair are ignored.
-   */
   const config = Array.isArray(manifest.config)
     ? (manifest.config as unknown[]).filter(
         (entry): entry is ExtensionConfigField => {
@@ -88,6 +84,11 @@ function parseManifest(
       )
     : undefined;
 
+  const app = parseExtensionApp(manifest.app);
+  if (manifest.app !== undefined && !app) {
+    console.warn(`Ignoring invalid extension app entry in ${manifestPath}`);
+  }
+
   return {
     id: manifest.id as string,
     name: manifest.name as string,
@@ -103,9 +104,11 @@ function parseManifest(
     commands: Array.isArray(manifest.commands)
       ? (manifest.commands as ExtensionManifest["commands"])
       : [],
+    app,
     config,
   };
 }
+
 export async function ensureExtensionsDirectory(): Promise<string> {
   const directoryExists = await exists(EXTENSIONS_DIRECTORY, {
     baseDir: BaseDirectory.AppData,

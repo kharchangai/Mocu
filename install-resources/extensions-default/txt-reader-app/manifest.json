@@ -1,0 +1,14 @@
+{
+  "id": "com.mocu.example.txt-reader",
+  "name": "نمایشگر فایل متنی",
+  "description": "انتخاب و نمایش فایل‌های TXT در رابط داخلی اپ‌های مکو.",
+  "version": "1.0.0",
+  "runtime": "node",
+  "entry": "index.js",
+  "permissions": [],
+  "commands": [],
+  "app": {
+    "entry": "ui/index.html",
+    "title": "نمایشگر فایل متنی"
+  }
+}

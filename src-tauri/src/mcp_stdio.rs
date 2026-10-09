@@ -42,15 +42,43 @@ const MAX_STDERR_LINE_LENGTH: usize = 4_000;
 /// never forwarded into third-party child processes.
 const SAFE_INHERITED_ENV_VARS: &[&str] = &[
     // System locations
-    "PATH", "PATHEXT", "SYSTEMROOT", "SYSTEMDRIVE", "COMSPEC", "WINDIR",
-    "PROGRAMFILES", "PROGRAMFILES(X86)", "PROGRAMDATA", "PROGRAMW6432",
-    "COMMONPROGRAMFILES", "COMMONPROGRAMFILES(X86)",
+    "PATH",
+    "PATHEXT",
+    "SYSTEMROOT",
+    "SYSTEMDRIVE",
+    "COMSPEC",
+    "WINDIR",
+    "PROGRAMFILES",
+    "PROGRAMFILES(X86)",
+    "PROGRAMDATA",
+    "PROGRAMW6432",
+    "COMMONPROGRAMFILES",
+    "COMMONPROGRAMFILES(X86)",
     // User locations
-    "HOME", "USERPROFILE", "HOMEDRIVE", "HOMEPATH", "APPDATA", "LOCALAPPDATA",
-    "TMP", "TEMP", "XDG_CONFIG_HOME", "XDG_CACHE_HOME", "XDG_DATA_HOME",
+    "HOME",
+    "USERPROFILE",
+    "HOMEDRIVE",
+    "HOMEPATH",
+    "APPDATA",
+    "LOCALAPPDATA",
+    "TMP",
+    "TEMP",
+    "XDG_CONFIG_HOME",
+    "XDG_CACHE_HOME",
+    "XDG_DATA_HOME",
     // Locale / runtime hints
-    "LANG", "LC_ALL", "TZ", "TERM", "NUMBER_OF_PROCESSORS", "OS", "PROCESSOR_ARCHITECTURE",
-    "USERNAME", "COMPUTERNAME", "NODE_OPTIONS", "NO_COLOR", "FORCE_COLOR",
+    "LANG",
+    "LC_ALL",
+    "TZ",
+    "TERM",
+    "NUMBER_OF_PROCESSORS",
+    "OS",
+    "PROCESSOR_ARCHITECTURE",
+    "USERNAME",
+    "COMPUTERNAME",
+    "NODE_OPTIONS",
+    "NO_COLOR",
+    "FORCE_COLOR",
 ];
 
 /// Environment variables that must never be inherited even if present.
@@ -128,9 +156,11 @@ pub fn mcp_stdio_send(
         return Err("MCP stdio messages must be a single line".to_string());
     }
 
-    let process = host.lock_processes()?.get(&input.id).cloned().ok_or_else(|| {
-        format!("MCP stdio process '{}' is not running", input.id)
-    })?;
+    let process = host
+        .lock_processes()?
+        .get(&input.id)
+        .cloned()
+        .ok_or_else(|| format!("MCP stdio process '{}' is not running", input.id))?;
 
     let stdin = process.stdin.clone();
     let mut writer = stdin
@@ -154,9 +184,11 @@ pub fn mcp_stdio_stderr(
     host: State<'_, McpStdioHost>,
     input: McpStdioIdInput,
 ) -> Result<Vec<String>, String> {
-    let process = host.lock_processes()?.get(&input.id).cloned().ok_or_else(|| {
-        format!("MCP stdio process '{}' is not running", input.id)
-    })?;
+    let process = host
+        .lock_processes()?
+        .get(&input.id)
+        .cloned()
+        .ok_or_else(|| format!("MCP stdio process '{}' is not running", input.id))?;
 
     let stderr = process
         .stderr
@@ -176,11 +208,7 @@ pub fn mcp_stdio_stop(
 }
 
 impl McpStdioHost {
-    pub fn start(
-        &self,
-        app_handle: &AppHandle,
-        input: McpStdioStartInput,
-    ) -> Result<(), String> {
+    pub fn start(&self, app_handle: &AppHandle, input: McpStdioStartInput) -> Result<(), String> {
         let id = input.id.trim().to_string();
         if id.is_empty() {
             return Err("MCP stdio connection id cannot be empty".to_string());
@@ -194,9 +222,7 @@ impl McpStdioHost {
             let processes = self.lock_processes()?;
             if let Some(existing) = processes.get(&id) {
                 if existing.is_running() {
-                    return Err(format!(
-                        "MCP stdio process '{id}' is already running"
-                    ));
+                    return Err(format!("MCP stdio process '{id}' is already running"));
                 }
             }
         }
@@ -247,10 +273,7 @@ impl McpStdioHost {
             if let Ok(mut writer) = out_stdin.lock() {
                 *writer = None;
             }
-            let _ = out_app.emit(
-                "mcp://stdio-exit",
-                json!({ "id": out_id }),
-            );
+            let _ = out_app.emit("mcp://stdio-exit", json!({ "id": out_id }));
         });
 
         // stderr: bounded diagnostics buffer + event mirror. Secret redaction
@@ -414,19 +437,20 @@ enum ResolvedExecutable {
 fn resolve_executable(command: &str) -> Result<ResolvedExecutable, String> {
     let candidate = Path::new(command);
 
-    if candidate.parent().map(|p| !p.as_os_str().is_empty()).unwrap_or(false) {
+    if candidate
+        .parent()
+        .map(|p| !p.as_os_str().is_empty())
+        .unwrap_or(false)
+    {
         // Explicit path: require existence, no PATH search.
         if !candidate.is_file() {
-            return Err(format!(
-                "MCP server executable does not exist: {command}"
-            ));
+            return Err(format!("MCP server executable does not exist: {command}"));
         }
         return classify(candidate.to_path_buf());
     }
 
-    let path_variable =
-        std::env::var_os("PATH")
-            .ok_or_else(|| "PATH environment variable is unavailable".to_string())?;
+    let path_variable = std::env::var_os("PATH")
+        .ok_or_else(|| "PATH environment variable is unavailable".to_string())?;
 
     let extensions: Vec<String> = if cfg!(windows) {
         match std::env::var("PATHEXT") {

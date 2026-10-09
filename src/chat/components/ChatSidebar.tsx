@@ -27,6 +27,7 @@ export type ChatSidebarItemId =
   | 'extensions'
   | 'mcp'
   | 'agents'
+  | 'app'
   | 'settings';
 
 type ChatSidebarProps = {
@@ -928,6 +929,28 @@ export function ChatSidebar({
               <circle cx="12" cy="8" r="4" />
               <path d="M4 21c0-4.4 3.6-8 8-8s8 3.6 8 8" />
               <path d="m15.5 6.5 1 1 2-2" />
+            </svg>
+          }
+        />
+
+        <NavButton
+          label="App"
+          active={activeItem === 'app'}
+          onClick={() => onSelect('app')}
+          icon={
+            <svg
+              viewBox="0 0 24 24"
+              width="16"
+              height="16"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="1.8"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              aria-hidden="true"
+            >
+              <rect x="4" y="4" width="16" height="16" rx="3" />
+              <path d="M9 9h6v6H9z" />
             </svg>
           }
         />

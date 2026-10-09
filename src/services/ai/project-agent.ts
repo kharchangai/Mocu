@@ -188,6 +188,7 @@ import {
   buildNotesContextPrompt,
 } from "../../chat/notes";
 
+import { buildGlobalDirectoryPrompt } from "./global-directory-prompt";
 export { inferSpecialistGoalFromHistory } from "./specialistCommands";
 
 /*
@@ -2150,7 +2151,6 @@ export const callProjectAgent =
       ...extensionTools.entries.map((item) => item.name), ...mcpTools.tools.map((item) => item.name),
       ...agentTools.entries.map((item) => item.name),
     ];
-
     const systemPrompt = addMcpToolsToProjectSystemPrompt(
       buildProjectAgentSystemPrompt(
         normalizedProjectPath,
@@ -2173,21 +2173,20 @@ export const callProjectAgent =
       ),
       mcpTools.prompt,
     );
-    let messagesToRun:
-      BaseMessage[] = [
-        new SystemMessage(
-          systemPrompt,
-        ),
-
-        ...(memoryResult?.memoryRequired === false && previousTurn
-          ? [
-              new HumanMessage(previousTurn.userMessage),
-              new AIMessage(previousTurn.agentResponse),
-            ]
-          : []),
-
-        buildHumanMessageFromRequest(userText, currentUserMessage),
-      ];
+    const systemPromptWithGlobalDirectory = [
+      systemPrompt,
+      await buildGlobalDirectoryPrompt(),
+    ].join("\n\n");
+    let messagesToRun: BaseMessage[] = [
+      new SystemMessage(systemPromptWithGlobalDirectory),
+      ...(memoryResult?.memoryRequired === false && previousTurn
+        ? [
+            new HumanMessage(previousTurn.userMessage),
+            new AIMessage(previousTurn.agentResponse),
+          ]
+        : []),
+      buildHumanMessageFromRequest(userText, currentUserMessage),
+    ];
 
     const toolResultsSummary: string[] = [];
 

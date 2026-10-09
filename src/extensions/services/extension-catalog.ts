@@ -5,10 +5,12 @@ import {
   readTextFile,
 } from "@tauri-apps/plugin-fs";
 import { appDataDir, join } from "@tauri-apps/api/path";
+import { parseExtensionApp } from "./extension-apps";
 
 import type {
   ExtensionCommand,
   ExtensionRuntime,
+  ExtensionApp,
 } from "../types/extension";
 
 export interface CatalogFile {
@@ -27,9 +29,9 @@ export interface ExtensionCatalogEntry {
   author: string;
   tags: string[];
   commands: ExtensionCommand[];
+  app?: ExtensionApp;
   sourcePath: string;
 }
-
 function isRuntime(value: unknown): value is ExtensionRuntime {
   return value === "node" || value === "python";
 }
@@ -78,6 +80,7 @@ export async function loadInstallableExtensions(): Promise<ExtensionCatalogEntry
             typeof (command as Record<string, unknown>).title === "string",
           )
         : [];
+      const app = parseExtensionApp(manifest.app);
 
       extensions.push({
         id: manifest.id,
@@ -91,6 +94,7 @@ export async function loadInstallableExtensions(): Promise<ExtensionCatalogEntry
           ? manifest.tags.filter((tag): tag is string => typeof tag === "string")
           : [],
         commands,
+        app,
         sourcePath: await join(appDataPath, "extensions-default", directory.name),
       });
     } catch (error) {

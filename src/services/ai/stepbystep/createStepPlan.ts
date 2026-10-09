@@ -1,6 +1,7 @@
 import { HumanMessage, type BaseMessage } from "@langchain/core/messages";
 import { z } from "zod";
 import { assertImageModelSupport, buildHumanMessageFromRequest } from "../agent/image-content";
+import { buildGlobalDirectoryPrompt } from "../global-directory-prompt";
 import {
   getAsyncLLM,
   getAsyncLLMByModel,
@@ -192,11 +193,11 @@ export async function updateStepPlan(
       });
 
   const structuredLlm = llm.withStructuredOutput(UpdatedStepPlanSchema);
-
+  const globalDirectoryPrompt = await buildGlobalDirectoryPrompt();
   const result = await structuredLlm.invoke([
     {
       role: "system",
-      content: UPDATE_SYSTEM_PROMPT,
+      content: `${UPDATE_SYSTEM_PROMPT}\n\n${globalDirectoryPrompt}`,
     },
     {
       role: "user",
@@ -256,10 +257,11 @@ export async function createStepPlan(
     agent_response: agentResponse,
   });
 
+  const globalDirectoryPrompt = await buildGlobalDirectoryPrompt();
   const result = await structuredLlm.invoke([
     {
       role: "system",
-      content: SYSTEM_PROMPT,
+      content: `${SYSTEM_PROMPT}\n\n${globalDirectoryPrompt}`,
     },
     input.sourceMessage
       ? buildHumanMessageFromRequest(planRequest, input.sourceMessage)

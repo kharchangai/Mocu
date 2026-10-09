@@ -1,0 +1,57 @@
+{
+  "manifestVersion": 1,
+  "id": "youtube-channel-insights",
+  "name": "YouTube Channel Insights",
+  "description": "Reads your own YouTube channel through the YouTube Data API v3: channel stats, video lists, single-video details, and aggregate channel analysis.",
+  "version": "0.2.0",
+  "runtime": "node",
+  "entry": "index.js",
+  "engines": {
+    "node": ">=20"
+  },
+  "permissions": ["network"],
+  "commands": [
+    {
+      "id": "get_channel_info",
+      "title": "Get channel info",
+      "description": "Returns the channel's title, description, URL, subscriber count (null if hidden), total video count, and total view count.",
+      "timeoutSeconds": 30
+    },
+    {
+      "id": "list_channel_videos",
+      "title": "List channel videos",
+      "description": "Returns recent videos with title, publish date, URL, duration, views, likes, comments, and engagement rate. Input: { maxResults?: 1-200, default 20; sortBy?: \"date\" | \"views\", default \"date\" }. With sortBy \"views\", only the most recent maxResults videos are ranked.",
+      "timeoutSeconds": 120
+    },
+    {
+      "id": "get_video_details",
+      "title": "Get video details",
+      "description": "Returns full details for one video: stats, description, tags, category, and definition. Input: a YouTube video URL or 11-character video ID.",
+      "timeoutSeconds": 30
+    },
+    {
+      "id": "analyze_channel",
+      "title": "Analyze channel",
+      "description": "Returns channel info plus aggregate statistics over the most recent videos: average and median views, average engagement rate, average duration, Shorts count, upload frequency, and top videos by views. Input: { sampleSize?: 1-200, default 50 }.",
+      "timeoutSeconds": 180
+    }
+  ],
+  "config": [
+    {
+      "key": "apiKey",
+      "label": "YouTube Data API v3 key",
+      "description": "Your Google API key with YouTube Data API v3 enabled. Stored by Mocu and sent only to the YouTube API.",
+      "type": "string",
+      "required": true,
+      "default": ""
+    },
+    {
+      "key": "channelId",
+      "label": "Your channel ID or handle",
+      "description": "Your channel ID (starts with UC) or handle (for example @yourname).",
+      "type": "string",
+      "required": true,
+      "default": ""
+    }
+  ]
+}

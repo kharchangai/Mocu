@@ -28,6 +28,7 @@ import { saveSpecialistSectionMemoryInBackground } from "../agent/specialist-mem
 import { withShortDescription } from "../agent/tool-summaries";
 import { FileToolRecovery, isFileToolError } from "../agent/file-tool-recovery";
 import { buildDocsContextPrompt } from "../../../chat/docs";
+import { buildGlobalDirectoryPrompt } from "../global-directory-prompt";
 import { assertImageModelSupport, buildHumanMessageFromRequest } from "../agent/image-content";
 import { persistAgentGraphTurn } from "../../../graphStructure/agentTurn";
 import {
@@ -677,7 +678,10 @@ export class StepExecutor {
 
     // Doc context = capped references + metadata only (never content);
     // fail-open: buildDocsContextPrompt returns "" on no match/failure.
-    const docsContextPrompt = await buildDocsContextPrompt(message);
+    const [docsContextPrompt, globalDirectoryPrompt] = await Promise.all([
+      buildDocsContextPrompt(message),
+      buildGlobalDirectoryPrompt(),
+    ]);
     const llm = await this.options.buildTurnLlm(turn.selectedModel);
     await assertImageModelSupport(llm.model, turn.sourceMessage);
     const llmWithTools =
@@ -686,9 +690,13 @@ export class StepExecutor {
     const history = await this.store.readStepHistory(state.id, stepNumber);
     const messages: BaseMessage[] = [
       new SystemMessage(
-        buildStepPrompt(state, toolsDescription, [docsContextPrompt, turn.graphTurn?.graphHint ?? ""]
-          .filter((item) => item.trim())
-          .join("\n\n")),
+        buildStepPrompt(
+          state,
+          toolsDescription,
+          [docsContextPrompt, globalDirectoryPrompt, turn.graphTurn?.graphHint ?? ""]
+            .filter((item) => item.trim())
+            .join("\n\n"),
+        ),
       ),
       ...buildMessagesFromStepHistory(history),
       buildHumanMessageFromRequest(message, turn.sourceMessage),

@@ -1,0 +1,95 @@
+<!doctype html>
+<html lang="fa" dir="rtl">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="light dark">
+  <title>نمایشگر فایل متنی</title>
+  <style>
+    :root {
+      color-scheme: light dark;
+      font-family: Tahoma, "Segoe UI", sans-serif;
+      color: #292823;
+      background: #f7f6f3;
+      font-synthesis: none;
+    }
+    * { box-sizing: border-box; }
+    body { margin: 0; min-height: 100vh; padding: 32px 20px; }
+    main { max-width: 900px; margin: 0 auto; }
+    .card { padding: 26px; border: 1px solid #e8e4dd; border-radius: 18px; background: #fff; box-shadow: 0 12px 40px #28231a0a; }
+    .eyebrow { margin: 0 0 8px; color: #aa624b; font-size: 12px; font-weight: 700; letter-spacing: .04em; }
+    h1 { margin: 0; font-size: 25px; }
+    .intro { margin: 10px 0 22px; color: #706d66; font-size: 14px; line-height: 1.9; }
+    .toolbar { display: flex; flex-wrap: wrap; align-items: center; gap: 12px; }
+    button { min-height: 42px; padding: 0 17px; border: 0; border-radius: 10px; color: white; background: #a85239; cursor: pointer; font: inherit; font-size: 14px; font-weight: 700; }
+    button:hover { background: #91452f; }
+    button:focus-visible { outline: 3px solid #d6a191; outline-offset: 2px; }
+    .filename { min-width: 120px; color: #726d64; font-size: 13px; overflow-wrap: anywhere; }
+    .status { min-height: 22px; margin: 14px 0 8px; color: #706d66; font-size: 13px; }
+    .content { min-height: 260px; max-height: 64vh; margin: 0; padding: 17px; overflow: auto; border: 1px solid #e8e4dd; border-radius: 12px; background: #faf9f7; color: #302e2a; font: 13px/1.85 ui-monospace, Consolas, monospace; white-space: pre-wrap; overflow-wrap: anywhere; direction: auto; text-align: start; }
+    .privacy { margin: 14px 0 0; color: #817d75; font-size: 12px; line-height: 1.8; }
+    @media (prefers-color-scheme: dark) {
+      :root { color: #f1eee9; background: #1b1a18; }
+      .card { border-color: #3d3934; background: #24221f; box-shadow: none; }
+      .intro, .filename, .status, .privacy { color: #b8b2a8; }
+      .content { border-color: #3d3934; background: #1b1a18; color: #f1eee9; }
+    }
+  </style>
+</head>
+<body>
+  <main>
+    <section class="card" aria-labelledby="title">
+      <p class="eyebrow">اپ اکستنشن مکو</p>
+      <h1 id="title">نمایشگر فایل متنی</h1>
+      <p class="intro">یک فایل با پسوند TXT انتخاب کن تا محتوایش همین‌جا نمایش داده شود.</p>
+      <div class="toolbar">
+        <button id="choose-file" type="button">انتخاب فایل TXT</button>
+        <span id="filename" class="filename">هنوز فایلی انتخاب نشده</span>
+      </div>
+      <p id="status" class="status" role="status" aria-live="polite">برای شروع، فایل متنی را انتخاب کن.</p>
+      <pre id="content" class="content" tabindex="0">محتوای فایل پس از انتخاب اینجا نشان داده می‌شود.</pre>
+      <p class="privacy">فایل فقط در همین پنجره خوانده می‌شود و محتوایش به سرور یا سرویس دیگری ارسال نمی‌شود.</p>
+      <input id="file-input" type="file" accept=".txt,text/plain" hidden>
+    </section>
+  </main>
+  <script>
+    (() => {
+      const button = document.getElementById("choose-file");
+      const input = document.getElementById("file-input");
+      const filename = document.getElementById("filename");
+      const status = document.getElementById("status");
+      const content = document.getElementById("content");
+      const maxFileSize = 5 * 1024 * 1024;
+
+      button.addEventListener("click", () => input.click());
+      input.addEventListener("change", async () => {
+        const file = input.files && input.files[0];
+        if (!file) return;
+
+        filename.textContent = file.name;
+        if (!file.name.toLowerCase().endsWith(".txt") && file.type !== "text/plain") {
+          status.textContent = "لطفاً یک فایل متنی TXT انتخاب کن.";
+          content.textContent = "";
+          input.value = "";
+          return;
+        }
+        if (file.size > maxFileSize) {
+          status.textContent = "حجم فایل بیشتر از ۵ مگابایت است.";
+          content.textContent = "";
+          input.value = "";
+          return;
+        }
+
+        status.textContent = "در حال خواندن فایل…";
+        try {
+          content.textContent = await file.text();
+          status.textContent = `فایل با موفقیت خوانده شد · ${(file.size / 1024).toFixed(1)} کیلوبایت`;
+        } catch (error) {
+          content.textContent = "";
+          status.textContent = error instanceof Error ? `خواندن فایل ناموفق بود: ${error.message}` : "خواندن فایل ناموفق بود.";
+        }
+      });
+    })();
+  </script>
+</body>
+</html>

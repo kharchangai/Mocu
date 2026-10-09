@@ -42,6 +42,12 @@ export interface ExtensionConfigField {
   placeholder?: string;
 }
 
+export interface ExtensionApp {
+  /** Relative HTML entry point, resolved and confined to the extension folder. */
+  entry: string;
+  title?: string;
+}
+
 export interface ExtensionManifest {
   id: string;
   name: string;
@@ -52,6 +58,8 @@ export interface ExtensionManifest {
   /** Capabilities this extension requests; host APIs enforce relevant entries. */
   permissions?: string[];
   commands?: ExtensionCommand[];
+  /** Optional sandboxed UI shown in Mocu's App tab. */
+  app?: ExtensionApp;
   /**
    * Inputs the extension needs from the user. Rendered as a settings form
    * on the extension's card; values are merged with `default`s and sent to
