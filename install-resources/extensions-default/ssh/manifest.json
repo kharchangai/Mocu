@@ -3,9 +3,13 @@
   "id": "ssh",
   "name": "SSH",
   "description": "Provides secure access to remote servers over SSH using configured connection settings.",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "runtime": "node",
   "entry": "index.js",
+  "app": {
+    "entry": "ui/index.html",
+    "title": "SSH Workbench"
+  },
   "engines": {
     "node": ">=20"
   },

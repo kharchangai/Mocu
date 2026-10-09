@@ -1,0 +1,186 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="light dark">
+  <title>SSH Workbench</title>
+  <style>
+    :root {
+      color-scheme: light dark;
+      font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      color: #20251f;
+      background: #f4f6f2;
+      font-synthesis: none;
+      --surface: #fff;
+      --muted: #58645b;
+      --line: #dce4dc;
+      --accent: #276749;
+      --accent-soft: #e7f3eb;
+      --warning: #7c4a11;
+      --warning-bg: #fff5df;
+    }
+    * { box-sizing: border-box; }
+    body { margin: 0; min-height: 100vh; padding: 28px 20px 48px; }
+    main { width: min(920px, 100%); margin: 0 auto; }
+    .hero { display: flex; align-items: flex-start; gap: 16px; margin: 4px 0 22px; }
+    .icon { display: grid; flex: 0 0 48px; height: 48px; place-items: center; border-radius: 15px; color: var(--accent); background: var(--accent-soft); font-size: 21px; font-weight: 800; }
+    .eyebrow { margin: 0 0 5px; color: var(--accent); font-size: 11px; font-weight: 800; letter-spacing: .12em; text-transform: uppercase; }
+    h1 { margin: 0; font-size: clamp(24px, 4vw, 32px); letter-spacing: -.035em; }
+    .intro { max-width: 680px; margin: 8px 0 0; color: var(--muted); line-height: 1.6; }
+    .notice { margin: 20px 0; padding: 13px 15px; border: 1px solid #ead6aa; border-radius: 12px; color: var(--warning); background: var(--warning-bg); font-size: 13px; line-height: 1.55; }
+    .notice strong { display: block; margin-bottom: 3px; }
+    .tabs { display: flex; flex-wrap: wrap; gap: 8px; margin: 22px 0 12px; }
+    button, input, textarea { font: inherit; }
+    .tab, .action { min-height: 40px; padding: 9px 14px; border: 1px solid var(--line); border-radius: 10px; color: inherit; background: var(--surface); cursor: pointer; }
+    .tab[aria-selected="true"] { border-color: var(--accent); color: var(--accent); background: var(--accent-soft); font-weight: 700; }
+    .panel { padding: clamp(18px, 4vw, 26px); border: 1px solid var(--line); border-radius: 16px; background: var(--surface); box-shadow: 0 8px 28px rgb(25 45 30 / 5%); }
+    .panel[hidden] { display: none; }
+    h2 { margin: 0 0 8px; font-size: 19px; }
+    .sub { margin: 0 0 20px; color: var(--muted); font-size: 13px; line-height: 1.55; }
+    .field { display: grid; gap: 7px; margin: 16px 0; }
+    label { font-size: 13px; font-weight: 700; }
+    .hint { color: var(--muted); font-size: 12px; line-height: 1.5; }
+    input, textarea { width: 100%; padding: 11px 12px; border: 1px solid var(--line); border-radius: 9px; color: inherit; background: var(--surface); }
+    textarea { min-height: 96px; resize: vertical; line-height: 1.5; }
+    textarea.output { min-height: 132px; background: color-mix(in srgb, var(--accent-soft) 38%, var(--surface)); }
+    .action { margin-top: 5px; border-color: var(--accent); color: #fff; background: var(--accent); font-weight: 700; }
+    .action:hover { filter: brightness(1.08); }
+    .result { margin-top: 18px; }
+    .result[hidden] { display: none; }
+    .result label { display: block; margin-bottom: 7px; }
+    .setup-grid { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 12px; }
+    .setting { padding: 13px; border: 1px solid var(--line); border-radius: 10px; }
+    .setting code { display: block; margin-bottom: 5px; color: var(--accent); font-size: 12px; font-weight: 700; overflow-wrap: anywhere; }
+    .setting span { color: var(--muted); font-size: 12px; line-height: 1.45; }
+    pre { overflow: auto; margin: 12px 0; padding: 14px; border: 1px solid var(--line); border-radius: 10px; background: color-mix(in srgb, var(--accent-soft) 38%, var(--surface)); font-size: 12px; line-height: 1.6; }
+    .footer { margin: 14px 2px 0; color: var(--muted); font-size: 12px; line-height: 1.55; }
+    @media (max-width: 600px) { body { padding: 20px 14px 36px; } .setup-grid { grid-template-columns: 1fr; } }
+    @media (prefers-color-scheme: dark) {
+      :root { color: #edf3ed; background: #141a16; --surface: #1d2620; --muted: #b0beb3; --line: #344239; --accent: #83d4a0; --accent-soft: #20392a; --warning: #f1ca7b; --warning-bg: #382d1a; }
+      .action { color: #142017; }
+    }
+  </style>
+</head>
+<body>
+  <main>
+    <header class="hero">
+      <div class="icon" aria-hidden="true">SSH</div>
+      <div>
+        <p class="eyebrow">Mocu extension app</p>
+        <h1>SSH Workbench</h1>
+        <p class="intro">Set up the SSH extension safely, prepare clear requests for remote commands and file transfers, and keep credentials on your computer.</p>
+      </div>
+    </header>
+
+    <aside class="notice" role="note">
+      <strong>This page prepares requests; it does not connect to a server.</strong>
+      To run a request, open a Mocu chat, select the SSH extension (for example with <code>/extension</code>), then paste the prepared text. Review remote commands before running them.
+    </aside>
+
+    <nav class="tabs" role="tablist" aria-label="SSH Workbench sections">
+      <button class="tab" type="button" role="tab" id="tab-setup" aria-controls="panel-setup" aria-selected="true">Setup</button>
+      <button class="tab" type="button" role="tab" id="tab-command" aria-controls="panel-command" aria-selected="false">Run command</button>
+      <button class="tab" type="button" role="tab" id="tab-upload" aria-controls="panel-upload" aria-selected="false">Upload</button>
+      <button class="tab" type="button" role="tab" id="tab-download" aria-controls="panel-download" aria-selected="false">Download</button>
+    </nav>
+
+    <section class="panel" id="panel-setup" role="tabpanel" aria-labelledby="tab-setup">
+      <h2>Configure the connection</h2>
+      <p class="sub">In Mocu's SSH extension settings, enter environment-variable names and local file paths only. Put the actual host, username, and password or passphrase values in a private .env file on this computer.</p>
+      <div class="setup-grid">
+        <div class="setting"><code>SSH_HOST_ENV</code><span>Variable name containing the server hostname or IP, e.g. <code>SSH_HOST</code>.</span></div>
+        <div class="setting"><code>SSH_USERNAME_ENV</code><span>Variable name containing the SSH username, e.g. <code>SSH_USERNAME</code>.</span></div>
+        <div class="setting"><code>SSH_PORT</code><span>Server port as a number; defaults to <code>22</code>.</span></div>
+        <div class="setting"><code>SSH_PASSWORD_ENV</code><span>Password variable name, e.g. <code>SSH_PASSWORD</code>; used when no private key is configured.</span></div>
+        <div class="setting"><code>SSH_PRIVATE_KEY_PATH</code><span>Optional path to a private key file on this computer. A key is used instead of a password.</span></div>
+        <div class="setting"><code>SSH_KEY_PASSPHRASE_ENV</code><span>Optional variable name for the key passphrase.</span></div>
+        <div class="setting"><code>ENV_FILE_PATH</code><span>Path to your private .env file. If empty, the extension checks its own folder.</span></div>
+      </div>
+      <h2 style="margin-top:22px">Example .env shape</h2>
+      <p class="hint">Replace placeholders locally. Never paste real values into Mocu settings, this page, chat, or source control.</p>
+      <pre>SSH_HOST=&lt;your-server-host&gt;
+SSH_USERNAME=&lt;your-username&gt;
+SSH_PASSWORD=&lt;your-password&gt;
+SSH_KEY_PASSPHRASE=&lt;optional-key-passphrase&gt;</pre>
+      <p class="footer">For key-based login, set the private-key path and leave the password variable unset. Only add variables you actually use, and protect the .env and private-key files with appropriate file permissions.</p>
+    </section>
+
+    <section class="panel" id="panel-command" role="tabpanel" aria-labelledby="tab-command" hidden>
+      <h2>Prepare a remote command</h2>
+      <p class="sub">Enter the command you want run on the configured server. The generated text is only a chat request; this page never executes it.</p>
+      <form data-form="command">
+        <div class="field"><label for="remote-command">Remote command</label><textarea id="remote-command" required placeholder="e.g. uname -a"></textarea><span class="hint">Avoid including passwords, private keys, or other secrets.</span></div>
+        <button class="action" type="submit">Prepare chat request</button>
+      </form>
+      <div class="result" hidden><label for="output-command">Request to paste into Mocu chat</label><textarea class="output" id="output-command" readonly></textarea></div>
+    </section>
+
+    <section class="panel" id="panel-upload" role="tabpanel" aria-labelledby="tab-upload" hidden>
+      <h2>Prepare a file upload</h2>
+      <p class="sub">Provide an absolute local file path and the destination path on the server. Existing remote files are not overwritten by default.</p>
+      <form data-form="upload">
+        <div class="field"><label for="upload-local">Local file path (this computer)</label><input id="upload-local" required placeholder="C:\\Users\\you\\Documents\\report.csv" autocomplete="off"></div>
+        <div class="field"><label for="upload-remote">Remote destination path</label><input id="upload-remote" required placeholder="/home/user/report.csv" autocomplete="off"></div>
+        <button class="action" type="submit">Prepare upload request</button>
+      </form>
+      <div class="result" hidden><label for="output-upload">Request to paste into Mocu chat</label><textarea class="output" id="output-upload" readonly></textarea></div>
+    </section>
+
+    <section class="panel" id="panel-download" role="tabpanel" aria-labelledby="tab-download" hidden>
+      <h2>Prepare a file download</h2>
+      <p class="sub">Provide the path of the remote file and an absolute destination path on this computer. Existing local files are not overwritten by default.</p>
+      <form data-form="download">
+        <div class="field"><label for="download-remote">Remote file path</label><input id="download-remote" required placeholder="/home/user/report.csv" autocomplete="off"></div>
+        <div class="field"><label for="download-local">Local destination path (this computer)</label><input id="download-local" required placeholder="C:\\Users\\you\\Downloads\\report.csv" autocomplete="off"></div>
+        <button class="action" type="submit">Prepare download request</button>
+      </form>
+      <div class="result" hidden><label for="output-download">Request to paste into Mocu chat</label><textarea class="output" id="output-download" readonly></textarea></div>
+    </section>
+    <p class="footer">SSH connection details are read from the extension's saved settings and your local .env file. The forms above are not saved by this page.</p>
+  </main>
+  <script>
+    (() => {
+      const tabs = [...document.querySelectorAll('[role="tab"]')];
+      const panels = [...document.querySelectorAll('[role="tabpanel"]')];
+      const selectTab = (tab) => {
+        tabs.forEach((item) => item.setAttribute("aria-selected", String(item === tab)));
+        panels.forEach((panel) => { panel.hidden = panel.id !== tab.getAttribute("aria-controls"); });
+        tab.focus();
+      };
+      tabs.forEach((tab, index) => {
+        tab.addEventListener("click", () => selectTab(tab));
+        tab.addEventListener("keydown", (event) => {
+          if (event.key !== "ArrowRight" && event.key !== "ArrowLeft") return;
+          event.preventDefault();
+          const direction = event.key === "ArrowRight" ? 1 : -1;
+          selectTab(tabs[(index + direction + tabs.length) % tabs.length]);
+        });
+      });
+      const value = (id) => document.getElementById(id).value.trim();
+      const showResult = (form, outputId, text) => {
+        const result = form.parentElement.querySelector(".result");
+        document.getElementById(outputId).value = text;
+        result.hidden = false;
+        document.getElementById(outputId).focus();
+        document.getElementById(outputId).select();
+      };
+      document.querySelector('[data-form="command"]').addEventListener("submit", (event) => {
+        event.preventDefault();
+        const form = event.currentTarget;
+        showResult(form, "output-command", `Use the SSH extension to run this command on the configured server:\n\n${value("remote-command")}\n\nReturn stdout, stderr, and the exit code. Do not run any additional commands.`);
+      });
+      document.querySelector('[data-form="upload"]').addEventListener("submit", (event) => {
+        event.preventDefault();
+        const form = event.currentTarget;
+        showResult(form, "output-upload", `Use the SSH extension to upload this local file to the configured server:\n\nLocal path: ${value("upload-local")}\nRemote path: ${value("upload-remote")}\nOverwrite: false`);
+      });
+      document.querySelector('[data-form="download"]').addEventListener("submit", (event) => {
+        event.preventDefault();
+        const form = event.currentTarget;
+        showResult(form, "output-download", `Use the SSH extension to download this file from the configured server:\n\nRemote path: ${value("download-remote")}\nLocal path: ${value("download-local")}\nOverwrite: false`);
+      });
+    })();
+  </script>
+</body>
+</html>

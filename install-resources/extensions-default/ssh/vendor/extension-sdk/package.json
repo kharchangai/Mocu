@@ -1,4 +1,4 @@
-﻿{
+{
     "name":  "@mocu/extension-sdk",
     "version":  "0.1.0",
     "description":  "Official Node.js SDK for Mocu extensions.",
@@ -19,7 +19,7 @@
                     "clean":  "node -e \"require(\u0027fs\u0027).rmSync(\u0027dist\u0027,{recursive:true,force:true})\""
                 },
     "dependencies":  {
-                         "@mocu/extension-contracts":  "0.1.0"
+                         "@mocu/extension-contracts":  "file:../extension-contracts"
                      },
     "devDependencies":  {
                             "@types/node":  "^24.3.0",

@@ -4,6 +4,8 @@ This extension lets Mocu connect to a remote server over SSH and transfer files 
 
 The extension does not store server credentials in Mocu. Instead, Mocu reads the **names** of environment variables from its settings, and the actual values are loaded from a `.env` file on your computer.
 
+This release also includes an optional **SSH Workbench** app page with setup guidance and forms to prepare remote-command, upload, and download requests for Mocu chat. It does not establish connections or save form entries itself; run requests from chat after selecting the SSH extension.
+
 ## Setup
 
 ### 1. Install the extension
