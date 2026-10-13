@@ -17,6 +17,7 @@ class LlmApi:
         self,
         prompt: str,
         *,
+        model: str | None = None,
         system_prompt: str | None = None,
         temperature: float | None = None,
         max_tokens: int | None = None,
@@ -28,6 +29,8 @@ class LlmApi:
             "prompt": prompt.strip(),
         }
 
+        if model is not None:
+            params["model"] = model
         if system_prompt is not None:
             params["systemPrompt"] = system_prompt
         if temperature is not None:

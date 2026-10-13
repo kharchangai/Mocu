@@ -1,5 +1,7 @@
 import React, { useEffect, useState } from "react";
 import { getCurrentWebviewWindow } from "@tauri-apps/api/webviewWindow";
+import { check, type Update } from "@tauri-apps/plugin-updater";
+import { relaunch } from "@tauri-apps/plugin-process";
 import {
   OPENROUTER_GATEWAY_URL, OPENROUTER_DEFAULT_LLM_MODEL,
   OPENROUTER_CHEAP_DEFAULT_MODEL, OPENROUTER_MEDIUM_DEFAULT_MODEL, OPENROUTER_EXPENSIVE_DEFAULT_MODEL,
@@ -91,7 +93,11 @@ export const Settings: React.FC<SettingsProps> = ({
   const [isLoading, setIsLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
   const [gatewayError, setGatewayError] = useState("");
-
+  const [isCheckingForUpdates, setIsCheckingForUpdates] = useState(false);
+  const [isInstallingUpdate, setIsInstallingUpdate] = useState(false);
+  const [availableUpdate, setAvailableUpdate] = useState<Update | null>(null);
+  const [updateStatus, setUpdateStatus] = useState("");
+  const [updateProgress, setUpdateProgress] = useState<number | null>(null);
   const appWindow = getCurrentWebviewWindow();
 
   useEffect(() => {
@@ -255,6 +261,84 @@ export const Settings: React.FC<SettingsProps> = ({
       console.error("Failed to save settings:", error);
       setGatewayError("Could not save settings. Please try again.");
       setIsSaving(false);
+    }
+  };
+
+  const handleCheckForUpdates = async () => {
+    if (isCheckingForUpdates || isInstallingUpdate) {
+      return;
+    }
+
+    setIsCheckingForUpdates(true);
+    setUpdateStatus("Checking for updates...");
+    setUpdateProgress(null);
+
+    try {
+      if (availableUpdate) {
+        await availableUpdate.close();
+        setAvailableUpdate(null);
+      }
+
+      const update = await check();
+      if (update) {
+        setAvailableUpdate(update);
+        setUpdateStatus(`Version ${update.version} is available.`);
+      } else {
+        setAvailableUpdate(null);
+        setUpdateStatus("Mocu is up to date.");
+      }
+    } catch (error) {
+      console.error("Failed to check for Mocu updates:", error);
+      setUpdateStatus("Could not check for updates. Please check your internet connection and try again.");
+    } finally {
+      setIsCheckingForUpdates(false);
+    }
+  };
+
+  const handleInstallUpdate = async () => {
+    if (!availableUpdate || isCheckingForUpdates || isInstallingUpdate) {
+      return;
+    }
+
+    const confirmed = window.confirm(
+      `Download and install Mocu ${availableUpdate.version} now? The app will restart when the update is ready.`,
+    );
+    if (!confirmed) {
+      return;
+    }
+
+    const update = availableUpdate;
+    let downloadedBytes = 0;
+    let totalBytes: number | undefined;
+    setIsInstallingUpdate(true);
+    setUpdateProgress(0);
+    setUpdateStatus("Downloading update...");
+
+    try {
+      await update.downloadAndInstall((event) => {
+        if (event.event === "Started") {
+          totalBytes = event.data.contentLength;
+          setUpdateStatus("Downloading update...");
+        } else if (event.event === "Progress") {
+          downloadedBytes += event.data.chunkLength;
+          if (totalBytes && totalBytes > 0) {
+            setUpdateProgress(Math.min(100, Math.round((downloadedBytes / totalBytes) * 100)));
+          }
+        } else if (event.event === "Finished") {
+          setUpdateProgress(100);
+          setUpdateStatus("Installing update and restarting Mocu...");
+        }
+      });
+
+      await update.close();
+      setAvailableUpdate(null);
+      await relaunch();
+    } catch (error) {
+      console.error("Failed to install Mocu update:", error);
+      setUpdateProgress(null);
+      setUpdateStatus("The update could not be installed. Please try again or download the latest release manually.");
+    } finally {
+      setIsInstallingUpdate(false);
     }
   };
 
@@ -685,6 +769,44 @@ export const Settings: React.FC<SettingsProps> = ({
                   className="settings-input"
                 />
               </div>
+            </div>
+          </div>
+        </section>
+
+        {/* ---------- App updates ---------- */}
+        <section className="settings-section">
+          <h5 className="settings-section-label">Software Updates</h5>
+          <div className="settings-card">
+            <div className="settings-card-header">
+              <h4 className="settings-card-title">Keep Mocu up to date</h4>
+              <p className="settings-card-description">
+                Check GitHub for a newer version. If one is available, you can download and install it here.
+              </p>
+            </div>
+
+            {updateStatus && <p className="settings-update-status" role="status" aria-live="polite">{updateStatus}</p>}
+            {updateProgress !== null && <div className="settings-update-progress" aria-label="Update download progress">
+              <progress value={updateProgress} max={100} />
+              <span>{updateProgress}%</span>
+            </div>}
+
+            <div className="settings-update-actions">
+              <button
+                type="button"
+                onClick={handleCheckForUpdates}
+                disabled={isCheckingForUpdates || isInstallingUpdate}
+                className="settings-button-secondary"
+              >
+                {isCheckingForUpdates ? "Checking..." : "Check for Updates"}
+              </button>
+              {availableUpdate && <button
+                type="button"
+                onClick={handleInstallUpdate}
+                disabled={isCheckingForUpdates || isInstallingUpdate}
+                className="settings-button-primary"
+              >
+                {isInstallingUpdate ? "Installing..." : `Install ${availableUpdate.version}`}
+              </button>}
             </div>
           </div>
         </section>

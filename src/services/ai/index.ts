@@ -6,6 +6,7 @@ import {
 import { MemorySaver } from "@langchain/langgraph";
 import { workflow } from "./graph";
 import { getAsyncLLM } from "./llm";
+import { getAsyncLLMByModel } from "./llm";
 
 /*
  * In-memory checkpointer keeps per-thread conversation history,
@@ -39,6 +40,7 @@ const throwIfAborted = (
  * within the extension `extension.execute` timeout.
  */
 export type SimpleAnswerOptions = {
+  model?: string;
   systemPrompt?: string;
   temperature?: number;
   maxTokens?: number;
@@ -57,10 +59,15 @@ export const generateSimpleAnswer = async (
     throw new Error("User input cannot be empty.");
   }
 
-  const llm = await getAsyncLLM("medium", {
-    temperature: options.temperature ?? 0.7,
-    maxTokens: options.maxTokens,
-  });
+  const llm = options.model?.trim()
+  ? await getAsyncLLMByModel(options.model, {
+      temperature: options.temperature ?? 0.7,
+      maxTokens: options.maxTokens,
+    })
+  : await getAsyncLLM("medium", {
+      temperature: options.temperature ?? 0.7,
+      maxTokens: options.maxTokens,
+    });
 
   throwIfAborted(signal);
 

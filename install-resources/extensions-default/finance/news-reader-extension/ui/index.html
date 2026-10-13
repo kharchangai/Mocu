@@ -1,0 +1,344 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="light">
+  <title>News</title>
+  <style>
+    :root { color-scheme: light; font-family: Inter, "Segoe UI", system-ui, -apple-system, sans-serif; color: #22231f; background: #f5f5f2; font-synthesis: none; text-rendering: optimizeLegibility; -webkit-font-smoothing: antialiased; }
+    * { box-sizing: border-box; }
+    body { min-width: 320px; min-height: 100vh; margin: 0; }
+    button, input { font: inherit; }
+    .site-header { position: sticky; z-index: 2; top: 0; display: flex; height: 66px; align-items: center; justify-content: space-between; padding: 0 clamp(20px, 5vw, 68px); border-bottom: 1px solid #e8e8e2; background: rgba(255,255,253,.94); backdrop-filter: blur(16px); }
+    .brand { display: flex; align-items: center; gap: 11px; font-size: 18px; font-weight: 750; letter-spacing: -.045em; }
+    .brand-mark { display: grid; width: 33px; height: 33px; place-items: center; border-radius: 11px; color: #fff; background: #dc553b; font: 800 16px Georgia,serif; }
+    .header-note { color: #818179; font-size: 12px; }
+    .site-nav { display: flex; height: 100%; align-items: center; }
+    .nav-tab { position: relative; display: grid; height: 100%; place-items: center; padding: 0 16px; border: 0; color: #bb432e; background: transparent; font-size: 13px; font-weight: 700; }
+    .nav-tab::after { position: absolute; right: 16px; bottom: 0; left: 16px; height: 2px; background: #d84f37; content: ""; }
+    main { width: min(1020px,100%); margin: 0 auto; padding: 38px clamp(18px,4vw,44px) 60px; }
+    .hero { display: flex; align-items: flex-end; justify-content: space-between; gap: 20px; margin-bottom: 27px; }
+    .eyebrow { color: #c14b35; font-size: 10px; font-weight: 750; letter-spacing: .13em; text-transform: uppercase; }
+    h1 { margin: 8px 0 0; font-family: Georgia,"Times New Roman",serif; font-size: clamp(31px,5vw,42px); font-weight: 500; letter-spacing: -.055em; line-height: 1.08; }
+    .hero-subtitle { margin: 9px 0 0; color: #76766e; font-size: 13px; line-height: 1.6; }
+    .date-pill { flex: 0 0 auto; padding: 8px 11px; border: 1px solid #e5e4dd; border-radius: 99px; color: #73736a; background: #fff; font-size: 11px; }
+    .toolbar { display: flex; align-items: center; gap: 10px; margin: 20px 0; }
+    .search-wrap { position: relative; flex: 1; }
+    .search-wrap svg { position: absolute; top: 50%; left: 12px; width: 16px; height: 16px; color: #898981; transform: translateY(-50%); pointer-events: none; }
+    .search { width: 100%; height: 40px; padding: 0 12px 0 38px; border: 1px solid #e4e4dd; border-radius: 10px; outline: none; color: #292a25; background: white; font-size: 12px; }
+    .search:focus { border-color: #d66b56; box-shadow: 0 0 0 3px rgba(214,107,86,.12); }
+    .refresh { display: inline-flex; height: 40px; align-items: center; gap: 7px; padding: 0 12px; border: 1px solid #e4e4dd; border-radius: 10px; color: #52534c; background: white; cursor: pointer; font-size: 12px; }
+    .section-heading { display: flex; align-items: center; justify-content: space-between; margin: 23px 0 11px; }
+    .section-heading h2 { margin: 0; font-size: 13px; font-weight: 720; }
+    .count { color: #88887f; font-size: 11px; }
+    .article-list { display: grid; gap: 10px; }
+    .article-card { display: grid; grid-template-columns: 38px minmax(0,1fr) 24px; align-items: start; gap: 13px; width: 100%; padding: 17px 18px; border: 1px solid #e9e8e1; border-radius: 13px; color: inherit; background: #fff; text-align: left; cursor: pointer; transition: border-color .15s,box-shadow .15s,transform .15s; }
+    .article-card:hover { transform: translateY(-1px); border-color: #ddc8c1; box-shadow: 0 7px 22px rgba(39,37,31,.055); }
+    .article-number { display: grid; width: 34px; height: 34px; place-items: center; border-radius: 10px; color: #bf4c35; background: #fff2ed; font: 600 13px Georgia,serif; }
+    .article-copy { min-width: 0; }
+    .article-title { display: block; margin: 1px 0 6px; font: 600 17px/1.35 Georgia,"Times New Roman",serif; letter-spacing: -.025em; }
+    .article-preview { display: -webkit-box; overflow: hidden; color: #72726a; font-size: 12px; line-height: 1.65; -webkit-box-orient: vertical; -webkit-line-clamp: 2; }
+    .article-meta { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 9px; color: #98978e; font-size: 10px; }
+    .article-arrow { margin-top: 8px; color: #b1afa6; font-size: 18px; }
+    .state-card { padding: 29px 20px; border: 1px dashed #deddd5; border-radius: 13px; color: #77776e; background: rgba(255,255,255,.65); text-align: center; font-size: 13px; line-height: 1.7; }
+    .state-card strong { display: block; margin-bottom: 5px; color: #373832; font-size: 14px; }
+    .error-card { border-color: #efd4cc; color: #a33e32; background: #fff8f5; }
+    .footer { margin-top: 24px; color: #a09f96; text-align: center; font-size: 10px; }
+    .reader { position: fixed; z-index: 5; inset: 0; overflow: auto; background: #f7f6f2; }
+    .reader-bar { position: sticky; z-index: 2; top: 0; display: flex; min-height: 58px; align-items: center; justify-content: space-between; padding: 0 clamp(16px,4vw,40px); border-bottom: 1px solid #e7e5df; background: rgba(255,255,253,.96); backdrop-filter: blur(15px); }
+    .back-button,.reader-action { display: inline-flex; min-height: 35px; align-items: center; gap: 7px; padding: 0 9px; border: 0; border-radius: 8px; color: #51524b; background: transparent; cursor: pointer; font-size: 12px; }
+    .reader-tools { display: flex; align-items: center; gap: 6px; }
+    .reader-content { width: min(740px,100%); margin: 0 auto; padding: clamp(34px,7vw,72px) clamp(23px,6vw,52px) 86px; }
+    .reader-kicker { color: #c04b35; font-size: 10px; font-weight: 750; letter-spacing: .12em; text-transform: uppercase; }
+    .reader-title { margin: 15px 0; font: 500 clamp(30px,5vw,43px)/1.16 Georgia,"Times New Roman",serif; letter-spacing: -.045em; }
+    .reader-meta { display: flex; flex-wrap: wrap; gap: 10px; padding-bottom: 22px; border-bottom: 1px solid #e4e2dc; color: #838279; font-size: 11px; }
+    .reader-body { margin-top: 27px; color: #353630; font: 17px/1.9 Georgia,"Times New Roman",serif; overflow-wrap: anywhere; }
+    .reader-body p { margin: 0 0 19px; }
+    .reader-body h2 { margin: 32px 0 12px; font-size: 23px; line-height: 1.35; }
+    .reader-body h3 { margin: 26px 0 10px; font-size: 19px; line-height: 1.4; }
+    .reader-body li { margin: 6px 0; }
+    .reader-body ul,.reader-body ol { padding-left: 25px; }
+    .reader-body blockquote { margin: 24px 0; padding: 3px 0 3px 18px; border-left: 3px solid #d85a42; color: #6f6f66; }
+    .reader-body pre { overflow: auto; padding: 15px; border-radius: 9px; background: #eeede8; font: 13px/1.6 ui-monospace,monospace; }
+    .reader-body code { padding: 2px 5px; border-radius: 4px; background: #eeede8; font: .85em ui-monospace,monospace; }
+    .reader-body pre code { padding: 0; background: transparent; }
+    .reader-body a { color: #b94430; }
+    .raw-body { white-space: pre-wrap; }
+    .reader-bottom { margin-top: 40px; padding-top: 17px; border-top: 1px solid #e4e2dc; color: #97968e; font-size: 11px; }
+    .reader-font-small .reader-body { font-size: 15px; }
+    .reader-font-large .reader-body { font-size: 19px; }
+    .selection-translate {
+      position: fixed; z-index: 8; display: grid; width: 38px; height: 38px; place-items: center;
+      padding: 0; border: 1px solid rgba(255,255,255,.7); border-radius: 12px; color: #fff;
+      background: #c94f38; box-shadow: 0 5px 18px rgba(48,35,28,.24); cursor: pointer;
+      transition: transform .15s, background .15s;
+    }
+    .selection-translate:hover { transform: translateY(-2px); background: #ad3e2b; }
+    .selection-translate:focus-visible { outline: 3px solid rgba(201,79,56,.28); outline-offset: 2px; }
+    .translation-card {
+      position: fixed; z-index: 8; right: 18px; bottom: 18px; width: min(420px,calc(100vw - 36px));
+      max-height: min(48vh,360px); overflow: auto; padding: 17px 18px; border: 1px solid #e8e3dc;
+      border-radius: 14px; color: #34352f; background: #fff; box-shadow: 0 12px 38px rgba(40,35,28,.17);
+    }
+    .translation-card-head { display:flex; align-items:center; justify-content:space-between; gap:12px; margin-bottom:10px; }
+    .translation-card-head strong { color:#b94430; font-size:13px; }
+    .translation-close { display:grid; width:28px; height:28px; place-items:center; border:0; border-radius:7px; color:#77776e; background:#f5f4f0; cursor:pointer; }
+    .translation-text { margin:0; white-space:pre-wrap; overflow-wrap:anywhere; font-size:14px; line-height:1.8; }
+    .translation-error { color:#a33e32; }
+    .hidden { display: none !important; }
+    @media(max-width:600px) { .header-note { display:none; } main { padding-top:27px; } .hero { align-items:flex-start; flex-direction:column; gap:12px; } .article-card { grid-template-columns:31px minmax(0,1fr) 16px; gap:10px; padding:14px; } .article-number { width:30px; height:30px; } .translation-card { right:10px; bottom:10px; width:calc(100vw - 20px); } }
+  </style>
+</head>
+<body>
+  <header class="site-header">
+    <div class="brand"><span class="brand-mark" aria-hidden="true">N</span><span>Newsroom</span></div>
+    <div class="header-note">A quieter way to catch up.</div>
+    <nav class="site-nav" aria-label="Main navigation"><button class="nav-tab" type="button" aria-current="page">News</button></nav>
+  </header>
+  <main id="home-view">
+    <section class="hero"><div><div class="eyebrow">Your daily briefing</div><h1>News, without the noise.</h1><p class="hero-subtitle">A hand-picked reading list, ready when you are.</p></div><span id="date-pill" class="date-pill">Latest edition</span></section>
+    <div class="toolbar">
+      <label class="search-wrap"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><circle cx="10.8" cy="10.8" r="6.8"/><path d="m16 16 4.4 4.4"/></svg><input id="search" class="search" type="search" placeholder="Search headlines…" autocomplete="off" aria-label="Search headlines"></label>
+      <button id="refresh" class="refresh" type="button" title="Reload the latest edition"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="M20 7v5h-5M4 17v-5h5"/><path d="M5.6 9a7 7 0 0 1 11.9-2L20 12M4 12l2.5 5a7 7 0 0 0 11.9-2"/></svg>Refresh</button>
+    </div>
+    <div class="section-heading"><h2>Latest stories</h2><span id="story-count" class="count"></span></div>
+    <section id="article-list" class="article-list" aria-live="polite"></section>
+    <p class="footer">Choose your news archive folder to open the latest date-named edition.</p>
+  </main>
+  <section id="reader" class="reader hidden" aria-modal="true" role="dialog" aria-labelledby="reader-title">
+    <header class="reader-bar"><button id="back" class="back-button" type="button"><span aria-hidden="true">←</span> All stories</button><div class="reader-tools"><button id="font-smaller" class="reader-action" type="button" aria-label="Decrease text size">A−</button><button id="font-larger" class="reader-action" type="button" aria-label="Increase text size">A+</button></div></header>
+    <article id="reader-article" class="reader-content"><div id="reader-kicker" class="reader-kicker"></div><h1 id="reader-title" class="reader-title"></h1><div id="reader-meta" class="reader-meta"></div><div id="reader-body" class="reader-body"></div><div id="reader-bottom" class="reader-bottom"></div></article>
+    <button id="selection-translate" class="selection-translate hidden" type="button" aria-label="Translate selected text into Persian" title="Translate to Persian">
+      <svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m5 8 6 6M4 14l6-6 2-3M2 5h12M7 2h1M13 21l5-10 5 10M15 17h6"/></svg>
+    </button>
+    <section id="translation-card" class="translation-card hidden" role="status" aria-live="polite" aria-label="Persian translation">
+      <div class="translation-card-head"><strong>Persian translation</strong><button id="translation-close" class="translation-close" type="button" aria-label="Close">×</button></div>
+      <p id="translation-text" class="translation-text"></p>
+    </section>
+  </section>
+<script src="./mocu-ui.js"></script>
+<script>
+  (() => {
+        const list = document.getElementById("article-list");
+        const search = document.getElementById("search");
+        const count = document.getElementById("story-count");
+        const datePill = document.getElementById("date-pill");
+        const home = document.getElementById("home-view");
+        const reader = document.getElementById("reader");
+        const readerArticle = document.getElementById("reader-article");
+        let articles = [];
+        let currentDate = "";
+        let folderSelectionCompleted = false;
+        const translationButton = document.getElementById("selection-translate");
+        const translationCard = document.getElementById("translation-card");
+        const translationText = document.getElementById("translation-text");
+        let selectedTextForTranslation = "";
+        let translationInProgress = false;
+
+        function escapeHtml(value) {
+          return String(value).replace(/[&<>"']/g, (character) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", "\"": "&quot;", "'": "&#39;" })[character]);
+        }
+
+        function inlineMarkdown(text) {
+          let html = escapeHtml(text);
+          html = html.replace(/`([^`]+)`/g, "<code>$1</code>");
+          html = html.replace(/\*\*(.+?)\*\*/g, "<strong>$1</strong>");
+          html = html.replace(/\*(.+?)\*/g, "<em>$1</em>");
+          html = html.replace(/\[([^\]]+)\]\((https?:\/\/[^\s)]+)\)/g, '<a href="$2" target="_blank" rel="noopener noreferrer">$1</a>');
+          return html;
+        }
+
+        function markdownToHtml(markdown) {
+          const output = [];
+          let paragraph = [];
+          let listType = "";
+          let codeLines = null;
+          const flushParagraph = () => { if (paragraph.length) output.push(`<p>${inlineMarkdown(paragraph.join(" "))}</p>`); paragraph = []; };
+          const closeList = () => { if (listType) { output.push(`</${listType}>`); listType = ""; } };
+          for (const line of String(markdown || "").replace(/\r\n?/g, "\n").split("\n")) {
+            if (/^\s*```/.test(line)) {
+              flushParagraph(); closeList();
+              if (codeLines) { output.push(`<pre><code>${escapeHtml(codeLines.join("\n"))}</code></pre>`); codeLines = null; }
+              else codeLines = [];
+              continue;
+            }
+            if (codeLines) { codeLines.push(line); continue; }
+            if (!line.trim()) { flushParagraph(); closeList(); continue; }
+            const heading = line.match(/^\s*(#{1,3})\s+(.+)$/);
+            if (heading) { flushParagraph(); closeList(); const level = heading[1].length; output.push(`<h${level}>${inlineMarkdown(heading[2])}</h${level}>`); continue; }
+            const quote = line.match(/^\s*>\s?(.*)$/);
+            if (quote) { flushParagraph(); closeList(); output.push(`<blockquote>${inlineMarkdown(quote[1])}</blockquote>`); continue; }
+            const item = line.match(/^\s*(?:[-*+]\s+|\d+[.)]\s+)(.*)$/);
+            if (item) { flushParagraph(); const wanted = /^\s*\d+[.)]/.test(line) ? "ol" : "ul"; if (listType !== wanted) { closeList(); listType = wanted; output.push(`<${listType}>`); } output.push(`<li>${inlineMarkdown(item[1])}</li>`); continue; }
+            closeList(); paragraph.push(line.trim());
+          }
+          flushParagraph(); closeList();
+          if (codeLines) output.push(`<pre><code>${escapeHtml(codeLines.join("\n"))}</code></pre>`);
+          return output.join("\n");
+        }
+
+        function hideTranslationButton() {
+          translationButton.classList.add("hidden");
+          selectedTextForTranslation = "";
+        }
+
+        function updateSelectionTranslateButton() {
+          const selection = window.getSelection();
+          const text = selection ? selection.toString().trim() : "";
+          if (!text || !selection || selection.isCollapsed || !reader.contains(selection.anchorNode) || !reader.contains(selection.focusNode)) {
+            hideTranslationButton();
+            return;
+          }
+
+          selectedTextForTranslation = text.slice(0, 20_000);
+          const range = selection.getRangeAt(0);
+          const rect = range.getBoundingClientRect();
+          const left = Math.max(8, Math.min(rect.left + rect.width / 2 - 19, window.innerWidth - 46));
+          const top = rect.top > 54 ? rect.top - 48 : Math.min(rect.bottom + 8, window.innerHeight - 46);
+          translationButton.style.left = `${left}px`;
+          translationButton.style.top = `${Math.max(8, top)}px`;
+          translationButton.classList.remove("hidden");
+        }
+
+        async function translateSelectedText() {
+          const text = selectedTextForTranslation;
+          if (!text || translationInProgress) return;
+          translationInProgress = true;
+          translationButton.disabled = true;
+          translationCard.classList.remove("hidden");
+          translationText.classList.remove("translation-error");
+          translationText.textContent = "Translating…";
+          try {
+            const result = await window.mocu.extension.execute("translate", { text });
+            const translated = typeof result === "string" ? result : result && typeof result.text === "string" ? result.text : "";
+            if (!translated.trim()) throw new Error("The language model returned no translation.");
+            translationText.textContent = translated.trim();
+          } catch (error) {
+            translationText.classList.add("translation-error");
+            translationText.textContent = error instanceof Error ? error.message : String(error);
+          } finally {
+            translationInProgress = false;
+            translationButton.disabled = false;
+            hideTranslationButton();
+            window.getSelection()?.removeAllRanges();
+          }
+        }
+
+        reader.addEventListener("mouseup", () => setTimeout(updateSelectionTranslateButton, 0));
+        reader.addEventListener("keyup", updateSelectionTranslateButton);
+        reader.addEventListener("touchend", () => setTimeout(updateSelectionTranslateButton, 0));
+        document.addEventListener("selectionchange", () => {
+          if (document.activeElement !== translationButton) updateSelectionTranslateButton();
+        });
+        translationButton.addEventListener("mousedown", (event) => event.preventDefault());
+        translationButton.addEventListener("click", () => void translateSelectedText());
+        document.getElementById("translation-close").addEventListener("click", () => translationCard.classList.add("hidden"));
+
+        function dateFolderKey(name) {
+          const match = String(name).match(/^(\d{1,4})-(\d{1,2})-(\d{1,4})$/);
+          if (!match) return null;
+          const parts = match.slice(1).map(Number);
+          const [year, month, day] = parts[0] >= 1000 ? parts : [parts[2], parts[0], parts[1]];
+          if (year < 1900 || month < 1 || month > 12 || day < 1 || day > 31) return null;
+          const date = new Date(Date.UTC(year, month - 1, day));
+          if (date.getUTCFullYear() !== year || date.getUTCMonth() !== month - 1 || date.getUTCDate() !== day) return null;
+          return date.getTime();
+        }
+
+        function normalizeArticle(file, content, index, folderDate) {
+          const lines = String(content || "").replace(/\r\n?/g, "\n").split("\n");
+          const titleIndex = lines.findIndex((line) => /^\s*Title\s*:/i.test(line));
+          const markdownTitleIndex = titleIndex < 0 ? lines.findIndex((line) => /^\s*#\s+/.test(line)) : -1;
+          const title = titleIndex >= 0
+            ? lines[titleIndex].replace(/^\s*Title\s*:\s*/i, "").trim()
+            : markdownTitleIndex >= 0
+              ? lines[markdownTitleIndex].replace(/^\s*#\s+/, "").trim()
+              : file.name.replace(/\.(?:txt|md|markdown)$/i, "").replace(/[_-]+/g, " ").trim() || `Story ${index + 1}`;
+          const articleContent = lines.filter((_, lineIndex) => lineIndex !== titleIndex && lineIndex !== markdownTitleIndex).join("\n").trim();
+          const plain = articleContent.replace(/^#{1,6}\s+/gm, "").replace(/[*_`>#\[\]()]/g, "").replace(/\s+/g, " ").trim();
+          const words = plain.split(" ").filter(Boolean);
+          const summary = words.slice(0, 38).join(" ") + (words.length > 38 ? "…" : "");
+          return { title: title || `Story ${index + 1}`, content: articleContent, summary, date: folderDate, fileName: file.name, path: file.path };
+        }
+
+        function showState(title, message, isError = false) {
+          count.textContent = "";
+          list.innerHTML = `<div class="state-card${isError ? " error-card" : ""}"><strong>${escapeHtml(title)}</strong>${escapeHtml(message)}</div>`;
+        }
+
+        function openArticle(article) {
+          document.getElementById("reader-kicker").textContent = "NEWS · FULL STORY";
+          document.getElementById("reader-title").textContent = article.title;
+          document.getElementById("reader-meta").innerHTML = `<span>${escapeHtml(article.date || currentDate || "Latest edition")}</span><span>·</span><span>${escapeHtml(article.fileName)}</span>`;
+          const body = document.getElementById("reader-body");
+          if (/\.(?:md|markdown)$/i.test(article.fileName)) { body.classList.remove("raw-body"); body.innerHTML = markdownToHtml(article.content); }
+          else { body.classList.add("raw-body"); body.textContent = article.content || "This story has no article text."; }
+          document.getElementById("reader-bottom").textContent = "End of story";
+          translationCard.classList.add("hidden");
+          hideTranslationButton();
+          home.classList.add("hidden"); reader.classList.remove("hidden"); reader.scrollTop = 0;
+          history.replaceState(null, "", `#news-${encodeURIComponent(article.fileName)}`);
+        }
+
+        function closeArticle() {
+          reader.classList.add("hidden"); home.classList.remove("hidden"); history.replaceState(null, "", "");
+          translationCard.classList.add("hidden");
+          hideTranslationButton();
+        }
+
+        function renderArticles() {
+          const query = search.value.trim().toLowerCase();
+          const visible = articles.filter((article) => `${article.title} ${article.summary}`.toLowerCase().includes(query));
+          count.textContent = `${visible.length} ${visible.length === 1 ? "story" : "stories"}`;
+          if (!visible.length) { showState(articles.length ? "No matching stories" : "No stories in this edition", articles.length ? "Try a different search phrase." : "The newest date folder does not contain any readable text stories."); return; }
+          list.innerHTML = visible.map((article) => {
+            const index = articles.indexOf(article) + 1;
+            return `<button class="article-card" type="button" data-article-index="${index - 1}"><span class="article-number">${String(index).padStart(2, "0")}</span><span class="article-copy"><span class="article-title">${escapeHtml(article.title)}</span><span class="article-preview">${escapeHtml(article.summary || "Open this story to read the full article.")}</span><span class="article-meta"><span>${escapeHtml(article.fileName)}</span></span></span><span class="article-arrow" aria-hidden="true">›</span></button>`;
+          }).join("");
+          list.querySelectorAll("[data-article-index]").forEach((button) => button.addEventListener("click", () => openArticle(visible[Number(button.dataset.articleIndex)])));
+        }
+
+        async function loadArticles() {
+          const refresh = document.getElementById("refresh");
+          refresh.disabled = true; refresh.style.opacity = ".65";
+          showState("Loading your edition", "Loading the latest date-named edition…");
+          try {
+            if (!folderSelectionCompleted) {
+              await window.mocu.filesystem.chooseFolder({ suggestedPath: "E:\\news" });
+            }
+            const entries = await window.mocu.filesystem.list("");
+            folderSelectionCompleted = true;
+            const latest = entries.filter((entry) => entry && entry.kind === "directory")
+              .map((entry) => ({ entry, dateKey: dateFolderKey(entry.name) }))
+              .filter((item) => item.dateKey !== null)
+              .sort((left, right) => right.dateKey - left.dateKey)[0];
+            if (!latest) {
+              currentDate = ""; articles = []; datePill.textContent = "No edition found";
+              showState("No date-named folders found", "Choose a folder containing date-named subfolders such as 10-9-2026.");
+              return;
+            }
+            currentDate = latest.entry.name; datePill.textContent = `Edition · ${currentDate}`;
+            const folderEntries = await window.mocu.filesystem.list(latest.entry.path);
+            const files = folderEntries.filter((entry) => entry && entry.kind === "file" && /\.(?:txt|md|markdown)$/i.test(entry.name));
+            const contents = await Promise.all(files.map((file) => window.mocu.filesystem.readText(file.path)));
+            articles = files.map((file, index) => normalizeArticle(file, contents[index], index, currentDate));
+            articles.sort((left, right) => left.fileName.localeCompare(right.fileName));
+            renderArticles();
+          } catch (error) {
+            showState("Could not load the news", error instanceof Error ? error.message : String(error), true);
+          } finally { refresh.disabled = false; refresh.style.opacity = "1"; }
+        }
+        document.getElementById("back").addEventListener("click", closeArticle);
+        document.getElementById("refresh").addEventListener("click", () => void loadArticles());
+        search.addEventListener("input", renderArticles);
+        document.getElementById("font-smaller").addEventListener("click", () => { readerArticle.classList.remove("reader-font-large"); readerArticle.classList.add("reader-font-small"); });
+        document.getElementById("font-larger").addEventListener("click", () => { readerArticle.classList.remove("reader-font-small"); readerArticle.classList.add("reader-font-large"); });
+        window.addEventListener("keydown", (event) => { if (event.key === "Escape" && !reader.classList.contains("hidden")) closeArticle(); });
+        window.addEventListener("hashchange", () => { if (location.hash === "#news" && !reader.classList.contains("hidden")) closeArticle(); });
+        void loadArticles();
+})();
+</script>
+<script src="./testtime.js"></script>
+</body>
+</html>

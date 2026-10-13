@@ -18,7 +18,7 @@ mod mcp_stdio;
 // Install resources
 mod install_resources;
 
-use extension_host::manager::ExtensionManager;
+use extension_host::{manager::ExtensionManager, ExtensionFileAccess};
 use mcp_stdio::McpStdioHost;
 
 #[derive(serde::Serialize)]
@@ -122,6 +122,8 @@ pub fn run() {
             }
         }))
         // Mocu plugins
+        .plugin(tauri_plugin_updater::Builder::new().build())
+        .plugin(tauri_plugin_process::init())
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_shell::init())
         .plugin(tauri_plugin_fs::init())
@@ -131,7 +133,7 @@ pub fn run() {
         .plugin(tauri_plugin_sql::Builder::default().build())
         // Register the extension manager state
         .manage(ExtensionManager::default())
-        // Register the MCP stdio process host state
+        .manage(ExtensionFileAccess::default())
         .manage(McpStdioHost::default())
         // Register all Tauri commands
         .invoke_handler(tauri::generate_handler![
@@ -142,6 +144,10 @@ pub fn run() {
             extension_host::extension_execute,
             extension_host::extension_list_apps,
             extension_host::extension_app_url,
+            extension_host::extension_fs_has_grant,
+            extension_host::extension_fs_grant,
+            extension_host::extension_fs_list,
+            extension_host::extension_fs_read,
             extension_host::extension_respond,
             extension_host::extension_stop,
             extension_host::extension_job_status,

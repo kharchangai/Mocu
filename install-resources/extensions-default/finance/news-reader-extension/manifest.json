@@ -1,0 +1,20 @@
+{
+  "id": "com.mocu.apps.news-reader",
+  "name": "News",
+  "description": "Read stories from the latest date-named folder in a user-approved news archive.",
+  "version": "1.2.0",
+  "runtime": "node",
+  "entry": "index.js",
+  "permissions": ["filesystem.read"],
+  "commands": [
+    {
+      "id": "translate",
+      "title": "Translate selected news text",
+      "description": "Translate selected text into Persian using Mocu's configured language model."
+    }
+  ],
+  "app": {
+    "entry": "ui/index.html",
+    "title": "News"
+  }
+}

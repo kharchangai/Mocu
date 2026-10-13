@@ -42,6 +42,7 @@
   "bundle": {
     "active": true,
     "targets": "all",
+    "createUpdaterArtifacts": true,
     "icon": [
       "icons/32x32.png",
       "icons/128x128.png",
@@ -51,6 +52,14 @@
     ],
     "resources": {
       "target/install-resources-bundle/": "install-resources/"
+    }
+  },
+  "plugins": {
+    "updater": {
+      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IDE3NEFGQTc5ODRCMDFBNUIKUldSYkdyQ0VlZnBLRjhyZHFueUhKS0MxU0hoMWhLcFVXWVUvamNIRFMyQkJPNXExakh0V1REeVgK",
+      "endpoints": [
+        "https://github.com/kharchangai/Mocu/releases/latest/download/latest.json"
+      ]
     }
   }
 }

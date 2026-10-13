@@ -12,6 +12,9 @@
     "core:default",
     "core:event:default",
 
+    "updater:default",
+    "process:allow-restart",
+
     "core:window:allow-close",
     "core:window:allow-start-dragging",
     "core:window:allow-set-size",

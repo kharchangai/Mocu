@@ -2,10 +2,9 @@ pub mod jobs;
 pub mod manager;
 pub mod manifest;
 pub mod process;
-
 use std::path::{Component, Path, PathBuf};
 
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use tauri::{AppHandle, Manager, State};
 
@@ -159,7 +158,10 @@ pub fn extension_list_apps(app: AppHandle) -> Result<Vec<ExtensionAppListing>, S
 }
 
 #[tauri::command]
-pub fn extension_app_url(app: AppHandle, input: ExtensionAppUrlInput) -> Result<String, String> {
+pub fn extension_app_url(
+    app: AppHandle,
+    input: ExtensionAppUrlInput,
+) -> Result<String, String> {
     let app_data = app
         .path()
         .app_data_dir()
@@ -191,9 +193,11 @@ pub fn extension_app_url(app: AppHandle, input: ExtensionAppUrlInput) -> Result<
     let asset_directory = entry
         .parent()
         .ok_or_else(|| "App entry has no parent folder.".to_string())?;
+
     app.asset_protocol_scope()
         .allow_directory(asset_directory, true)
         .map_err(|error| format!("Could not authorize extension app assets: {error}"))?;
+
     Ok(entry.to_string_lossy().into_owned())
 }
 
@@ -284,4 +288,298 @@ pub fn extension_respond(
         input.result,
         input.error,
     )
+}
+const MAX_EXTENSION_FS_ENTRIES: usize = 2_000;
+const MAX_EXTENSION_FS_READ_BYTES: u64 = 2 * 1024 * 1024;
+
+/// Session-scoped user-approved folder grants for read-only extension app access.
+#[derive(Default)]
+pub struct ExtensionFileAccess {
+    grants: std::sync::Mutex<std::collections::HashMap<String, (PathBuf, PathBuf)>>,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ExtensionFsGrantInput {
+    pub extension_id: String,
+    pub extension_path: String,
+    pub root_path: String,
+}
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ExtensionFsListInput {
+    pub extension_id: String,
+    pub extension_path: String,
+    pub relative_path: Option<String>,
+}
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ExtensionFsReadInput {
+    pub extension_id: String,
+    pub extension_path: String,
+    pub relative_path: String,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ExtensionFsEntry {
+    pub name: String,
+    pub path: String,
+    pub kind: String,
+    pub size: Option<u64>,
+}
+
+fn resolve_inside_root(root: &Path, relative_path: &str) -> Result<PathBuf, String> {
+    let normalized = relative_path.trim().replace('\\', "/");
+    let relative = Path::new(&normalized);
+    if normalized.contains(':')
+        || relative.is_absolute()
+        || relative
+            .components()
+            .any(|component| !matches!(component, Component::Normal(_)))
+    {
+        return Err("The requested path must be relative to the approved folder.".to_string());
+    }
+    let candidate = if normalized.is_empty() {
+        root.to_path_buf()
+    } else {
+        root.join(relative)
+    };
+    let resolved = candidate
+        .canonicalize()
+        .map_err(|error| format!("Cannot access the requested path: {error}"))?;
+    if !resolved.starts_with(root) {
+        return Err("The requested path resolves outside the approved folder.".to_string());
+    }
+    Ok(resolved)
+}
+
+fn get_extension_root(
+    app: &AppHandle,
+    input_id: &str,
+    input_path: &str,
+) -> Result<PathBuf, String> {
+    if input_id.trim().is_empty()
+        || input_id
+            .chars()
+            .any(|character| matches!(character, '/' | '\\' | ':'))
+    {
+        return Err("Invalid extension ID.".to_string());
+    }
+    let installed = app
+        .path()
+        .app_data_dir()
+        .map_err(|error| error.to_string())?
+        .join("extensions")
+        .join(input_id)
+        .canonicalize()
+        .map_err(|error| format!("Extension is not installed: {error}"))?;
+    let supplied = PathBuf::from(input_path)
+        .canonicalize()
+        .map_err(|error| format!("Invalid extension path: {error}"))?;
+    if installed != supplied || !installed.is_dir() {
+        return Err("Extension path did not match the installed extension ID.".to_string());
+    }
+    let manifest_path = installed.join("manifest.json");
+    let manifest: ExtensionManifest = serde_json::from_str(
+        &std::fs::read_to_string(&manifest_path)
+            .map_err(|error| format!("Cannot read extension manifest: {error}"))?,
+    )
+    .map_err(|error| format!("Invalid extension manifest: {error}"))?;
+    if manifest.id != input_id {
+        return Err("Extension ID does not match its manifest.".to_string());
+    }
+    Ok(installed)
+}
+
+#[tauri::command]
+pub fn extension_fs_grant(
+    app: AppHandle,
+    access: State<'_, ExtensionFileAccess>,
+    input: ExtensionFsGrantInput,
+) -> Result<(), String> {
+    let extension_root = get_extension_root(&app, &input.extension_id, &input.extension_path)?;
+    verify_filesystem_permission(&app, &input.extension_id, &input.extension_path)?;
+    let root = PathBuf::from(&input.root_path)
+        .canonicalize()
+        .map_err(|error| format!("Cannot access the approved folder: {error}"))?;
+    if !root.is_dir() {
+        return Err("The approved filesystem path is not a folder.".to_string());
+    }
+    access
+        .grants
+        .lock()
+        .map_err(|_| "Filesystem permission store is unavailable.".to_string())?
+        .insert(input.extension_id, (extension_root, root));
+    Ok(())
+}
+
+/// Check whether this installed extension already has an approved folder.
+#[tauri::command]
+pub fn extension_fs_has_grant(
+    app: AppHandle,
+    access: State<'_, ExtensionFileAccess>,
+    extension_id: String,
+) -> Result<bool, String> {
+    if extension_id.trim().is_empty()
+        || extension_id
+            .chars()
+            .any(|character| matches!(character, '/' | '\\' | ':'))
+    {
+        return Err("Invalid extension ID.".to_string());
+    }
+    let extension_root = app
+        .path()
+        .app_data_dir()
+        .map_err(|error| error.to_string())?
+        .join("extensions")
+        .join(&extension_id)
+        .canonicalize()
+        .map_err(|error| format!("Extension is not installed: {error}"))?;
+    verify_filesystem_permission(
+        &app,
+        &extension_id,
+        extension_root.to_string_lossy().as_ref(),
+    )?;
+    let mut grants = access
+        .grants
+        .lock()
+        .map_err(|_| "Filesystem permission store is unavailable.".to_string())?;
+    let Some((granted_extension_root, root)) = grants.get(&extension_id).cloned() else {
+        return Ok(false);
+    };
+    if granted_extension_root == extension_root && root.is_dir() {
+        Ok(true)
+    } else {
+        grants.remove(&extension_id);
+        Ok(false)
+    }
+}
+
+fn extension_granted_root(
+    access: &ExtensionFileAccess,
+    extension_id: &str,
+    extension_root: &Path,
+) -> Result<PathBuf, String> {
+    access
+        .grants
+        .lock()
+        .map_err(|_| "Filesystem permission store is unavailable.".to_string())?
+        .get(extension_id)
+        .filter(|(granted_extension_root, root)| {
+            granted_extension_root == extension_root && root.is_dir()
+        })
+        .map(|(_, root)| root.clone())
+        .ok_or_else(|| {
+            "No folder has been approved for this extension. Choose a folder first.".to_string()
+        })
+}
+
+/// Verify each filesystem bridge call against the installed manifest.
+fn verify_filesystem_permission(
+    app: &AppHandle,
+    extension_id: &str,
+    extension_path: &str,
+) -> Result<(), String> {
+    let root = get_extension_root(app, extension_id, extension_path)?;
+    let manifest: ExtensionManifest = serde_json::from_str(
+        &std::fs::read_to_string(root.join("manifest.json"))
+            .map_err(|error| format!("Cannot read extension manifest: {error}"))?,
+    )
+    .map_err(|error| format!("Invalid extension manifest: {error}"))?;
+    if manifest
+        .permissions
+        .iter()
+        .any(|permission| permission == "filesystem.read")
+    {
+        Ok(())
+    } else {
+        Err("The extension has not declared the 'filesystem.read' permission.".to_string())
+    }
+}
+
+/// Read-only filesystem APIs for extension app UIs. A folder is granted only
+/// after the user chooses it in Mocu's native directory picker.
+#[tauri::command]
+pub fn extension_fs_list(
+    app: AppHandle,
+    access: State<'_, ExtensionFileAccess>,
+    input: ExtensionFsListInput,
+) -> Result<Vec<ExtensionFsEntry>, String> {
+    let extension_root = get_extension_root(&app, &input.extension_id, &input.extension_path)?;
+    verify_filesystem_permission(&app, &input.extension_id, &input.extension_path)?;
+    let root = extension_granted_root(&access, &input.extension_id, &extension_root)?;
+    let relative = input.relative_path.as_deref().unwrap_or("");
+    let directory = resolve_inside_root(&root, relative)?;
+    if !directory.is_dir() {
+        return Err("The requested path is not a folder.".to_string());
+    }
+    let mut entries = Vec::new();
+    for entry in std::fs::read_dir(&directory)
+        .map_err(|error| format!("Cannot list the approved folder: {error}"))?
+    {
+        if entries.len() >= MAX_EXTENSION_FS_ENTRIES {
+            return Err(format!(
+                "Folder contains more than {MAX_EXTENSION_FS_ENTRIES} items."
+            ));
+        }
+        let entry = entry.map_err(|error| error.to_string())?;
+        let path = entry.path();
+        let resolved = path
+            .canonicalize()
+            .map_err(|error| format!("Cannot resolve a folder entry: {error}"))?;
+        if !resolved.starts_with(&root) {
+            continue;
+        }
+        let file_type = entry.file_type().map_err(|error| error.to_string())?;
+        if !file_type.is_dir() && !file_type.is_file() {
+            continue;
+        }
+        let name = entry.file_name().to_string_lossy().into_owned();
+        let child_relative = Path::new(relative).join(&name);
+        entries.push(ExtensionFsEntry {
+            name,
+            path: child_relative.to_string_lossy().replace('\\', "/"),
+            kind: if file_type.is_dir() {
+                "directory"
+            } else {
+                "file"
+            }
+            .to_string(),
+            size: if file_type.is_file() {
+                Some(entry.metadata().map_err(|error| error.to_string())?.len())
+            } else {
+                None
+            },
+        });
+    }
+    entries.sort_by(|left, right| {
+        let left_dir = left.kind == "directory";
+        let right_dir = right.kind == "directory";
+        right_dir
+            .cmp(&left_dir)
+            .then_with(|| left.name.cmp(&right.name))
+    });
+    Ok(entries)
+}
+
+#[tauri::command]
+pub fn extension_fs_read(
+    app: AppHandle,
+    access: State<'_, ExtensionFileAccess>,
+    input: ExtensionFsReadInput,
+) -> Result<String, String> {
+    let extension_root = get_extension_root(&app, &input.extension_id, &input.extension_path)?;
+    verify_filesystem_permission(&app, &input.extension_id, &input.extension_path)?;
+    let root = extension_granted_root(&access, &input.extension_id, &extension_root)?;
+    let file = resolve_inside_root(&root, &input.relative_path)?;
+    if !file.is_file() {
+        return Err("The requested path is not a file.".to_string());
+    }
+    let metadata = std::fs::metadata(&file).map_err(|error| error.to_string())?;
+    if metadata.len() > MAX_EXTENSION_FS_READ_BYTES {
+        return Err("The requested file is larger than the 2 MiB read limit.".to_string());
+    }
+    std::fs::read_to_string(file)
+        .map_err(|error| format!("Cannot read the requested text file: {error}"))
 }

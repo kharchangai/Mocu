@@ -154,6 +154,12 @@ async function handleHostMessage(
     return;
   }
   try {
+
+    const model =
+    typeof params.model === "string" && params.model.trim()
+      ? params.model.trim()
+      : undefined;
+
     const prompt =
       typeof params.prompt === "string" ? params.prompt.trim() : "";
 
@@ -188,6 +194,7 @@ async function handleHostMessage(
         : undefined;
 
     const text = await generateSimpleAnswer(prompt, undefined, {
+      model,
       systemPrompt,
       temperature,
       maxTokens,
