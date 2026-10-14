@@ -1,0 +1,108 @@
+export const SUPPORTED_MANIFEST_VERSION = 1;
+export const SUPPORTED_EXTENSION_RUNTIMES = [
+    "node",
+    "python",
+];
+const isRecord = (value) => {
+    return (typeof value === "object" &&
+        value !== null &&
+        !Array.isArray(value));
+};
+const isNonEmptyString = (value) => {
+    return (typeof value === "string" &&
+        value.trim().length > 0);
+};
+const isValidExtensionId = (value) => {
+    return /^[a-z0-9]+(?:[._-][a-z0-9]+)+$/.test(value);
+};
+const isValidVersion = (value) => {
+    return /^\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?$/.test(value);
+};
+const containsUnsafePathPart = (value) => {
+    const normalized = value.replaceAll("\\", "/");
+    return (normalized.startsWith("/") ||
+        normalized.includes("../") ||
+        normalized === ".." ||
+        /^[A-Za-z]:\//.test(normalized));
+};
+export const validateExtensionManifest = (value) => {
+    const errors = [];
+    if (!isRecord(value)) {
+        return {
+            valid: false,
+            errors: ["Manifest must be a JSON object."],
+        };
+    }
+    if (value.manifestVersion !== SUPPORTED_MANIFEST_VERSION) {
+        errors.push(`manifestVersion must be ${SUPPORTED_MANIFEST_VERSION}.`);
+    }
+    if (!isNonEmptyString(value.id)) {
+        errors.push("id must be a non-empty string.");
+    }
+    else if (!isValidExtensionId(value.id)) {
+        errors.push("id must use a reverse-domain style identifier such as com.example.extension.");
+    }
+    if (!isNonEmptyString(value.name)) {
+        errors.push("name must be a non-empty string.");
+    }
+    if (!isNonEmptyString(value.description)) {
+        errors.push("description must be a non-empty string.");
+    }
+    if (!isNonEmptyString(value.version)) {
+        errors.push("version must be a non-empty string.");
+    }
+    else if (!isValidVersion(value.version)) {
+        errors.push("version must be a semantic version such as 1.0.0.");
+    }
+    if (value.runtime !== "node" &&
+        value.runtime !== "python") {
+        errors.push('runtime must be either "node" or "python".');
+    }
+    if (!isNonEmptyString(value.entry)) {
+        errors.push("entry must be a non-empty string.");
+    }
+    else if (containsUnsafePathPart(value.entry)) {
+        errors.push("entry must be a safe relative path inside the extension directory.");
+    }
+    if (value.permissions !== undefined &&
+        (!Array.isArray(value.permissions) ||
+            !value.permissions.every(isNonEmptyString))) {
+        errors.push("permissions must be an array of non-empty strings.");
+    }
+    if (value.engines !== undefined &&
+        !isRecord(value.engines)) {
+        errors.push("engines must be an object.");
+    }
+    if (value.configuration !== undefined &&
+        !isRecord(value.configuration)) {
+        errors.push("configuration must be an object.");
+    }
+    if (value.commands !== undefined) {
+        if (!Array.isArray(value.commands)) {
+            errors.push("commands must be an array.");
+        }
+        else {
+            for (const [index, command] of value.commands.entries()) {
+                if (!isRecord(command)) {
+                    errors.push(`commands[${index}] must be an object.`);
+                    continue;
+                }
+                if (command.interactive !== undefined &&
+                    typeof command.interactive !== "boolean") {
+                    errors.push(`commands[${index}].interactive must be a boolean.`);
+                }
+            }
+        }
+    }
+    if (errors.length > 0) {
+        return {
+            valid: false,
+            errors,
+        };
+    }
+    return {
+        valid: true,
+        manifest: value,
+    };
+};
+//# sourceMappingURL=manifest.js.map

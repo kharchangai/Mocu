@@ -10,10 +10,10 @@ lerna-debug.log*
 # Dependency directories
 node_modules
 dist
-!install-resources/extensions-default/ssh/vendor/extension-sdk/dist/
-!install-resources/extensions-default/ssh/vendor/extension-sdk/dist/**
-!install-resources/extensions-default/ssh/vendor/extension-contracts/dist/
-!install-resources/extensions-default/ssh/vendor/extension-contracts/dist/**
+# Vendored runtime dependencies (extension SDK/contracts) ship their dist with the
+# extension — never ignore them, for default AND user-created extensions alike.
+!**/vendor/**/dist/
+!**/vendor/**/dist/**
 dist-ssr
 *.local
 
