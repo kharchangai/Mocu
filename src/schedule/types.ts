@@ -16,6 +16,9 @@ export type ScheduleRecurrence =
   | 'weekly'
   | 'monthly';
 
+/** JavaScript local weekday index: Sunday = 0, Saturday = 6. */
+export type ScheduleWeekday = 0 | 1 | 2 | 3 | 4 | 5 | 6;
+
 export type ScheduleStatus =
   | 'pending'
   | 'running'
@@ -49,6 +52,12 @@ export type ScheduleItem = {
 
   /** How the item repeats after it fires. */
   recurrence: ScheduleRecurrence;
+
+  /** Selected local weekdays for weekly repeating schedules; omitted means legacy same-weekday behavior. */
+  recurrenceWeekdays?: ScheduleWeekday[];
+
+  /** Original start time, retained while `time` advances to the next run. */
+  recurrenceStartTime?: string;
 
   status: ScheduleStatus;
 

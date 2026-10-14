@@ -36,7 +36,9 @@ import type {
   ScheduleKind,
   ScheduleRecurrence,
   ScheduleRunLog,
+  ScheduleWeekday,
 } from '../types';
+import { alignToSelectedWeekday } from '../recurrence';
 import {
   listAvailableAgents,
   type AvailableAgent,
@@ -49,6 +51,7 @@ type Draft = {
   date: string;
   time: string;
   recurrence: ScheduleRecurrence;
+  recurrenceWeekdays: ScheduleWeekday[];
   reminderText: string;
   agentName: string;
   agentInput: string;
@@ -76,18 +79,30 @@ function localTime(date: Date): string {
 }
 
 function toDraft(item: ScheduleItem | null, selectedDay: string): Draft {
-  const date = item?.time.slice(0, 10) || selectedDay;
-  const time = item?.time.slice(11, 16) || localTime(new Date());
+  const date = item?.recurrenceStartTime?.slice(0, 10) || item?.time.slice(0, 10) || selectedDay;
+  const time = item?.recurrenceStartTime?.slice(11, 16) || item?.time.slice(11, 16) || localTime(new Date());
+  const dateObject = dateFromKey(date);
   return {
     title: item?.title ?? '',
     kind: item?.kind ?? 'reminder',
     date,
     time,
     recurrence: item?.recurrence ?? 'none',
+    recurrenceWeekdays: item?.recurrenceWeekdays ?? [dateObject.getDay() as ScheduleWeekday],
     reminderText: item?.reminderText ?? '',
     agentName: item?.agentName ?? '',
     agentInput: item?.agentInput ?? '',
   };
+}
+
+function isRecurringOnDate(item: ScheduleItem, date: Date): boolean {
+  if (item.recurrence !== 'weekly' || !item.recurrenceWeekdays?.length) return false;
+  const startDate = item.recurrenceStartTime?.slice(0, 10) || item.time.slice(0, 10);
+  return dateKey(date) >= startDate && item.recurrenceWeekdays.includes(date.getDay() as ScheduleWeekday);
+}
+
+function recurrenceSummary(weekdays: ScheduleWeekday[]): string {
+  return weekdays.map((day) => new Date(2024, 0, 7 + day).toLocaleDateString(undefined, { weekday: 'short' })).join(', ');
 }
 
 function formatDayHeading(key: string): string {
@@ -206,9 +221,13 @@ export function SchedulePage() {
     return grouped;
   }, [schedules]);
 
-  const selectedItems = itemsByDay.get(selectedDay) ?? [];
-  const monthItems = schedules.filter((item) => item.time.startsWith(
-    `${month.getFullYear()}-${pad(month.getMonth() + 1)}`,
+  const selectedItems = schedules.filter((item) =>
+    item.time.startsWith(selectedDay) || isRecurringOnDate(item, dateFromKey(selectedDay)),
+  ).sort((a, b) => a.time.slice(11, 16).localeCompare(b.time.slice(11, 16)));
+  const monthKey = `${month.getFullYear()}-${pad(month.getMonth() + 1)}`;
+  const monthItems = schedules.filter((item) => item.time.startsWith(monthKey) || (
+    item.recurrence === 'weekly' && !!item.recurrenceWeekdays?.length &&
+    (item.recurrenceStartTime?.slice(0, 7) || item.time.slice(0, 7)) <= monthKey
   ));
 
   const openNewEditor = () => {
@@ -239,16 +258,28 @@ export function SchedulePage() {
       setError('Add a title, date, and time before saving.');
       return;
     }
+    if (draft.recurrence === 'weekly' && draft.recurrenceWeekdays.length === 0) {
+      setError('Choose at least one weekday for a weekly schedule.');
+      return;
+    }
     if (draft.kind === 'agent' && (!draft.agentName || !draft.agentInput.trim())) {
       setError('Agent schedules need an agent and an instruction.');
       return;
     }
-
+    const recurrenceWeekdays = draft.recurrence === 'weekly' && draft.recurrenceWeekdays.length
+      ? draft.recurrenceWeekdays
+      : undefined;
+    const requestedTime = `${draft.date}T${draft.time}`;
+    const scheduledTime = recurrenceWeekdays
+      ? alignToSelectedWeekday(requestedTime, recurrenceWeekdays)
+      : requestedTime;
     const payload: Partial<ScheduleItem> & Pick<ScheduleItem, 'title' | 'kind' | 'time'> = {
       title,
       kind: draft.kind,
-      time: `${draft.date}T${draft.time}`,
+      time: scheduledTime,
       recurrence: draft.recurrence,
+      recurrenceWeekdays,
+      recurrenceStartTime: recurrenceWeekdays ? scheduledTime : undefined,
       reminderText: draft.kind === 'reminder' ? draft.reminderText.trim() || title : undefined,
       agentName: draft.kind === 'agent' ? draft.agentName : undefined,
       agentInput: draft.kind === 'agent' ? draft.agentInput.trim() : undefined,
@@ -342,6 +373,8 @@ export function SchedulePage() {
           <div className="schedule-calendar-grid">
             {calendarCells.map((cell) => {
               const dayItems = itemsByDay.get(cell.key) ?? [];
+              const recurringItems = schedules.filter((item) => isRecurringOnDate(item, cell.date));
+              const displayedItems = [...dayItems, ...recurringItems.filter((item) => !dayItems.some((existing) => existing.id === item.id))];
               const isToday = cell.key === today;
               const isSelected = cell.key === selectedDay;
               return (
@@ -352,10 +385,22 @@ export function SchedulePage() {
                   onClick={() => setSelectedDay(cell.key)}
                 >
                   <span className="schedule-day-number">{cell.date.getDate()}</span>
-                  {dayItems.length > 0 ? (
+                  {displayedItems.length > 0 ? (
                     <span className="schedule-day-events">
-                      {dayItems.slice(0, 3).map((item) => <span key={item.id} className={`schedule-dot schedule-dot-${item.kind}`} />)}
-                      {dayItems.length > 3 ? <small>+{dayItems.length - 3}</small> : null}
+                      {displayedItems.slice(0, 3).map((item) => {
+                        const recurring = isRecurringOnDate(item, cell.date);
+                        const previousDay = new Date(cell.date);
+                        previousDay.setDate(previousDay.getDate() - 1);
+                        const nextDay = new Date(cell.date);
+                        nextDay.setDate(nextDay.getDate() + 1);
+                        const connectedLeft = recurring && isRecurringOnDate(item, previousDay);
+                        const connectedRight = recurring && isRecurringOnDate(item, nextDay);
+                        return <span key={item.id} className={recurring
+                          ? `schedule-repeat-line schedule-repeat-line-${item.kind} ${connectedLeft ? 'schedule-repeat-line-connected-left' : ''} ${connectedRight ? 'schedule-repeat-line-connected-right' : ''}`
+                          : `schedule-dot schedule-dot-${item.kind}`}
+                        />;
+                      })}
+                      {displayedItems.length > 3 ? <small>+{displayedItems.length - 3}</small> : null}
                     </span>
                   ) : null}
                 </button>
@@ -382,10 +427,10 @@ export function SchedulePage() {
             <div className="schedule-agenda-list">
               {selectedItems.map((item) => (
                 <article className={`schedule-agenda-item schedule-agenda-item-${item.kind}`} key={item.id}>
-                  <div className="schedule-agenda-time"><Clock3 size={13} />{item.time.slice(11, 16)}</div>
+                  <div className="schedule-agenda-time"><Clock3 size={13} />{(item.recurrence === 'weekly' && item.recurrenceStartTime ? item.recurrenceStartTime : item.time).slice(11, 16)}</div>
                   <div className="schedule-agenda-content">
                     <h3>{item.title}</h3>
-                    <div className="schedule-agenda-meta"><span className={`schedule-kind-badge schedule-kind-${item.kind}`}>{item.kind === 'agent' ? <Bot size={11} /> : <CalendarDays size={11} />}{item.kind === 'agent' ? item.agentName || 'Agent task' : 'Reminder'}</span>{item.recurrence !== 'none' ? <span className="schedule-repeat-badge">↻ {item.recurrence}</span> : null}</div>
+                    <div className="schedule-agenda-meta"><span className={`schedule-kind-badge schedule-kind-${item.kind}`}>{item.kind === 'agent' ? <Bot size={11} /> : <CalendarDays size={11} />}{item.kind === 'agent' ? item.agentName || 'Agent task' : 'Reminder'}</span>{item.recurrence === 'weekly' && item.recurrenceWeekdays?.length ? <span className="schedule-repeat-badge">↻ Weekly · {recurrenceSummary(item.recurrenceWeekdays)}</span> : item.recurrence !== 'none' ? <span className="schedule-repeat-badge">↻ {item.recurrence}</span> : null}</div>
                     {item.kind === 'agent' && item.agentInput ? <p>{item.agentInput}</p> : item.kind === 'reminder' && item.reminderText ? <p>{item.reminderText}</p> : null}
                   </div>
                   <span className={`schedule-status schedule-status-${item.status}`}>{statusLabel(item.status)}</span>
@@ -428,6 +473,14 @@ export function SchedulePage() {
           <div className="schedule-kind-toggle" role="radiogroup" aria-label="Schedule type"><button type="button" className={editor.draft.kind === 'reminder' ? 'active' : ''} onClick={() => setEditor((current) => current ? { ...current, draft: { ...current.draft, kind: 'reminder' } } : current)}><CalendarDays size={15} /><span><strong>Reminder</strong><small>Mocu tells me at this time</small></span></button><button type="button" className={editor.draft.kind === 'agent' ? 'active' : ''} onClick={() => setEditor((current) => current ? { ...current, draft: { ...current.draft, kind: 'agent' } } : current)}><Bot size={15} /><span><strong>Agent task</strong><small>Run an agent automatically</small></span></button></div>
           <div className="schedule-form-row"><label>Date<input type="date" value={editor.draft.date} onChange={(event) => setEditor((current) => current ? { ...current, draft: { ...current.draft, date: event.target.value } } : current)} /></label><label>Time<input type="time" value={editor.draft.time} onChange={(event) => setEditor((current) => current ? { ...current, draft: { ...current.draft, time: event.target.value } } : current)} /></label></div>
           <label>Repeat<select value={editor.draft.recurrence} onChange={(event) => setEditor((current) => current ? { ...current, draft: { ...current.draft, recurrence: event.target.value as ScheduleRecurrence } } : current)}><option value="none">Does not repeat</option><option value="daily">Every day</option><option value="weekly">Every week</option><option value="monthly">Every month</option></select></label>
+          {editor.draft.recurrence === 'weekly' ? <fieldset className="schedule-weekday-picker"><legend>Repeat on</legend>{(['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'] as const).map((label, day) => <label key={day} className={editor.draft.recurrenceWeekdays.includes(day as ScheduleWeekday) ? 'active' : ''}><input type="checkbox" checked={editor.draft.recurrenceWeekdays.includes(day as ScheduleWeekday)} onChange={() => setEditor((current) => {
+            if (!current) return current;
+            const currentDays = current.draft.recurrenceWeekdays;
+            const nextDays = currentDays.includes(day as ScheduleWeekday)
+              ? currentDays.filter((value) => value !== day)
+              : [...currentDays, day as ScheduleWeekday].sort((a, b) => a - b);
+            return { ...current, draft: { ...current.draft, recurrenceWeekdays: nextDays } };
+          })} />{label}</label>)}</fieldset> : null}
           {editor.draft.kind === 'reminder' ? <label>Reminder message <span className="schedule-label-optional">Optional</span><textarea value={editor.draft.reminderText} onChange={(event) => setEditor((current) => current ? { ...current, draft: { ...current.draft, reminderText: event.target.value } } : current)} placeholder="What should Mocu remind you about?" rows={3} /></label> : <><label>Agent<select value={editor.draft.agentName} onChange={(event) => setEditor((current) => current ? { ...current, draft: { ...current.draft, agentName: event.target.value } } : current)}><option value="">Select a saved agent</option>{agents.map((agent) => <option value={agent.agentName} key={agent.path}>{agent.agentName}</option>)}</select></label><label>Agent instruction<textarea value={editor.draft.agentInput} onChange={(event) => setEditor((current) => current ? { ...current, draft: { ...current.draft, agentInput: event.target.value } } : current)} placeholder="What should the agent do when it runs?" rows={3} /></label></>}
           <div className="schedule-modal-footer"><button type="button" className="schedule-cancel-button" onClick={() => setEditor(null)}>Cancel</button><button type="submit" className="schedule-save-button">{editor.item ? 'Save changes' : 'Create schedule'}</button></div>
         </form>

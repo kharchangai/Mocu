@@ -14,12 +14,17 @@ import { z } from 'zod';
 import {
   createSchedule,
   deleteSchedule,
-  deleteSchedulesByDate,
   listSchedules,
   updateSchedule,
 } from './storage';
-import type { ScheduleItem } from './types';
+import type { ScheduleItem, ScheduleWeekday } from './types';
+import { alignToSelectedWeekday } from './recurrence';
 
+const WEEKDAY_NAMES = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+
+function formatWeekdays(days: number[]): string {
+  return days.map((day) => WEEKDAY_NAMES[day]).join(', ');
+}
 const scheduleActionSchema = z.object({
   action: z
     .enum(['create', 'list', 'update', 'delete'])
@@ -52,8 +57,13 @@ const scheduleActionSchema = z.object({
     .enum(['none', 'daily', 'weekly', 'monthly'])
     .optional()
     .describe(
-      'How the schedule repeats. Use "daily" for every-day plans like "everyday at 12", "weekly" or "monthly" when asked. Defaults to "none".',
+      'How the schedule repeats indefinitely until deleted. Use daily, weekly, or monthly. For a weekly schedule on chosen weekdays, also provide recurrenceWeekdays.',
     ),
+
+  recurrenceWeekdays: z
+    .array(z.number().int().min(0).max(6))
+    .optional()
+    .describe('Optional local weekday indexes for recurrence=weekly: Sunday=0, Monday=1, Tuesday=2, Wednesday=3, Thursday=4, Friday=5, Saturday=6. Supply one or more weekdays for a single schedule to repeat on those days indefinitely and cancel once.'),
 
   reminderText: z
     .string()
@@ -107,21 +117,21 @@ function formatItem(item: ScheduleItem): string {
     `kind: ${item.kind}`,
     `time: ${item.time}`,
     `recurrence: ${item.recurrence}`,
+    ...(item.recurrenceWeekdays?.length
+      ? [`recurrenceWeekdays: ${formatWeekdays(item.recurrenceWeekdays)}`, 'repeats indefinitely until deleted']
+      : []),
     `status: ${item.status}`,
   ];
 
   if (item.kind === 'agent') {
     parts.push(`agent: ${item.agentName ?? '?'}`);
-    if (item.agentInput) {
-      parts.push(`agentInput: ${item.agentInput}`);
-    }
+    if (item.agentInput) parts.push(`agentInput: ${item.agentInput}`);
   } else if (item.reminderText) {
     parts.push(`reminderText: ${item.reminderText}`);
   }
 
   return `- ${parts.join(', ')}`;
 }
-
 export const scheduleTool = tool(
   async (input) => {
     try {
@@ -145,21 +155,29 @@ export const scheduleTool = tool(
         if (kind === 'agent' && !input.agentName?.trim()) {
           return 'Error: kind=agent requires "agentName" (the saved agent to run). Ask the user which agent should run, or list the available agents if unsure.';
         }
-
+        const recurrence = input.recurrence ?? 'none';
+        const weekdays: ScheduleWeekday[] | undefined = recurrence === 'weekly' && input.recurrenceWeekdays?.length
+          ? [...new Set(input.recurrenceWeekdays)] as ScheduleWeekday[]
+          : undefined;
+        const alignedTime = weekdays?.length
+          ? alignToSelectedWeekday(time, weekdays)
+          : time;
         const created = await createSchedule({
           title,
           kind,
-          time,
-          recurrence: input.recurrence ?? 'none',
+          time: alignedTime,
+          recurrence,
+          recurrenceWeekdays: weekdays,
+          recurrenceStartTime: weekdays ? alignedTime : undefined,
           reminderText: input.reminderText,
           agentName: input.agentName,
           agentInput: input.agentInput,
         });
-
-        const repeated =
-          created.recurrence === 'none'
-            ? ''
-            : ` It repeats ${created.recurrence}.`;
+        const repeated = created.recurrence === 'none'
+          ? ''
+          : created.recurrence === 'weekly' && created.recurrenceWeekdays?.length
+            ? ` It repeats every week on ${formatWeekdays(created.recurrenceWeekdays)} until deleted.`
+            : ` It repeats ${created.recurrence} until deleted.`;
 
         return `Schedule created: "${created.title}" (${created.kind}) at ${created.time}.${repeated}` +
           (created.kind === 'agent'
@@ -170,7 +188,11 @@ export const scheduleTool = tool(
       if (input.action === 'list') {
         const items = await listSchedules();
         const filtered = input.date
-          ? items.filter((item) => item.time.startsWith(input.date as string))
+          ? items.filter((item) => item.time.startsWith(input.date as string) || (
+              item.recurrence === 'weekly' && !!item.recurrenceWeekdays?.length &&
+              item.recurrenceWeekdays.includes(new Date(`${input.date}T12:00`).getDay() as ScheduleWeekday) &&
+              (item.recurrenceStartTime?.slice(0, 10) || item.time.slice(0, 10)) <= (input.date as string)
+            ))
           : items;
 
         if (filtered.length === 0) {
@@ -200,6 +222,18 @@ export const scheduleTool = tool(
           patch.time = input.time;
         }
         if (input.recurrence !== undefined) patch.recurrence = input.recurrence;
+        if (input.recurrenceWeekdays !== undefined) {
+          patch.recurrenceWeekdays = input.recurrenceWeekdays as ScheduleWeekday[];
+        }
+        if (input.recurrence === 'weekly' && input.recurrenceWeekdays?.length) {
+          const original = (await listSchedules()).find((schedule) => schedule.id === input.id);
+          const requested = input.time ?? original?.recurrenceStartTime ?? original?.time;
+          if (requested) {
+            const aligned = alignToSelectedWeekday(requested, input.recurrenceWeekdays);
+            patch.time = aligned;
+            patch.recurrenceStartTime = aligned;
+          }
+        }
         if (input.reminderText !== undefined) patch.reminderText = input.reminderText;
         if (input.agentName !== undefined) patch.agentName = input.agentName;
         if (input.agentInput !== undefined) patch.agentInput = input.agentInput;
@@ -225,18 +259,27 @@ export const scheduleTool = tool(
       }
 
       if (input.deleteAll) {
-        if (input.date) {
-          const removed = await deleteSchedulesByDate(input.date);
-          return removed > 0
-            ? `Deleted ${removed} schedule(s) on ${input.date}.`
-            : `No schedules found on ${input.date}.`;
-        }
-
         const items = await listSchedules();
-        for (const item of items) {
-          await deleteSchedule(item.id);
-        }
-        return `Deleted all ${items.length} schedule(s).`;
+        const targets = input.date
+          ? items.filter((item) => {
+              const weekday = new Date(`${input.date}T12:00`).getDay() as ScheduleWeekday;
+              return item.time.startsWith(input.date as string) || (
+                item.recurrence === 'weekly' && !!item.recurrenceWeekdays?.length &&
+                item.recurrenceWeekdays.includes(weekday) &&
+                (item.recurrenceStartTime?.slice(0, 10) || item.time.slice(0, 10)) <= (input.date as string)
+              );
+            })
+          : items;
+        for (const item of targets) await deleteSchedule(item.id);
+        return input.date
+          ? targets.length > 0
+            ? `Deleted ${targets.length} schedule(s) on ${input.date}.`
+            : `No schedules found on ${input.date}.`
+          : `Deleted all ${targets.length} schedule(s).`;
+      }
+
+      if (input.date) {
+        return 'Error: delete with a date filter requires deleteAll=true. Use action=list first to find and cancel a repeating schedule by its id.';
       }
 
       return 'Error: delete requires either an "id" or deleteAll=true. Use action=list first if you need to find the schedule.';
@@ -249,7 +292,7 @@ export const scheduleTool = tool(
     name: 'schedule_action',
     description:
       'Create, list, update, or delete schedules: reminders ("remind me to X at TIME on DATE"), calendar plans, and automatic agent runs (kind=agent runs a saved agentName with agentInput; kind=reminder makes Mocu tell the user something at the time). ' +
-      'Use recurrence daily/weekly/monthly for repeating schedules. Times are local "YYYY-MM-DDTHH:mm" in 24-hour notation. ' +
+      'Use recurrence daily/weekly/monthly indefinitely until cancelled. For multiple weekdays, set recurrenceWeekdays as local weekday numbers Sunday=0 through Saturday=6, keeping one schedule item rather than creating one per day. Times are local "YYYY-MM-DDTHH:mm" in 24-hour notation. ' +
       'STRICT RULE: never invent a date or time - ask the user for them first.',
     schema: scheduleActionSchema,
   },

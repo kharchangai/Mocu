@@ -102,6 +102,8 @@ function normalizeItem(
     agentInput: item.agentInput?.trim() || undefined,
     reminderText: item.reminderText?.trim() || undefined,
     recurrence: item.recurrence ?? 'none',
+    recurrenceWeekdays: item.recurrenceWeekdays,
+    recurrenceStartTime: item.recurrenceStartTime,
     status: item.status ?? 'pending',
     createdAt: item.createdAt ?? new Date().toISOString(),
     lastRunAt: item.lastRunAt,
@@ -142,6 +144,14 @@ export async function updateSchedule(
   if (patch.agentName === '') merged.agentName = undefined;
   if (patch.agentInput === '') merged.agentInput = undefined;
   if (patch.reminderText === '') merged.reminderText = undefined;
+  if (patch.recurrenceWeekdays !== undefined) merged.recurrenceWeekdays = patch.recurrenceWeekdays;
+  if (patch.recurrence === 'none') {
+    merged.recurrenceWeekdays = undefined;
+    merged.recurrenceStartTime = undefined;
+  }
+  if (patch.recurrence === 'weekly' && patch.recurrenceStartTime !== undefined) {
+    merged.recurrenceStartTime = patch.recurrenceStartTime;
+  }
 
   items[index] = merged;
   await saveSchedules(items);
@@ -160,11 +170,15 @@ export async function deleteSchedule(id: string): Promise<boolean> {
 
 export async function deleteSchedulesByDate(date: string): Promise<number> {
   const items = await listSchedules();
-  const next = items.filter((item) => !item.time.startsWith(date));
+  const weekday = new Date(`${date}T12:00`).getDay();
+  const next = items.filter((item) => {
+    if (item.time.startsWith(date)) return false;
+    if (item.recurrence !== 'weekly' || !item.recurrenceWeekdays?.length) return true;
+    const startDate = item.recurrenceStartTime?.slice(0, 10) || item.time.slice(0, 10);
+    return startDate > date || !item.recurrenceWeekdays.includes(weekday as 0 | 1 | 2 | 3 | 4 | 5 | 6);
+  });
   const removed = items.length - next.length;
-  if (removed > 0) {
-    await saveSchedules(next);
-  }
+  if (removed > 0) await saveSchedules(next);
   return removed;
 }
 

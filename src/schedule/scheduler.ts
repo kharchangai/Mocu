@@ -34,6 +34,10 @@ import type {
   ScheduleLogEntry,
   ScheduleRecurrence,
 } from './types';
+import {
+  nextScheduleOccurrence,
+  nextFutureScheduleOccurrence,
+} from './recurrence';
 
 export const SCHEDULE_REMINDER_EVENT = 'mocu-schedule-reminder';
 export const SCHEDULE_AGENT_COMPLETE_EVENT = 'mocu-schedule-agent-complete';
@@ -73,51 +77,19 @@ export function toLocalNaiveIso(date: Date): string {
 export function nextOccurrence(
   time: string,
   recurrence: ScheduleRecurrence,
+  weekdays?: number[],
 ): string | null {
-  if (recurrence === 'none') {
-    return null;
-  }
-
-  const date = new Date(time);
-  if (Number.isNaN(date.getTime())) {
-    return null;
-  }
-
-  switch (recurrence) {
-    case 'daily':
-      date.setDate(date.getDate() + 1);
-      break;
-    case 'weekly':
-      date.setDate(date.getDate() + 7);
-      break;
-    case 'monthly':
-      date.setMonth(date.getMonth() + 1);
-      break;
-    default:
-      return null;
-  }
-
-  return toLocalNaiveIso(date);
+  return nextScheduleOccurrence(time, recurrence, weekdays);
 }
 
 function nextFutureOccurrence(
   time: string,
   recurrence: ScheduleRecurrence,
   now: Date,
+  weekdays?: number[],
 ): string | null {
-  let next = nextOccurrence(time, recurrence);
-  let attempts = 0;
-
-  /* If Mocu was closed for several occurrences, skip straight to the
-   * next future occurrence instead of replaying every missed run. */
-  while (next && new Date(next).getTime() <= now.getTime() && attempts < 100) {
-    next = nextOccurrence(next, recurrence);
-    attempts += 1;
-  }
-
-  return next;
+  return nextFutureScheduleOccurrence(time, recurrence, now, weekdays);
 }
-
 let schedulerInterval: ReturnType<typeof setInterval> | null = null;
 let isProcessing = false;
 
@@ -143,20 +115,16 @@ export function stopScheduler(): void {
 }
 
 function isDue(item: ScheduleItem, now: Date): boolean {
-  if (item.status !== 'pending') {
-    return false;
-  }
+  if (item.status !== 'pending') return false;
 
   const time = new Date(item.time);
-  if (Number.isNaN(time.getTime())) {
-    return false;
+  if (Number.isNaN(time.getTime())) return false;
+
+  if (item.recurrence === 'weekly' && item.recurrenceWeekdays?.length) {
+    /* A recurring plan remains active indefinitely; catch up once after a long shutdown. */
+    return now.getTime() >= time.getTime();
   }
 
-  /*
-   * Catch-up window: run anything due within the last week. Future
-   * items must never fire early. Older items are left pending so the
-   * user can still see and edit them in the planner.
-   */
   const age = now.getTime() - time.getTime();
   return age >= 0 && age < MAX_CATCH_UP_DELAY_MS;
 }
@@ -196,7 +164,7 @@ async function fireReminder(item: ScheduleItem): Promise<void> {
     lastRunAt: new Date().toISOString(),
   });
 
-  const next = nextFutureOccurrence(item.time, item.recurrence, new Date());
+  const next = nextFutureOccurrence(item.time, item.recurrence, new Date(), item.recurrenceWeekdays);
   if (next) {
     await updateSchedule(item.id, {
       time: next,
@@ -371,7 +339,7 @@ async function runScheduledAgent(item: ScheduleItem): Promise<void> {
     console.error('[Scheduler] Failed to emit agent completion event:', error);
   }
 
-  const next = nextFutureOccurrence(item.time, item.recurrence, new Date());
+  const next = nextFutureOccurrence(item.time, item.recurrence, new Date(), item.recurrenceWeekdays);
   if (next) {
     await updateSchedule(item.id, {
       time: next,
