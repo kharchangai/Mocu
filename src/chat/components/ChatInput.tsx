@@ -618,7 +618,7 @@ export function ChatInput({
     }
 
     return filterExtensions(
-      availableExtensions,
+      availableExtensions.filter((extension) => extension.showInSlashCommand),
       activeCommandQuery,
     );
   }, [commandMenuMode, availableExtensions, activeCommandQuery]);
@@ -694,6 +694,7 @@ export function ChatInput({
           description: extension.manifest.description,
           path: extension.path,
           commands: extension.manifest.commands ?? [],
+          showInSlashCommand: extension.manifest.showInSlashCommand !== false,
         })),
       );
     } catch (error) {
@@ -2069,6 +2070,7 @@ export function ChatInput({
                           description: '',
                           path: extension.path,
                           commands: [],
+                          showInSlashCommand: true,
                         },
                         false,
                       )

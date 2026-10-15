@@ -104,6 +104,7 @@ function parseManifest(
     commands: Array.isArray(manifest.commands)
       ? (manifest.commands as ExtensionManifest["commands"])
       : [],
+    showInSlashCommand: manifest.showInSlashCommand !== false,
     app,
     config,
   };

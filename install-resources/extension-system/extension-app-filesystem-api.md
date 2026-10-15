@@ -63,4 +63,4 @@ if (textFile) {
 }
 ```
 
-Keep file-format parsing and presentation in the extension. The Rust host should implement only these generic, read-only operations—never a format-specific or extension-specific reader.
+Keep file-format parsing and presentation in the extension. The Rust host should implement only these generic, read-only operations—never a format-specific or extension-specific reader. The write half of this bridge, `filesystem.writeText` and the `filesystem.write` permission, is documented in `extension-app-filesystem-write-api.md`.

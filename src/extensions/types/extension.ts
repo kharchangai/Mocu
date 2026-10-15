@@ -58,6 +58,8 @@ export interface ExtensionManifest {
   /** Capabilities this extension requests; host APIs enforce relevant entries. */
   permissions?: string[];
   commands?: ExtensionCommand[];
+  /** Whether this extension is listed by the `/extension` slash command (default: true). */
+  showInSlashCommand?: boolean;
   /** Optional sandboxed UI shown in Mocu's App tab. */
   app?: ExtensionApp;
   /**

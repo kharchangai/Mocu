@@ -5,6 +5,7 @@
   "version": "1.0.0",
   "runtime": "node",
   "entry": "index.js",
+  "showInSlashCommand": false,
   "permissions": ["selection.read"],
   "commands": [],
   "app": {

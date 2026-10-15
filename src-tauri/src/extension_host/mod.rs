@@ -202,6 +202,107 @@ pub fn extension_app_url(
 }
 
 #[cfg(test)]
+mod fs_permission_tests {
+    use super::declares_permission;
+
+    const PERMISSIONS: &[&str] = &["filesystem.read", "filesystem.write"];
+
+    #[test]
+    fn read_and_write_are_distinct_permissions() {
+        let read_only = vec!["filesystem.read".to_string()];
+        let write_only = vec!["filesystem.write".to_string()];
+        let none: Vec<String> = Vec::new();
+
+        // `filesystem.write` must never be satisfied by `filesystem.read`.
+        assert!(declares_permission(&read_only, PERMISSIONS[0]));
+        assert!(!declares_permission(&read_only, PERMISSIONS[1]));
+
+        // Symmetrically, a write-only extension may not list or read.
+        assert!(declares_permission(&write_only, PERMISSIONS[1]));
+        assert!(!declares_permission(&write_only, PERMISSIONS[0]));
+
+        assert!(!declares_permission(&none, PERMISSIONS[0]));
+        assert!(!declares_permission(&none, PERMISSIONS[1]));
+    }
+
+    #[test]
+    fn rejects_substring_lookalike_permissions() {
+        for forger in [
+            "filesystem.readwrite",
+            "filesystem.writex",
+            "xfilesystem.write",
+            "filesystem.read ",
+            " Filesystem.write",
+        ] {
+            assert!(
+                !declares_permission(&[forger.to_string()], PERMISSIONS[1]),
+                "accepted '{forger}' as filesystem.write"
+            );
+        }
+    }
+}
+
+#[cfg(test)]
+mod write_target_tests {
+    use super::resolve_write_target;
+    use std::path::PathBuf;
+
+    fn sandbox_root() -> PathBuf {
+        let root = std::env::temp_dir().canonicalize().expect("temp dir should exist");
+        let unique = format!(
+            "mocu-fs-test-{}-{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .map(|elapsed| elapsed.as_nanos())
+                .unwrap_or_default()
+        );
+        let path = root.join(unique);
+        std::fs::create_dir_all(&path).expect("test sandbox should be created");
+        path
+    }
+
+    #[test]
+    fn accepts_new_and_existing_files_inside_the_root() {
+        let root = sandbox_root();
+        std::fs::create_dir_all(root.join("nested")).expect("nested folder should exist");
+        std::fs::write(root.join("existing.txt"), "old").expect("existing file should exist");
+
+        assert_eq!(resolve_write_target(&root, "new-file.txt").unwrap(), root.join("new-file.txt"));
+        // A path that already exists resolves to exactly that file, not a copy.
+        assert_eq!(resolve_write_target(&root, "existing.txt").unwrap(), root.join("existing.txt"));
+        assert_eq!(
+            resolve_write_target(&root, "nested\\new-file.txt").unwrap(),
+            root.join("nested").join("new-file.txt")
+        );
+
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn rejects_traversal_and_absolute_paths() {
+        let root = sandbox_root();
+        for path in [
+            "",
+            "..",
+            ".",
+            "../escape.txt",
+            "a/../../escape.txt",
+            "C:/Windows/x.txt",
+            "/etc/x.txt",
+            "nested/",
+            "nested/..",
+        ] {
+            assert!(
+                resolve_write_target(&root, path).is_err(),
+                "accepted unsafe write target '{path}'"
+            );
+        }
+        let _ = std::fs::remove_dir_all(&root);
+    }
+}
+
+#[cfg(test)]
 mod app_tests {
     use super::resolve_app_entry;
     use crate::extension_host::manifest::ExtensionApp;
@@ -291,8 +392,15 @@ pub fn extension_respond(
 }
 const MAX_EXTENSION_FS_ENTRIES: usize = 2_000;
 const MAX_EXTENSION_FS_READ_BYTES: u64 = 2 * 1024 * 1024;
+const MAX_EXTENSION_FS_WRITE_BYTES: usize = 2 * 1024 * 1024;
 
-/// Session-scoped user-approved folder grants for read-only extension app access.
+/// Manifest permission that unlocks listing and reading inside the folder a
+/// user approved for an extension app.
+const FILESYSTEM_READ_PERMISSION: &str = "filesystem.read";
+/// Manifest permission required to write a text file inside that same folder.
+const FILESYSTEM_WRITE_PERMISSION: &str = "filesystem.write";
+
+/// Session-scoped user-approved folder grants for extension app file access.
 #[derive(Default)]
 pub struct ExtensionFileAccess {
     grants: std::sync::Mutex<std::collections::HashMap<String, (PathBuf, PathBuf)>>,
@@ -318,6 +426,15 @@ pub struct ExtensionFsReadInput {
     pub extension_id: String,
     pub extension_path: String,
     pub relative_path: String,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ExtensionFsWriteInput {
+    pub extension_id: String,
+    pub extension_path: String,
+    pub relative_path: String,
+    pub text: String,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -352,6 +469,52 @@ fn resolve_inside_root(root: &Path, relative_path: &str) -> Result<PathBuf, Stri
         return Err("The requested path resolves outside the approved folder.".to_string());
     }
     Ok(resolved)
+}
+
+/// Resolve a write target inside the approved folder. Unlike
+/// `resolve_inside_root`, the file itself does not have to exist yet: the parent
+/// folder is canonicalized and the final component is appended, so creating a
+/// new file works while traversal outside the approved folder stays blocked.
+fn resolve_write_target(root: &Path, relative_path: &str) -> Result<PathBuf, String> {
+    let normalized = relative_path.trim().replace('\\', "/");
+    if normalized.is_empty()
+        || normalized.contains(':')
+        || Path::new(&normalized).is_absolute()
+        || Path::new(&normalized)
+            .components()
+            .any(|component| !matches!(component, Component::Normal(_)))
+    {
+        return Err(
+            "The requested path must be a relative file path inside the approved folder.".to_string(),
+        );
+    }
+    let (parent_relative, file_name) = match normalized.rfind('/') {
+        Some(index) => (&normalized[..index], &normalized[index + 1..]),
+        None => ("", normalized.as_str()),
+    };
+    if file_name.is_empty() || file_name == "." || file_name == ".." {
+        return Err(
+            "The requested path must be a relative file path inside the approved folder.".to_string(),
+        );
+    }
+    let parent = resolve_inside_root(root, parent_relative)?;
+    if !parent.is_dir() {
+        return Err("The parent folder does not exist.".to_string());
+    }
+    let target = parent.join(file_name);
+    // A pre-existing symlink must not let the write escape the approved folder.
+    if std::fs::symlink_metadata(&target)
+        .map(|metadata| metadata.file_type().is_symlink())
+        .unwrap_or(false)
+    {
+        let resolved = target
+            .canonicalize()
+            .map_err(|error| format!("Cannot access the requested path: {error}"))?;
+        if !resolved.starts_with(root) {
+            return Err("The requested path resolves outside the approved folder.".to_string());
+        }
+    }
+    Ok(target)
 }
 
 fn get_extension_root(
@@ -399,7 +562,9 @@ pub fn extension_fs_grant(
     input: ExtensionFsGrantInput,
 ) -> Result<(), String> {
     let extension_root = get_extension_root(&app, &input.extension_id, &input.extension_path)?;
-    verify_filesystem_permission(&app, &input.extension_id, &input.extension_path)?;
+    // The grant does not decide what may be done inside the folder, but an
+    // extension still needs at least one filesystem permission to ask for it.
+    verify_filesystem_folder_permission(&app, &input.extension_id, &input.extension_path)?;
     let root = PathBuf::from(&input.root_path)
         .canonicalize()
         .map_err(|error| format!("Cannot access the approved folder: {error}"))?;
@@ -436,7 +601,9 @@ pub fn extension_fs_has_grant(
         .join(&extension_id)
         .canonicalize()
         .map_err(|error| format!("Extension is not installed: {error}"))?;
-    verify_filesystem_permission(
+    // Write-only apps can create a folder grant too; subsequent filesystem
+    // operations still require their own exact read/write permission.
+    verify_filesystem_folder_permission(
         &app,
         &extension_id,
         extension_root.to_string_lossy().as_ref(),
@@ -475,31 +642,66 @@ fn extension_granted_root(
         })
 }
 
-/// Verify each filesystem bridge call against the installed manifest.
-fn verify_filesystem_permission(
+/// True when the manifest declares exactly this permission.
+fn declares_permission(permissions: &[String], required: &str) -> bool {
+    permissions.iter().any(|permission| permission == required)
+}
+
+/// Read the installed manifest's declared permissions for the app bridge.
+fn manifest_permissions(
     app: &AppHandle,
     extension_id: &str,
     extension_path: &str,
-) -> Result<(), String> {
+) -> Result<Vec<String>, String> {
     let root = get_extension_root(app, extension_id, extension_path)?;
     let manifest: ExtensionManifest = serde_json::from_str(
         &std::fs::read_to_string(root.join("manifest.json"))
             .map_err(|error| format!("Cannot read extension manifest: {error}"))?,
     )
     .map_err(|error| format!("Invalid extension manifest: {error}"))?;
-    if manifest
-        .permissions
-        .iter()
-        .any(|permission| permission == "filesystem.read")
-    {
+    Ok(manifest.permissions)
+}
+/// Verify a filesystem bridge call against the installed manifest. Listing and
+/// reading need `filesystem.read`; writing needs `filesystem.write`.
+fn verify_filesystem_permission(
+    app: &AppHandle,
+    extension_id: &str,
+    extension_path: &str,
+    required_permission: &str,
+) -> Result<(), String> {
+    let permissions = manifest_permissions(app, extension_id, extension_path)?;
+    if declares_permission(&permissions, required_permission) {
         Ok(())
     } else {
-        Err("The extension has not declared the 'filesystem.read' permission.".to_string())
+        Err(format!(
+            "The extension has not declared the '{required_permission}' permission."
+        ))
     }
 }
 
-/// Read-only filesystem APIs for extension app UIs. A folder is granted only
-/// after the user chooses it in Mocu's native directory picker.
+/// Verify that an extension is allowed to ask for a folder grant at all. The
+/// grant only authorizes the folder itself; every following call still checks
+/// its own permission, so either filesystem permission is enough here.
+fn verify_filesystem_folder_permission(
+    app: &AppHandle,
+    extension_id: &str,
+    extension_path: &str,
+) -> Result<(), String> {
+    let permissions = manifest_permissions(app, extension_id, extension_path)?;
+    if declares_permission(&permissions, FILESYSTEM_READ_PERMISSION)
+        || declares_permission(&permissions, FILESYSTEM_WRITE_PERMISSION)
+    {
+        Ok(())
+    } else {
+        Err(format!(
+            "The extension has not declared the '{FILESYSTEM_READ_PERMISSION}' or '{FILESYSTEM_WRITE_PERMISSION}' permission."
+        ))
+    }
+}
+
+/// Listing and reading stay read-only; writing lives in `extension_fs_write`.
+/// A folder is granted only after the user chooses it in Mocu's native folder
+/// picker.
 #[tauri::command]
 pub fn extension_fs_list(
     app: AppHandle,
@@ -507,7 +709,12 @@ pub fn extension_fs_list(
     input: ExtensionFsListInput,
 ) -> Result<Vec<ExtensionFsEntry>, String> {
     let extension_root = get_extension_root(&app, &input.extension_id, &input.extension_path)?;
-    verify_filesystem_permission(&app, &input.extension_id, &input.extension_path)?;
+    verify_filesystem_permission(
+        &app,
+        &input.extension_id,
+        &input.extension_path,
+        FILESYSTEM_READ_PERMISSION,
+    )?;
     let root = extension_granted_root(&access, &input.extension_id, &extension_root)?;
     let relative = input.relative_path.as_deref().unwrap_or("");
     let directory = resolve_inside_root(&root, relative)?;
@@ -570,7 +777,12 @@ pub fn extension_fs_read(
     input: ExtensionFsReadInput,
 ) -> Result<String, String> {
     let extension_root = get_extension_root(&app, &input.extension_id, &input.extension_path)?;
-    verify_filesystem_permission(&app, &input.extension_id, &input.extension_path)?;
+    verify_filesystem_permission(
+        &app,
+        &input.extension_id,
+        &input.extension_path,
+        FILESYSTEM_READ_PERMISSION,
+    )?;
     let root = extension_granted_root(&access, &input.extension_id, &extension_root)?;
     let file = resolve_inside_root(&root, &input.relative_path)?;
     if !file.is_file() {
@@ -582,4 +794,32 @@ pub fn extension_fs_read(
     }
     std::fs::read_to_string(file)
         .map_err(|error| format!("Cannot read the requested text file: {error}"))
+}
+
+/// Write a UTF-8 text file inside the user-approved folder. Unlike the listing
+/// and reading calls, this requires the `filesystem.write` manifest
+/// permission; `filesystem.read` alone does not allow overwriting files.
+#[tauri::command]
+pub fn extension_fs_write(
+    app: AppHandle,
+    access: State<'_, ExtensionFileAccess>,
+    input: ExtensionFsWriteInput,
+) -> Result<(), String> {
+    let extension_root = get_extension_root(&app, &input.extension_id, &input.extension_path)?;
+    verify_filesystem_permission(
+        &app,
+        &input.extension_id,
+        &input.extension_path,
+        FILESYSTEM_WRITE_PERMISSION,
+    )?;
+    let root = extension_granted_root(&access, &input.extension_id, &extension_root)?;
+    if input.text.len() > MAX_EXTENSION_FS_WRITE_BYTES {
+        return Err("The text is larger than the 2 MiB write limit.".to_string());
+    }
+    let file = resolve_write_target(&root, &input.relative_path)?;
+    if file.is_dir() {
+        return Err("The requested path is a folder, not a file.".to_string());
+    }
+    std::fs::write(&file, input.text)
+        .map_err(|error| format!("Cannot write the requested text file: {error}"))
 }

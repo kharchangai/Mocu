@@ -18,6 +18,7 @@ export type AvailableExtension = {
    */
   path: string;
   commands: AvailableExtensionCommand[];
+  showInSlashCommand: boolean;
 };
 
 export type SelectedExtension = {

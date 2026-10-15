@@ -2,22 +2,22 @@
 id: mocu-extensions
 title: Mocu Extensions
 description: Explains what Mocu extensions do and how end users install, select,
-  configure, and use them. Retrieve it for questions about extension
-  installation, per-request tool access, or settings in Mocu.
+  configure, and use them, including opening optional extension app UIs.
+  Retrieve it for questions about extension installation, per-request tool
+  access, settings, or the App page.
 keywords:
   - Mocu extensions
-  - extension
-  - extensions page
-  - install extension
+  - extension installation
   - install from folder
   - install from ZIP
   - bundled extensions
   - select extension
   - extension tools
   - /extension command
-  - enable extension
-  - extension config
   - extension settings
+  - extension App UI
+  - App page
+  - manifest.app
   - Node extension
   - Python extension
 ---
@@ -29,7 +29,7 @@ An **extension** is an independent **Node.js or Python** program that adds calla
 
 Examples of bundled extensions include `filesystem`, `ssh`, `telegram`, `youtube`, `plan-code-runner`, `pi-node`, and `hi-llm-node`.
 
-Extensions are started lazily, only when one of their commands runs. An extension can call Mocu's LLM, Jev decision model, and embedding model, and can stream live progress into the chat. Current metadata is passed to extensions when they run; the specific metadata fields are not listed here.
+Extensions are started lazily, only when one of their commands runs. An extension can call Mocu's LLM, Jev decision model, and embedding model, and can stream live progress into the chat.
 
 ## The Extensions page
 
@@ -49,6 +49,17 @@ For dependencies:
 - Mocu automatically runs `npm install` for Node extensions.
 - Python extensions manage their own dependencies; Mocu does not automatically run `pip`.
 
+## Extension Apps in the App page
+
+An installed extension may include an optional app UI configured by `manifest.app`. Open the **App** page in the sidebar to browse and open these extension UIs inside Mocu.
+
+An extension's App UI is distinct from selecting that extension's commands for chat:
+
+- An App UI can call only commands declared by its own extension.
+- Using an extension's commands in a normal chat request still requires selecting the extension with **`/extension`**.
+
+For developer details about app manifests, SDKs, and sandboxing, see [Mocu Extension App UI](mocu-extension-app-ui.md).
+
 ## Selecting and using extensions in chat
 
 Installing an extension does **not** activate it. Extensions are opt-in: only extensions explicitly selected for a request are exposed to the agent as tools. An empty selection means no extension tools are available.
@@ -59,7 +70,7 @@ Tool names are generated from the extension ID and command ID.
 
 ## Extension configuration
 
-If an extension's manifest defines configuration fields, such as an API key, a settings form appears on the Extensions page. Enter values there; Mocu passes them to the extension process when it runs. Current metadata is also passed to extensions, but its specific fields are not documented here.
+If an extension's manifest defines configuration fields, such as an API key, a settings form appears on the Extensions page. Enter values there; Mocu passes them to the extension process when it runs.
 
 ## Developer documentation
 
@@ -70,6 +81,7 @@ Detailed developer documentation covering the architecture, manifest reference, 
 - [Mocu Extension Runtime](mocu-extension-runtime.md) — manifest, installation, lifecycle
 - [Mocu Extension SDK Reference](mocu-extension-sdk-reference.md) — SDK APIs
 - [Mocu Extension SDK Local Vendoring and Packaging](mocu-extension-sdk-local-vendoring-and-packaging.md) — packaging for distribution
+- [Mocu Extension App UI](mocu-extension-app-ui.md) — extension app UIs
 
 ## Related documents
 
@@ -81,4 +93,4 @@ Detailed developer documentation covering the architecture, manifest reference, 
 
 ## When to use this document
 
-Retrieve this document when a user asks what Mocu extensions are, how to install one from a ZIP or folder, what the Extensions page does, how to select an extension for a chat request, whether installation activates an extension, how to configure or uninstall one, or how extension tools become available in chat.
+Retrieve this document when a user asks what Mocu extensions are, how to install one from a ZIP or folder, what the Extensions or App page does, how to browse or open an extension App UI, how to select an extension for a chat request, whether installation activates an extension, how to configure or uninstall one, or how extension tools become available in chat.

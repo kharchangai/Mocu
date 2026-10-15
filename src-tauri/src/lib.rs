@@ -147,6 +147,7 @@ pub fn run() {
             extension_host::extension_fs_has_grant,
             extension_host::extension_fs_grant,
             extension_host::extension_fs_list,
+            extension_host::extension_fs_write,
             extension_host::extension_fs_read,
             extension_host::extension_respond,
             extension_host::extension_stop,

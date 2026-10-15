@@ -1,10 +1,11 @@
 ---
 id: mocu-extension-development
 title: Mocu Extension Development
-description: Explains Mocu extension architecture, global resource folders,
-  active manifest requirements, SDK usage, installation, and packaging
-  constraints. Retrieve when building, distributing, installing, or
-  troubleshooting a Mocu extension or locating its SDK and bundled defaults.
+description: Explains Mocu extension architecture, resource folders, manifests,
+  SDKs, packaging, App UI support, filesystem access, and invoking saved Mocu
+  agents. Retrieve when building, distributing, installing, or troubleshooting
+  an extension, or when it needs an in-app UI, approved-folder access, or access
+  to saved agents.
 keywords:
   - Mocu extension
   - extension development
@@ -13,13 +14,13 @@ keywords:
   - Python extension
   - manifest.json
   - JSON-RPC stdin stdout
-  - child process
   - SDK local vendoring
   - npm E404
   - MOCU GLOBAL DIRECTORY
-  - appDataDir
-  - extensions-default
-  - global app-data
+  - extension App UI
+  - filesystem.write
+  - filesystem bridge
+  - agents.invoke
   - اکستنشن
 ---
 # Mocu Extension Development
@@ -88,13 +89,44 @@ The active extension scanner requires non-empty values for:
 - `entry`
 - `runtime`, set to `node` or `python`
 
-It also supports optional `permissions`, optional `commands`, and an optional UI `config` array. The active manifest shape does **not** require `manifestVersion`.
+It also supports optional `permissions`, optional `commands`, an optional UI `config` array, and an optional `app` object for an extension-provided App UI. The active manifest shape does **not** require `manifestVersion`.
 
 Keep the extension ID stable and unique. A reverse-domain ID such as `com.example.hello` is a safe convention. Each implemented command key must match a command ID declared in the manifest.
 
 ### Do not confuse the contracts validator with the active manifest
 
 The separate `extension-system/contracts` module has a validator that expects `manifestVersion: 1` and a different `configuration` object schema. That validator-only shape is not the active app runtime’s manifest shape. Do not copy it into an extension intended for the active app. Follow the active scanner types and working examples instead.
+
+## Extension-provided App UI
+
+Mocu’s **App** sidebar page (`ExtensionAppsPage`) lists installed extensions that declare a valid `app` object in `manifest.json`. A user opens the extension UI inside Mocu. This is an in-app viewer, not an extension-specific sidebar icon or a separate browser window. The App UI is optional and complements the Node or Python command entry; it does not replace it.
+
+The manifest object has this shape:
+
+```json
+"app": {
+  "entry": "ui/index.html",
+  "title": "My extension app"
+}
+```
+
+`title` is optional. `entry` must be a relative file path inside the installed extension directory. Paths that escape the extension root or resolve to something other than a file are rejected.
+
+The UI runs in a sandboxed iframe with `allow-scripts allow-forms` and no same-origin permission. It does not receive direct Tauri APIs or unrestricted filesystem access. Bundle or copy the UI SDK file `sdk-ui/mocu-ui.js` into the extension—for example, as `ui/vendor/mocu-ui.js`—and load it before the app’s scripts. Keep relative script and stylesheet paths within the extension UI folder.
+
+Use the UI SDK’s `window.mocu.extension.execute(command, input)` to call extension commands. The host bridges the request to the extension process and permits only commands declared in the manifest and implemented by the extension. Other documented UI APIs include:
+
+- `window.mocu.selection.get()`, which requires the `selection.read` manifest permission and user approval.
+- Filesystem `chooseFolder`, `list`, and `readText`, which require `filesystem.read`. The user chooses an approved root folder; those read operations are scoped to that folder.
+- Filesystem `writeText(relativePath, text)`, which requires `filesystem.write` and writes a UTF-8 text file inside the same approved folder.
+
+The filesystem permissions are independent. `filesystem.read` does not grant write access, and `filesystem.write` does not grant listing or reading. An extension that only needs to write may declare `["filesystem.write"]` alone and can still obtain a folder grant; each filesystem call is checked against its own permission.
+
+The host constrains writes to 2 MiB of text per call. The path must be relative and remain inside the approved folder; the target must be a file, its parent folder must already exist, and symlink escapes are rejected. The host provides generic filesystem operations, not a format-specific or extension-specific writer.
+
+Handle rejected promises and render untrusted values as text. If implementing the raw `postMessage` protocol rather than using the UI SDK, retain message-source and request-ID validation because the iframe has an opaque origin.
+
+The UI SDK source and example are in `install-resources/extension-system/sdk-ui` and `install-resources/extensions-default/app-ui-demo`. The shipped `txt-reader-app` is another example. For focused implementation details about `manifest.app`, the App sidebar page, iframe security, UI bridge APIs, and examples, see [Mocu Extension App UI](mocu-extension-app-ui.md). For the filesystem write contract, parameters, and raw `postMessage` protocol, see [Mocu Filesystem Write API](mocu-filesystem-write-api.md). The Rust write implementation is `extension_fs_write` in `src-tauri/src/extension_host/mod.rs`, with path checks in `resolve_write_target`.
 
 ## Minimal Node.js extension
 
@@ -161,6 +193,32 @@ For local development from the repository root, you can still install the SDK wi
 python -m pip install -e install-resources/extension-system/sdk-python
 ```
 
+## Invoking saved Mocu agents from an extension
+
+An extension can list and run the current user’s saved Mocu agents through the Node or Python extension SDK. Add `"agents.invoke"` to the extension manifest’s `permissions`; the host enforces this permission for both listing and running agents.
+
+- `mocu.agents.list` returns public descriptors containing only `{id, name, description}`. It does not expose agent instructions or other private fields.
+- `mocu.agents.run` accepts non-empty `{agentId, input}`, runs the selected saved agent to completion, and returns `{agentId, name, text}`.
+- The extension cannot choose an arbitrary project or filesystem path for the agent.
+
+Node SDK usage:
+
+```js
+const agents = await extension.agents.list();
+const result = await extension.agents.run({ agentId, input });
+```
+
+Python SDK usage:
+
+```python
+agents = extension.agents.list()
+result = extension.agents.run(agent_id, input)
+```
+
+These calls belong in the Node or Python extension process, not directly in the browser UI. An App page can call a declared extension command using `window.mocu.extension.execute`; that command can then use the agents API.
+
+A saved agent is created and managed separately from extension commands, either in Mocu’s Agents page or through chat’s agent-creation flow. See [Mocu Agents](mocu-agents.md) for creating and managing saved agents and the user-level agent workflow. The active implementation and bundled SDK references include `sdk-node/src/agents.ts`, `sdk-python/mocu_extension_sdk/agents.py`, `contracts/src/agents.ts`, and `src/extensions/services/extension-agent-service.ts`.
+
 ## Install and run an extension
 
 From Mocu’s Extensions page, install an extension from a folder or ZIP:
@@ -180,13 +238,21 @@ For more detail, see [Runtime and installation](mocu-extension-runtime.md) and [
 
 1. Choose a globally unique, stable extension ID and stable command IDs.
 2. Write `manifest.json` using the active manifest requirements and examples.
-3. Add the appropriate SDK and entry point for Node.js or Python.
+3. Add the appropriate SDK and entry point for Node.js or Python. If providing an App UI, declare its `app` object and bundle the UI SDK.
 4. For a distributable Node extension, vendor the SDK and contracts dependency locally; verify npm installation from a clean staged copy. For Python, include the SDK locally or document a tested prerequisite.
 5. Implement every command declared in the manifest, matching each manifest command ID to its handler.
-6. Keep stdout reserved for JSON-RPC protocol messages; write logs to stderr.
-7. Install using **Install from Folder** and test the extension.
-8. Select or enable it for a chat request, invoke its command, inspect errors, and refine the implementation.
+6. If the extension invokes saved agents, declare `agents.invoke` and use the SDK from the extension process.
+7. For App UI filesystem access, request only the needed permission: `filesystem.read` for folder selection, listing, or reading, and `filesystem.write` for writing text. These permissions are independent.
+8. Keep stdout reserved for JSON-RPC protocol messages; write logs to stderr.
+9. Install using **Install from Folder** and test the extension.
+10. Select or enable it for a chat request, invoke its command, inspect errors, and refine the implementation.
+
+## Developer documentation cross-links
+
+- [Mocu Extension App UI](mocu-extension-app-ui.md) is the focused guide for `manifest.app`, the App sidebar page, iframe security, UI bridge APIs, and examples.
+- [Mocu Filesystem Write API](mocu-filesystem-write-api.md) documents the filesystem write contract, parameters, and raw `postMessage` protocol.
+- [Mocu Agents](mocu-agents.md) explains how to create and manage saved agents and the user-level agent workflow.
 
 ## When to use this document
 
-Retrieve this document when an agent needs to build, package, distribute, install, or debug a Mocu extension; choose between the Node and Python SDKs; understand `manifest.json`, JSON-RPC, child-process behavior, or installation requirements; or resolve SDK availability, npm E404, and local-vendoring questions. Also use it to locate global Mocu resource folders safely, inspect bundled defaults, distinguish bundled sources from user-installed extensions, or determine the correct app-data path without guessing. It is relevant to searches such as اکستنشن or ساخت اکستنشن.
+Retrieve this document when an agent needs to build, package, distribute, install, or debug a Mocu extension; choose between the Node and Python SDKs; understand `manifest.json`, JSON-RPC, child-process behavior, or installation requirements; or resolve SDK availability, npm E404, and local-vendoring questions. Also use it to locate global Mocu resource folders safely, inspect bundled defaults, understand an extension-provided App UI and its read/write filesystem permissions, or determine how an extension can list and run saved Mocu agents with the `agents.invoke` permission. It is relevant to searches such as اکستنشن or ساخت اکستنشن.

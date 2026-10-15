@@ -1,26 +1,28 @@
 ---
 id: mocu-extension-docs-map
 title: Mocu Extension Docs Map
-description: This document maps common Mocu extension questions to the focused
-  guide that covers them, including SDK packaging and global extension resource
-  folders. Retrieve it when choosing a guide or determining where to inspect
-  bundled examples, SDK sources, or installed extensions.
+description: This document maps common Mocu extension questions to focused
+  guides, including App UI, filesystem writes, SDK packaging, and global
+  extension resource folders. Retrieve it when choosing a guide or determining
+  where to inspect bundled examples, SDK sources, saved-agent access, filesystem
+  write behavior, or installed extensions.
 keywords:
   - Mocu extension documentation map
-  - build an extension
   - extension development guide
   - extension runtime and installation
   - Mocu SDK reference
-  - package SDK
   - npm E404
   - local vendor SDK
   - Python package caveats
   - global extension folders
   - extensions-default
   - extension-system
+  - Mocu Extension App UI
+  - agents.invoke
   - اکستنشن
   - افزونه
   - ساخت افزونه
+  - filesystem.write permission
 ---
 # Mocu Extension Docs Map
 
@@ -28,8 +30,10 @@ keywords:
 
 Use the guide that matches the extension question:
 
-- **Create an extension:** [Mocu Extension Development](mocu-extension-development.md) covers architecture, manifests, SDK entry points, protocol, and workflow.
+- **Create an extension:** [Mocu Extension Development](mocu-extension-development.md) covers architecture, manifests, SDK entry points, protocol, and workflow. It also documents how Node and Python extensions can access saved agents with `agents.invoke`.
 - **Runtime and installation:** [Mocu Extension Runtime](mocu-extension-runtime.md) covers manifest fields, configuration, installation, extension selection, and process lifecycle.
+- **App UI:** [Mocu Extension App UI](mocu-extension-app-ui.md) covers the optional manifest `app` entry, an in-Mocu App sidebar page, the iframe sandbox, the browser UI SDK and message bridge, folder-scoped read and write access, and how App UI can call declared commands.
+- **App UI filesystem writes:** [Mocu Filesystem Write API](mocu-filesystem-write-api.md) documents the write contract, the raw `postMessage` protocol, Rust host commands, the `filesystem.write` permission, `writeText()`, and write path security.
 - **SDK APIs:** [Mocu Extension SDK Reference](mocu-extension-sdk-reference.md) covers verified Node and Python API methods, parameters, host behavior, and limits. For distributing the SDK within an extension, read the explicit packaging guide below.
 - **SDK packaging and distribution:** [Mocu Extension SDK Local Vendoring and Packaging](mocu-extension-sdk-local-vendoring-and-packaging.md) covers npm E404, copying the Node SDK and contracts into an extension, local dependencies, Python package caveats, and clean ZIP verification.
 
@@ -53,4 +57,4 @@ The documents cross-link to related guidance. Start with the relevant focused gu
 
 ## When to use this document
 
-Retrieve this map when choosing which Mocu extension guide to consult, including questions about development, runtime, SDK APIs, packaging, npm E404, local SDK vendoring, independent extension distribution, global extension folders, bundled examples or defaults, SDK source discovery, or installed extension locations.
+Retrieve this map when choosing which Mocu extension guide to consult, including questions about development, runtime, App UI, the filesystem write API, SDK APIs, packaging, npm E404, local SDK vendoring, independent extension distribution, saved-agent access with `agents.invoke`, global extension folders, bundled examples or defaults, SDK source discovery, or installed extension locations.

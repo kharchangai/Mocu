@@ -27,6 +27,11 @@ type AppMessage = Record<string, unknown>;
 
 const SELECTION_PERMISSION = "selection.read";
 const FILESYSTEM_READ_PERMISSION = "filesystem.read";
+const FILESYSTEM_WRITE_PERMISSION = "filesystem.write";
+// Granting a folder and using it are separate checks: either filesystem
+// permission may request the folder; each call is still verified against the
+// manifests declared read or write permission.
+const FILESYSTEM_FOLDER_PERMISSIONS = [FILESYSTEM_READ_PERMISSION, FILESYSTEM_WRITE_PERMISSION];
 const MAX_SELECTION_LENGTH = 20_000;
 
 type FsEntry = { name: string; path: string; kind: "directory" | "file"; size: number | null };
@@ -126,8 +131,11 @@ export function ExtensionAppsPage() {
       }
 
       if (message.method === "filesystem.chooseFolder") {
-        if (!selectedApp.permissions.includes(FILESYSTEM_READ_PERMISSION)) {
-          reply(message.requestId, undefined, `This app has not declared the '${FILESYSTEM_READ_PERMISSION}' permission.`);
+        const canChooseFolder = FILESYSTEM_FOLDER_PERMISSIONS.some((permission) =>
+          selectedApp.permissions.includes(permission)
+        );
+        if (!canChooseFolder) {
+          reply(message.requestId, undefined, `This app has not declared the '${FILESYSTEM_READ_PERMISSION}' or '${FILESYSTEM_WRITE_PERMISSION}' permission.`);
           return;
         }
         if (pendingSelection || pendingFolder) {
@@ -189,6 +197,35 @@ export function ExtensionAppsPage() {
             },
           });
           reply(message.requestId, { text });
+        } catch (reason) {
+          reply(message.requestId, undefined, reason instanceof Error ? reason.message : String(reason));
+        }
+        return;
+      }
+
+      if (message.method === "filesystem.writeText") {
+        if (!selectedApp.permissions.includes(FILESYSTEM_WRITE_PERMISSION)) {
+          reply(message.requestId, undefined, `This app has not declared the '${FILESYSTEM_WRITE_PERMISSION}' permission.`);
+          return;
+        }
+        if (typeof params.relativePath !== "string" || !params.relativePath.trim()) {
+          reply(message.requestId, undefined, "filesystem.writeText requires a relativePath.");
+          return;
+        }
+        if (typeof params.text !== "string") {
+          reply(message.requestId, undefined, "filesystem.writeText requires text.");
+          return;
+        }
+        try {
+          await invoke("extension_fs_write", {
+            input: {
+              extensionId: selectedApp.extensionId,
+              extensionPath: selectedApp.extensionPath,
+              relativePath: params.relativePath,
+              text: params.text,
+            },
+          });
+          reply(message.requestId, { written: true });
         } catch (reason) {
           reply(message.requestId, undefined, reason instanceof Error ? reason.message : String(reason));
         }
@@ -358,7 +395,7 @@ export function ExtensionAppsPage() {
           <div className="extension-apps-consent-backdrop">
             <section className="extension-apps-consent" role="dialog" aria-modal="true" aria-labelledby="extension-app-folder-title">
               <h2 id="extension-app-folder-title">Choose a folder to share</h2>
-              <p><strong>{selectedApp.title}</strong> requests read-only access to one folder and its contents. Mocu will show a native folder picker; access is limited to the folder you choose.</p>
+              <p><strong>{selectedApp.title}</strong> requests access to one folder and its contents. Mocu will show a native folder picker; access is limited to the folder you choose.</p>
               <div>
                 <button type="button" onClick={() => void finishFolderRequest(false)}>Decline</button>
                 <button type="button" className="is-primary" onClick={() => void finishFolderRequest(true)}>Choose folder…</button>
@@ -393,6 +430,9 @@ export function ExtensionAppsPage() {
             <p>{app.description || app.extensionName}</p>
             {app.permissions.includes(FILESYSTEM_READ_PERMISSION) ? (
               <span className="extension-apps-permission">filesystem.read declared</span>
+            ) : null}
+            {app.permissions.includes(FILESYSTEM_WRITE_PERMISSION) ? (
+              <span className="extension-apps-permission">filesystem.write declared</span>
             ) : null}
             <button type="button" className="extension-apps-open" onClick={() => void openApp(app)}>Open app</button>
           </article>
