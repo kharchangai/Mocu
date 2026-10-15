@@ -46,6 +46,7 @@ import {
   createFindSpecialistProjectMemoryTool,
   createReadSpecialistSectionHistoryTool,
 } from "../agent/specialist-memory-tools";
+import { askUserTool } from "../tools/ask-user-tool";
 
 /*
  * Shared store and executor -----------------------------------------------
@@ -121,6 +122,7 @@ async function buildMainAgentToolRuntime(
     ...notesTools,
     createFindSpecialistProjectMemoryTool(projectPath || ""),
     createReadSpecialistSectionHistoryTool(getChatIdFromConfig(config)),
+    askUserTool,
   ];
 
   const selectedExtensionIds = getConfigReferences(

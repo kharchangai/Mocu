@@ -20,7 +20,11 @@ import {
   BaseMessage,
   HumanMessage,
 } from '@langchain/core/messages';
-import { ChatInput } from './ChatInput';
+import { ChatInput, type AskUserQuestion } from './ChatInput';
+import {
+  getPendingAskUserQuestion,
+  resolveAskUserAnswer,
+} from '../../services/ai/tools/ask-user-tool';
 import { resolveFileMentions, type SelectedFileReference } from './fileMentionReferences';
 import { buildHumanMessageWithImages } from '../../services/ai/agent/image-content';
 import { UserMessage } from './UserMessage';
@@ -718,6 +722,8 @@ export function ChatBox({
    */
   const [isPreparingChat, setIsPreparingChat] = useState(false);
 
+  const [askUserQuestion, setAskUserQuestion] = useState<AskUserQuestion | null>(null);
+
   const [draftMessage, setDraftMessage] = useState('');
   const [rerunModelByMessageId, setRerunModelByMessageId] = useState<
     Record<string, { model: string | null; reasoningEffort: GatewayReasoningEffort | null }>
@@ -782,6 +788,59 @@ export function ChatBox({
     window.addEventListener('mocu_saved_work_changed', handleSavedWorkChanged);
     return () => window.removeEventListener('mocu_saved_work_changed', handleSavedWorkChanged);
   }, [chatId]);
+
+  useEffect(() => {
+    setAskUserQuestion(getPendingAskUserQuestion(chatId));
+  }, [chatId]);
+
+  useEffect(() => {
+    const handleAskUser = (event: Event): void => {
+      const detail = (
+        event as CustomEvent<AskUserQuestion & { chatId?: string }>
+      ).detail;
+
+      if (
+        !detail?.toolCallId ||
+        detail.chatId !== chatId ||
+        typeof detail.question !== 'string'
+      ) {
+        return;
+      }
+
+      setAskUserQuestion({
+        question: detail.question,
+        options: Array.isArray(detail.options) ? detail.options : [],
+        toolCallId: detail.toolCallId,
+      });
+    };
+
+    window.addEventListener('mocu_ask_user', handleAskUser);
+    return () => window.removeEventListener('mocu_ask_user', handleAskUser);
+  }, [chatId]);
+
+  useEffect(() => {
+    const handleAskUserResolved = (event: Event): void => {
+      const detail = (
+        event as CustomEvent<{ toolCallId?: string; chatId?: string }>
+      ).detail;
+      if (detail?.chatId !== chatId || !detail.toolCallId) return;
+
+      setAskUserQuestion((current) =>
+        current?.toolCallId === detail.toolCallId ? null : current,
+      );
+    };
+
+    window.addEventListener('mocu_ask_user_resolved', handleAskUserResolved);
+    return () =>
+      window.removeEventListener('mocu_ask_user_resolved', handleAskUserResolved);
+  }, [chatId]);
+
+  const handleAskUserAnswer = useCallback(
+    (toolCallId: string, answer: string): void => {
+      resolveAskUserAnswer(toolCallId, answer);
+    },
+    [],
+  );
 
   useEffect(() => {
     if (!chatId || !isProjectChat) {
@@ -1775,6 +1834,7 @@ export function ChatBox({
      * Stop only THIS chat's run. Every other conversation keeps working.
      */
     abortChatRun(chatId);
+    setAskUserQuestion(null);
   };
 
   const handleEditMessage = useCallback(
@@ -2470,6 +2530,8 @@ export function ChatBox({
         chatId={chatId}
         projectChat={isProjectChat}
         value={draftMessage}
+        askUserQuestion={askUserQuestion}
+        onAskUserAnswer={handleAskUserAnswer}
         onValueChange={setDraftMessage}
         onSend={handleSendMessage}
         onStop={handleStopGeneration}

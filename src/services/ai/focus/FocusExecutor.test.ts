@@ -6,6 +6,9 @@ import type { FocusState } from "./types";
 import type { FocusStore } from "./focusStore";
 
 vi.mock("../../../chat/docs", () => ({ buildDocsContextPrompt: async () => "" }));
+vi.mock("../tools/ask-user-tool", () => ({
+  askUserForClarification: vi.fn(async () => "ANSWER: target A"),
+}));
 
 describe("Focus filesystem recovery", () => {
   it("preserves the error, skips the duplicate and allows terminal fallback", async () => {
@@ -45,5 +48,37 @@ describe("Focus filesystem recovery", () => {
     expect(captured[2]).toContain("NOT executed again");
     expect(result.reply).toBe("Fixed and verified.");
     expect(result.status).toBe("active");
+  });
+
+  it("asks the user and does not execute later tool calls in the same batch", async () => {
+    const state: FocusState = {
+      id: "focus-ask-user", chatId: "chat-ask-user", createdAt: "2026-10-05T00:00:00Z",
+      goal: "Fix code", currentSectionNumber: 1, status: "active", memories: {},
+    };
+    const store = {
+      load: vi.fn(async () => state), save: vi.fn(async () => undefined),
+      append: vi.fn(async () => ({ id: "log", focusId: state.id })),
+      readSectionHistory: vi.fn(async () => []),
+    } as unknown as FocusStore;
+    const llm = {
+      bindTools: vi.fn(() => ({
+        async *stream(messages: unknown[]) {
+          const serialized = JSON.stringify(messages);
+          if (!serialized.includes("ANSWER: target A")) {
+            yield new AIMessageChunk({ content: "", tool_calls: [
+              { id: "ask-1", type: "tool_call", name: "ask_user", args: { question: "Which target should I use?", options: ["Use target A"] } },
+              { id: "edit-1", type: "tool_call", name: "edit_file", args: { path: "unsafe" } },
+            ] });
+          } else {
+            yield new AIMessageChunk({ content: "Thanks, I used target A." });
+          }
+        },
+      })),
+    } as unknown as ChatOpenAI;
+    const edit = { name: "edit_file", description: "edit", invoke: vi.fn(async () => "changed") };
+    const executor = new FocusExecutor(store, { buildTurnLlm: async () => llm, buildSummaryLlm: async () => llm });
+    const result = await executor.send(state.id, "Fix it", { tools: [edit, { name: "ask_user", description: "ask", invoke: async () => ({ asked: true }) }] });
+    expect(result.reply).toBe("Thanks, I used target A.");
+    expect(edit.invoke).not.toHaveBeenCalled();
   });
 });

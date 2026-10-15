@@ -14,6 +14,9 @@ const docsContextMock = vi.hoisted(() => ({
 }));
 
 vi.mock("../../../chat/docs", () => docsContextMock);
+vi.mock("../tools/ask-user-tool", () => ({
+  askUserForClarification: vi.fn(async () => "ANSWER: target A"),
+}));
 
 describe("StepExecutor tool rounds", () => {
   it("truncates long tool results in live and restored history while retaining the full log", async () => {
@@ -296,6 +299,60 @@ describe("StepExecutor tool rounds", () => {
     expect(docsContextMock.buildDocsContextPrompt).toHaveBeenCalledWith(
       "Use the guide",
     );
+  });
+
+  it("asks the user and skips remaining calls in the same batch", async () => {
+    const state: WorkflowState = {
+      id: "workflow-ask-user-test",
+      chatId: "chat-ask-user-test",
+      plan: {
+        final_goal: "Complete the task",
+        steps: [{ step_number: 1, title: "Complete", summary: "", goal: "Do work", tips: [] }],
+      },
+      currentStepIndex: 0,
+      status: "active",
+      memories: {},
+      recentTurns: [],
+    };
+    const append = vi.fn(async (_id: string, _step: number, _kind: string, _data: unknown) => ({
+      id: "ask-log",
+      workflowId: state.id,
+    }));
+    const store = {
+      load: vi.fn(async () => state),
+      save: vi.fn(async () => undefined),
+      append,
+      readStepHistory: vi.fn(async () => []),
+    } as unknown as WorkflowStore;
+    const edit = { name: "edit_file", description: "edit", invoke: vi.fn(async () => "changed") };
+    const modelWithTools = {
+      async *stream(messages: unknown[]) {
+        const serialized = JSON.stringify(messages);
+        if (!serialized.includes("ANSWER: target A")) {
+          yield new AIMessageChunk({ content: "", tool_calls: [
+            { id: "ask-1", name: "ask_user", args: { question: "Which target?", options: ["Use target A"] }, type: "tool_call" },
+            { id: "edit-1", name: "edit_file", args: { path: "unsafe" }, type: "tool_call" },
+          ] });
+        } else {
+          yield new AIMessageChunk({ content: "Thanks, I used target A." });
+        }
+      },
+    };
+    const llm = { bindTools: vi.fn(() => modelWithTools) } as unknown as ChatOpenAI;
+    const executor = new StepExecutor(store, {
+      buildTurnLlm: async () => llm,
+      buildSummaryLlm: async () => llm,
+    });
+
+    const result = await executor.send(
+      state.id,
+      { message: "Make the change" },
+      { tools: [edit, { name: "ask_user", description: "ask", invoke: async () => ({ asked: true }) }] },
+    );
+
+    expect(result.reply).toBe("Thanks, I used target A.");
+    expect(edit.invoke).not.toHaveBeenCalled();
+    expect(append).toHaveBeenCalledWith(state.id, 1, "tool_result", expect.objectContaining({ callId: "edit-1" }));
   });
 
   it("omits the doc block when the context search fails open (empty hint)", async () => {

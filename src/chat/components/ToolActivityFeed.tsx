@@ -291,7 +291,11 @@ type ToolActivityFeedProps = {
 function ToolActivityFeedImpl({
   activities,
 }: ToolActivityFeedProps) {
-  if (activities.length === 0) {
+  const visibleActivities = activities.filter(
+    (activity) => activity.tool !== 'ask_user',
+  );
+
+  if (visibleActivities.length === 0) {
     return null;
   }
 
@@ -300,7 +304,7 @@ function ToolActivityFeedImpl({
       className="tool-activity-feed"
       aria-label="Agent activity"
     >
-      {activities.map((activity) =>
+      {visibleActivities.map((activity) =>
         activity.kind === 'thought' ||
         activity.kind === 'note' ? (
           <TraceText

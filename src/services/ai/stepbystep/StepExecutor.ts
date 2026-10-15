@@ -29,6 +29,7 @@ import { withShortDescription } from "../agent/tool-summaries";
 import { FileToolRecovery, isFileToolError } from "../agent/file-tool-recovery";
 import { buildDocsContextPrompt } from "../../../chat/docs";
 import { buildGlobalDirectoryPrompt } from "../global-directory-prompt";
+import { askUserForClarification } from "../tools/ask-user-tool";
 import { assertImageModelSupport, buildHumanMessageFromRequest } from "../agent/image-content";
 import { persistAgentGraphTurn } from "../../../graphStructure/agentTurn";
 import {
@@ -750,12 +751,31 @@ export class StepExecutor {
       }
 
       messages.push(response);
+      const askUserCall = toolCalls.find((call) => call.name === "ask_user");
 
       for (const [toolCallIndex, toolCall] of toolCalls.entries()) {
         const toolCallId =
           toolCall.id || `${state.id}-${stepNumber}-${round}-${toolCallIndex}`;
         const toolArgs = toolCall.args ?? {};
-
+        if (askUserCall && toolCall.name !== "ask_user") {
+          const skipped = "Skipped because a clarification question was sent to the user; no work was run.";
+          await this.store.append(state.id, stepNumber, "tool_call", {
+            callId: toolCallId,
+            name: toolCall.name,
+            arguments: toolArgs,
+          });
+          const skippedLog = await this.store.append(state.id, stepNumber, "tool_result", {
+            callId: toolCallId,
+            name: toolCall.name,
+            result: skipped,
+          });
+          messages.push(new ToolMessage({
+            content: previewToolResult(skipped, skippedLog.id),
+            tool_call_id: toolCallId,
+            name: toolCall.name,
+          }));
+          continue;
+        }
         await this.store.append(state.id, stepNumber, "tool_call", {
           callId: toolCallId,
           name: toolCall.name,
@@ -794,11 +814,17 @@ export class StepExecutor {
             planUpdateRequested = true;
           }
 
-          const output = await fileRecovery.execute(
-            toolCall.name, toolArgs,
-            async () => selectedTool.invoke(toolArgs, turn.config),
-            toolMap.has("terminal_executor"), turn.config?.signal as AbortSignal | undefined,
-          );
+          const output = toolCall.name === "ask_user"
+            ? await askUserForClarification(toolArgs, {
+                toolCallId: toolCallId,
+                chatId: state.chatId,
+                signal: turn.config?.signal as AbortSignal | undefined,
+              })
+            : await fileRecovery.execute(
+                toolCall.name, toolArgs,
+                async () => selectedTool.invoke(toolArgs, turn.config),
+                toolMap.has("terminal_executor"), turn.config?.signal as AbortSignal | undefined,
+              );
 
           resultText = typeof output === "string" ? output : JSON.stringify(output);
           if (isToolErrorResult(resultText)) activityStatus = "error";
@@ -837,7 +863,6 @@ export class StepExecutor {
           }),
         );
       }
-
       /* A plan update must never trigger execution: end the turn right
        * after the tool call so the agent cannot start working on the new
        * plan without an explicit user request. */

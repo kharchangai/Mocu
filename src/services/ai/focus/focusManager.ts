@@ -23,6 +23,7 @@ import {
   createFindSpecialistProjectMemoryTool,
   createReadSpecialistSectionHistoryTool,
 } from "../agent/specialist-memory-tools";
+import { askUserTool } from "../tools/ask-user-tool";
 const store = new FocusStore();
 const executor = new FocusExecutor(store, {
   buildTurnLlm: async (selectedModel?: string) => getMainAgentLlm(selectedModel ?? "", {}, "expensive"),
@@ -57,6 +58,7 @@ async function buildTaskTools(config: RunnableConfig, projectPath?: string): Pro
     ...(notesTools as unknown as FocusToolLike[]),
     createFindSpecialistProjectMemoryTool(projectPath || "") as unknown as FocusToolLike,
     createReadSpecialistSectionHistoryTool(getChatIdFromConfig(config)) as unknown as FocusToolLike,
+    askUserTool as unknown as FocusToolLike,
   ];
   const extensionIds = references(config, "selectedExtensions");
   try {

@@ -103,6 +103,13 @@ export type SendOptions = {
   fileReferences: SelectedFileReference[];
   imageAttachments: ChatImageAttachment[];
 };
+
+export type AskUserQuestion = {
+  question: string;
+  options: string[];
+  toolCallId: string;
+};
+
 export type ChatInputProps = {
   value?: string;
   chatId?: string | null;
@@ -112,6 +119,8 @@ export type ChatInputProps = {
   agentName?: string;
   modelLabel?: string;
   effortLabel?: string;
+  askUserQuestion?: AskUserQuestion | null;
+  onAskUserAnswer?: (toolCallId: string, answer: string) => void;
   onValueChange: (value: string) => void;
   onSend: (
     text: string,
@@ -188,6 +197,8 @@ export function ChatInput({
   projectPath = '',
   projectChat = false,
   isLoading = false,
+  askUserQuestion = null,
+  onAskUserAnswer,
   agentName = 'Mocu',
   modelLabel = 'Mocu · Standard',
   effortLabel = 'Balanced',
@@ -333,6 +344,12 @@ export function ChatInput({
   const [mcpError, setMcpError] = useState<string | null>(null);
 
   const [sendError, setSendError] = useState<string | null>(null);
+
+  const [askUserReply, setAskUserReply] = useState('');
+
+  useEffect(() => {
+    setAskUserReply('');
+  }, [askUserQuestion?.toolCallId]);
 
   const safeValue = typeof value === 'string' ? value : '';
   const safeProjectPath =
@@ -1873,32 +1890,94 @@ export function ChatInput({
         }}
         onDrop={handleComposerDrop}
       >
-        {interaction && onInteractionChoose && (
+        {interaction && onInteractionChoose ? (
           <ExtensionInteractionCard
             interaction={interaction}
             onChoose={onInteractionChoose}
           />
-        )}
-
-          {imageAttachments.length > 0 ? (
-            <div className="image-attachment-strip" aria-label="Images attached to this message">
-              {imageAttachments.map((attachment) => (
-                <div className="image-attachment-preview" key={attachment.id}>
-                  <img src={attachment.dataUrl} alt={attachment.name} />
-                  <button
-                    type="button"
-                    className="image-attachment-remove"
-                    onClick={() => setImageAttachments((current) => current.filter((item) => item.id !== attachment.id))}
-                    aria-label={`Remove ${attachment.name}`}
-                    title={`Remove ${attachment.name}`}
-                  >
-                    <X size={13} />
-                  </button>
-                </div>
-              ))}
+        ) : null}
+        {askUserQuestion ? (
+          <section
+            className="ask-user-card"
+            aria-labelledby={`ask-user-question-${askUserQuestion.toolCallId}`}
+            aria-live="polite"
+            dir="ltr"
+          >
+            <div className="ask-user-card__header">
+              <span className="ask-user-card__eyebrow">Mocu needs your input</span>
+              <span className="ask-user-card__hint">Choose an option or write a reply</span>
             </div>
-          ) : null}
-          <div className={`chat-composer${isDraggingImages ? ' chat-composer--dragging' : ''}`}>
+            <p
+              id={`ask-user-question-${askUserQuestion.toolCallId}`}
+              className="ask-user-card__question"
+            >
+              {askUserQuestion.question}
+            </p>
+
+            {askUserQuestion.options.length > 0 ? (
+              <div className="ask-user-card__options">
+                {askUserQuestion.options.map((option, index) => (
+                  <button
+                    key={`${askUserQuestion.toolCallId}-${index}`}
+                    type="button"
+                    className="ask-user-card__option"
+                    disabled={!onAskUserAnswer}
+                    onClick={() =>
+                      onAskUserAnswer?.(askUserQuestion.toolCallId, option)
+                    }
+                  >
+                    {option}
+                  </button>
+                ))}
+              </div>
+            ) : null}
+
+            <form
+              className="ask-user-card__reply"
+              onSubmit={(event) => {
+                event.preventDefault();
+                const answer = askUserReply.trim();
+                if (!answer || !onAskUserAnswer) return;
+
+                onAskUserAnswer(askUserQuestion.toolCallId, answer);
+                setAskUserReply('');
+              }}
+            >
+              <input
+                value={askUserReply}
+                onChange={(event) => setAskUserReply(event.target.value)}
+                placeholder={askUserQuestion.options.length > 0 ? 'Or enter a different answer…' : 'Type your answer…'}
+                aria-label="Your answer to Mocu"
+              />
+              <button
+                type="submit"
+                disabled={!askUserReply.trim() || !onAskUserAnswer}
+              >
+                Send
+              </button>
+            </form>
+          </section>
+        ) : null}
+
+        {imageAttachments.length > 0 ? (
+          <div className="image-attachment-strip" aria-label="Images attached to this message">
+            {imageAttachments.map((attachment) => (
+              <div className="image-attachment-preview" key={attachment.id}>
+                <img src={attachment.dataUrl} alt={attachment.name} />
+                <button
+                  type="button"
+                  className="image-attachment-remove"
+                  onClick={() => setImageAttachments((current) => current.filter((item) => item.id !== attachment.id))}
+                  aria-label={`Remove ${attachment.name}`}
+                  title={`Remove ${attachment.name}`}
+                >
+                  <X size={13} />
+                </button>
+              </div>
+            ))}
+          </div>
+        ) : null}
+        <div className={`chat-composer${isDraggingImages ? ' chat-composer--dragging' : ''}`}>
           {isDraggingImages ? <div className="image-drop-hint">Drop up to 3 images here</div> : null}
           <input
             ref={imageInputRef}

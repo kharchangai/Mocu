@@ -155,6 +155,7 @@ import {
   type EditFileInput,
   type FindFileInput,
 } from "./tools/filesystem";
+import { askUserTool, askUserForClarification } from "./tools/ask-user-tool";
 
 import {
   buildDocsContextPrompt,
@@ -1701,6 +1702,7 @@ export const callChatAgent =
     const graphDigestTool = createGraphDigestTool();
     const graphToolLogTool = createGraphToolLogTool();
     const llmWithTools = llm.bindTools([
+      askUserTool,
       scheduleTool,
       desktopVisionTool,
       terminalTool,
@@ -1729,6 +1731,11 @@ export const callChatAgent =
      * responsible for actually invoking the requested tool.
      */
     const toolExecutor = createToolExecutor(terminalTool, runnableConfig);
+    toolExecutor.registerTool({
+      name: askUserTool.name,
+      description: askUserTool.description,
+      execute: async (args, context) => askUserForClarification(args, context),
+    });
     toolExecutor.registerTool({ name: graphDigestTool.name, description: graphDigestTool.description, execute: (args) => graphDigestTool.execute(args as { query: string; runId?: string }) });
     toolExecutor.registerTool({ name: graphToolLogTool.name, description: graphToolLogTool.description, execute: (args) => graphToolLogTool.execute(args as { runId: string; toolCallId: string }) });
     extensionTools.registerAll(
@@ -1878,8 +1885,8 @@ export const callChatAgent =
         response.tool_calls,
       );
 
-      const toolMessages:
-        ToolMessage[] = [];
+      const toolMessages: ToolMessage[] = [];
+      const askUserCall = response.tool_calls.find((call) => call.name === askUserTool.name);
 
       for (
         const toolCall
@@ -1898,6 +1905,15 @@ export const callChatAgent =
           throw new Error(
             `Missing tool call ID for ${toolCall.name}.`,
           );
+        }
+
+        if (askUserCall && toolCall.name !== askUserTool.name) {
+          toolMessages.push(new ToolMessage({
+            content: "Skipped because the user is being asked to clarify; this tool was not run.",
+            tool_call_id: toolCallId,
+            name: toolCall.name,
+          }));
+          continue;
         }
 
         const {
@@ -2059,8 +2075,7 @@ export const callChatAgent =
       "";
 
     if (
-      toolResultsSummary.length >
-      0
+      toolResultsSummary.length > 0
     ) {
       const summaryPrompt =
         buildChatToolResultSummaryPrompt({

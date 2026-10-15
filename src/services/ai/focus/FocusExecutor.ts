@@ -10,6 +10,7 @@ import { FocusStore } from "./focusStore";
 import { saveSpecialistSectionMemoryInBackground } from "../agent/specialist-memory";
 import { withShortDescription } from "../agent/tool-summaries";
 import { FileToolRecovery, isFileToolError } from "../agent/file-tool-recovery";
+import { askUserForClarification } from "../tools/ask-user-tool";
 import { buildDocsContextPrompt } from "../../../chat/docs";
 import { buildGlobalDirectoryPrompt } from "../global-directory-prompt";
 import { persistAgentGraphTurn } from "../../../graphStructure/agentTurn";
@@ -62,7 +63,7 @@ function focusPrompt(state: FocusState, toolDescriptions: string, docsContextPro
   return `You are Focus, a task-focused assistant working with the user on one goal.
 
 FOCUS RULES
-- Understand the requested outcome. Ask a concise clarification only when ambiguity would materially change the work; otherwise proceed. Use only the necessary tools and stop when the request is complete. If blocked, explain what remains.
+- Understand the requested outcome. Ask a concise clarification only when ambiguity would materially change the work; otherwise proceed. When clarification is needed, call ask_user and use the user's answer to continue the task. Use only the necessary tools and stop when the request is complete. If blocked, explain what remains.
 - When explicitly asked to create an agent, call create_agent with the user's complete request unchanged.
 - When explicitly asked to edit/update an existing agent, use list_agents and read_agent to inspect the saved definition, then call update_agent with only requested field changes. Preserve every omitted field, and never edit an agent without the user's explicit request.
 - This is section ${state.currentSectionNumber}. Sections are just lightweight boundaries the user controls, not predefined tasks.
@@ -315,20 +316,29 @@ export class FocusExecutor {
         reply = messageText(final).trim();
         break;
       }
+      const askUserCall = calls.find((call) => call.name === "ask_user");
       for (const [index, call] of calls.entries()) {
         const callId = call.id || `${state.id}-${sectionNumber}-${round}-${index}`;
         const args = call.args ?? {};
-        await this.store.append(state.id, sectionNumber, "tool_call", { callId, name: call.name, arguments: args });
+        if (askUserCall && call.name !== "ask_user") {
+          const skipped = "Skipped because the user is being asked to clarify; this tool was not run.";
+          await this.store.append(state.id, sectionNumber, "tool_call", { callId, name: call.name, arguments: args });
+          await this.store.append(state.id, sectionNumber, "tool_result", { callId, name: call.name, result: skipped });
+          messages.push(new ToolMessage({ content: skipped, tool_call_id: callId, name: call.name }));
+          continue;
+        }
         dispatchAgentToolActivity({ id: callId, tool: call.name, args, status: "running", chatId: state.chatId });
         let resultText = "";
         let toolStatus: "done" | "error" = "done";
         try {
           const selected = toolMap.get(call.name);
           if (!selected) throw new Error(`Unknown Focus tool: ${call.name}`);
-          const output = await fileRecovery.execute(
-            call.name, args, async () => selected.invoke(args, turn.config),
-            toolMap.has("terminal_executor"), turn.config?.signal as AbortSignal | undefined,
-          );
+          const output = call.name === "ask_user"
+            ? await askUserForClarification(args, { toolCallId: callId, chatId: state.chatId, signal: turn.config?.signal as AbortSignal | undefined })
+            : await fileRecovery.execute(
+                call.name, args, async () => selected.invoke(args, turn.config),
+                toolMap.has("terminal_executor"), turn.config?.signal as AbortSignal | undefined,
+              );
           resultText = typeof output === "string" ? output : JSON.stringify(output);
           if (isFileToolError(resultText)) toolStatus = "error";
         } catch (error) {
@@ -341,8 +351,6 @@ export class FocusExecutor {
         messages.push(new ToolMessage({ content: resultText, tool_call_id: callId, name: call.name }));
         if (call.name === "next_focus_section" && controls.next) controlUsed = true;
         if (call.name === "end_focus" && controls.end) controlUsed = true;
-        /* Do not break early: every tool_call needs a matching ToolMessage or
-         * the follow-up LLM call receives a malformed message history. */
       }
       if (controlUsed) break;
       if (round === maxRounds) {
