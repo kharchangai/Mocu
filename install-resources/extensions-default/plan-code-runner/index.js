@@ -1,6 +1,6 @@
 /* Plan Code Runner: execute and resume bounded JSON implementation plans. */
 import { createExtension } from "@mocu/extension-sdk";
-import { readFileSync, writeFileSync, existsSync, renameSync } from "node:fs";
+import { readFileSync, writeFileSync, existsSync, renameSync, statSync } from "node:fs";
 import { createHash } from "node:crypto";
 import { resolve } from "node:path";
 
@@ -78,6 +78,14 @@ const loadPlan = (path) => {
   const error = validatePlan(plan);
   return error ? { error } : { path: abs, plan, steps: plan.steps };
 };
+const resolveProjectPath = (value) => {
+  if (typeof value !== "string" || !value.trim()) return { error: "projectPath must be a non-empty string." };
+  const abs = resolve(value.trim());
+  let stat;
+  try { stat = statSync(abs); } catch { return { error: `Project path not found: ${abs}` }; }
+  if (!stat.isDirectory()) return { error: `Project path is not a directory: ${abs}` };
+  return { path: abs };
+};
 const extractJson = (text) => {
   if (typeof text !== "string") return null;
   const fence = text.match(/```(?:json)?\s*([\s\S]*?)```/i);
@@ -96,8 +104,9 @@ const bounded = (x, max) => {
   return text.length <= max ? text : `${text.slice(0, max)}\n[truncated]`;
 };
 const reportText = (step, report) => `### Step ${step.step}: ${step.title ?? step.goal ?? step.step}\n${bounded(report, 4000)}`;
-const coderPrompt = ({ step, plan, history, retry, recovery }) => {
+const coderPrompt = ({ step, plan, history, retry, recovery, projectPath }) => {
   const context = [];
+  if (projectPath) context.push(`Project path:\n${projectPath}\nAll file and terminal work must happen under this path; resolve every relative path against it.`);
   if (plan.project_summary) context.push(`Project summary:\n${bounded(plan.project_summary, 2500)}`);
   if (Array.isArray(plan.overall_acceptance_criteria)) context.push(`Acceptance criteria:\n- ${plan.overall_acceptance_criteria.slice(0, 16).join("\n- ")}`);
   const recover = recovery ? "RECOVERY: this step was in progress when execution stopped. Inspect only relevant current files, compare against expected_result, and perform only remaining work; do not blindly repeat non-idempotent actions." : "";
@@ -151,6 +160,17 @@ async function executePlan(input, context, isResume) {
   const maxUpdates = positiveInt(args.maxPlanUpdates, DEFAULT_MAX_UPDATES, MAX_UPDATES);
   const coderTimeout = positiveInt(args.coderTimeoutMs, CODER_TIMEOUT, MAX_TIMEOUT);
   const reviserTimeout = positiveInt(args.reviserTimeoutMs, REVISER_TIMEOUT, MAX_TIMEOUT);
+
+  const requestedProject = typeof args.projectPath === "string" && args.projectPath.trim()
+    ? args.projectPath
+    : typeof plan.project_path === "string" && plan.project_path.trim() ? plan.project_path : "";
+  let projectPath = "";
+  if (requestedProject) {
+    const checked = resolveProjectPath(requestedProject);
+    if (checked.error) return finish({ status: "error", stage: "project_path", error: checked.error, planPath });
+    projectPath = checked.path;
+    notify(`Project path: ${projectPath}\n`);
+  }
 
   if (isResume) {
     const saved = readState(stateFile, planPath, plan);
@@ -216,6 +236,7 @@ async function executePlan(input, context, isResume) {
     try { response = await extension.agents.run({ agentId: reviser.id, input: reviserPrompt({ plan, history: state.history, step, outcome: pending.outcome, deviation: pending.deviation }) }, { timeoutMs: reviserTimeout }); }
     catch (e) { return pause(`Plan reviser invocation failed: ${e.message}`, { stage: "plan_update" }); }
     const revised = extractJson(response.text ?? "");
+    if (isObject(revised) && typeof plan.project_path === "string" && typeof revised.project_path !== "string") revised.project_path = plan.project_path;
     const issue = validatePlan(revised);
     if (issue) return pause(`Reviser returned invalid plan: ${issue}`, { stage: "plan_update", reviserReply: bounded(response.text ?? "", 3000) });
     const original = JSON.stringify(plan, null, 2);
@@ -261,7 +282,7 @@ async function executePlan(input, context, isResume) {
     let result = null; let raw = ""; let schemaError = "";
     for (let attempt = 0; attempt < 2 && !result; attempt += 1) {
       try {
-        const reply = await extension.agents.run({ agentId: coder.id, input: coderPrompt({ step, plan, history: state.history, retry: attempt === 1, recovery: recovering }) }, { timeoutMs: coderTimeout });
+        const reply = await extension.agents.run({ agentId: coder.id, input: coderPrompt({ step, plan, history: state.history, retry: attempt === 1, recovery: recovering, projectPath }) }, { timeoutMs: coderTimeout });
         raw = reply.text ?? "";
       } catch (e) { return pause(`Coder invocation failed: ${e.message}`, { stage: "coder", currentStep: step.step }); }
       const candidate = extractJson(raw);

@@ -1,6 +1,7 @@
 import { listen } from "@tauri-apps/api/event";
 
 import { generateSimpleAnswer } from "../../services/ai";
+import { generateSpeech, transcribeAudio } from "../../services/aiService";
 
 import { getJevDecision } from "../../services/ai/tools/decision/Jev_model";
 
@@ -23,6 +24,8 @@ const MAX_LLM_SYSTEM_PROMPT_LENGTH = 20_000;
 const MAX_DECISION_QUESTIONS = 32;
 const MAX_EMBEDDING_TEXTS = 64;
 const MAX_EMBEDDING_TEXT_LENGTH = 32_000;
+const MAX_TTS_TEXT_LENGTH = 20_000;
+const MAX_STT_AUDIO_BASE64_LENGTH = 40_000_000; // ~30 MB decoded audio
 
 /**
  * Handle one-way progress notifications streamed by extensions while a
@@ -130,6 +133,16 @@ async function handleHostMessage(
 
   if (method === "mocu.embedding.embed") {
     await handleEmbeddingEmbed(extensionId, requestId, params);
+    return;
+  }
+
+  if (method === "mocu.stt.transcribe") {
+    await handleSttTranscribe(extensionId, requestId, params);
+    return;
+  }
+
+  if (method === "mocu.tts.speak") {
+    await handleTtsSpeak(extensionId, requestId, params);
     return;
   }
 
@@ -492,6 +505,143 @@ async function handleEmbeddingEmbed(
       });
     }
   }
+}
+
+/**
+ * Handle `mocu.stt.transcribe`: transcribe base64-encoded audio with Mocu's
+ * configured STT model (settings: model / base URL / API key) and return
+ * the recognized text.
+ */
+async function handleSttTranscribe(
+  extensionId: string,
+  requestId: string | number | null,
+  params: Record<string, unknown>,
+): Promise<void> {
+  try {
+    const audio = params.audio;
+
+    if (typeof audio !== "string" || !audio.trim()) {
+      throw new Error(
+        "mocu.stt.transcribe requires a non-empty base64 'audio' string.",
+      );
+    }
+
+    if (audio.length > MAX_STT_AUDIO_BASE64_LENGTH) {
+      throw new Error(
+        `mocu.stt.transcribe audio is too large (maximum ${MAX_STT_AUDIO_BASE64_LENGTH} base64 characters).`,
+      );
+    }
+
+    const mimeType =
+      typeof params.mimeType === "string" && params.mimeType.trim()
+        ? params.mimeType.trim()
+        : "audio/webm";
+
+    const audioBlob = base64ToBlob(audio, mimeType);
+
+    const text = await transcribeAudio(audioBlob);
+
+    if (requestId !== null) {
+      await respondExtension(extensionId, requestId, { text }, null);
+    }
+  } catch (error) {
+    const errorMessage =
+      error instanceof Error ? error.message : String(error);
+
+    console.error(
+      `[Mocu Extension] mocu.stt.transcribe failed for '${extensionId}':`,
+      error,
+    );
+
+    if (requestId !== null) {
+      await respondExtension(extensionId, requestId, null, {
+        code: -32603,
+        message: errorMessage,
+        data: null,
+      });
+    }
+  }
+}
+
+/**
+ * Handle `mocu.tts.speak`: synthesize text with Mocu's configured TTS
+ * model and voice (settings) and return base64 audio to the extension.
+ */
+async function handleTtsSpeak(
+  extensionId: string,
+  requestId: string | number | null,
+  params: Record<string, unknown>,
+): Promise<void> {
+  try {
+    const text = params.text;
+
+    if (typeof text !== "string" || !text.trim()) {
+      throw new Error("mocu.tts.speak requires a non-empty 'text' string.");
+    }
+
+    if (text.length > MAX_TTS_TEXT_LENGTH) {
+      throw new Error(
+        `mocu.tts.speak text is too long (maximum ${MAX_TTS_TEXT_LENGTH} characters).`,
+      );
+    }
+
+    const audioBlob = await generateSpeech(text);
+
+    const audioBase64 = await blobToBase64(audioBlob);
+
+    if (requestId !== null) {
+      await respondExtension(extensionId, requestId, {
+        audio: audioBase64,
+        mimeType: audioBlob.type || "audio/mpeg",
+      }, null);
+    }
+  } catch (error) {
+    const errorMessage =
+      error instanceof Error ? error.message : String(error);
+
+    console.error(
+      `[Mocu Extension] mocu.tts.speak failed for '${extensionId}':`,
+      error,
+    );
+
+    if (requestId !== null) {
+      await respondExtension(extensionId, requestId, null, {
+        code: -32603,
+        message: errorMessage,
+        data: null,
+      });
+    }
+  }
+}
+
+/**
+ * Decode a base64 string into a Blob for the STT pipeline.
+ */
+function base64ToBlob(base64: string, mimeType: string): Blob {
+  const binary = atob(base64);
+  const bytes = new Uint8Array(binary.length);
+
+  for (let i = 0; i < binary.length; i += 1) {
+    bytes[i] = binary.charCodeAt(i);
+  }
+
+  return new Blob([bytes], { type: mimeType });
+}
+
+/**
+ * Encode a Blob (e.g. synthesized TTS audio) into a base64 string.
+ */
+async function blobToBase64(blob: Blob): Promise<string> {
+  const buffer = await blob.arrayBuffer();
+  const bytes = new Uint8Array(buffer);
+
+  let binary = "";
+
+  for (let i = 0; i < bytes.length; i += 1) {
+    binary += String.fromCharCode(bytes[i]);
+  }
+
+  return btoa(binary);
 }
 
 /**

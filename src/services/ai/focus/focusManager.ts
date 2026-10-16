@@ -76,7 +76,7 @@ async function buildTaskTools(config: RunnableConfig, projectPath?: string): Pro
   }
   const agentNames = references(config, "selectedAgent");
   try {
-    const agents = await loadAgentTools(agentNames, "", config);
+    const agents = await loadAgentTools(agentNames, projectPath || "", config);
     tools.push(...agents.tools as FocusToolLike[]);
   } catch (error) {
     console.warn("[Focus] Could not load selected agent tools:", error);

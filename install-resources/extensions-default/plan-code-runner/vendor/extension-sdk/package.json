@@ -19,7 +19,7 @@
     "clean": "node -e \"require('fs').rmSync('dist',{recursive:true,force:true})\""
   },
   "dependencies": {
-    "@mocu/extension-contracts": "file:../extension-contracts"
+    "@mocu/extension-contracts": "file:../contracts"
   },
   "devDependencies": {
     "@types/node": "^24.3.0",

@@ -6,8 +6,8 @@ export {
 export { LlmApi } from "./llm.js";
 export { DecisionApi } from "./decision.js";
 export { EmbeddingApi } from "./embedding.js";
+export { SpeechApi } from "./speech.js";
 export { AgentsApi } from "./agents.js";
-export { ExtensionUiApi } from "./ui.js";
 export type {
   ExtensionCommandHandler,
   ExtensionCommandContext,
@@ -32,7 +32,10 @@ export type {
   ExtensionExecuteParams,
   ExtensionInteractionButton,
   ExtensionInteractionParams,
-  ExtensionInteractionResult,
+  SttTranscribeParams,
+  SttTranscribeResult,
+  TtsSpeakParams,
+  TtsSpeakResult,
 } from "@mocu/extension-contracts";
 
 export type { ExtensionInteractionOptions } from "./ui.js";

@@ -169,7 +169,7 @@ async function buildMainAgentToolRuntime(
   try {
     const agentTools = await loadAgentTools(
       selectedAgentNames,
-      "",
+      projectPath || "",
       config,
     );
 

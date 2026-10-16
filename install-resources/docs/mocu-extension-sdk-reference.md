@@ -2,9 +2,10 @@
 id: mocu-extension-sdk-reference
 title: Mocu Extension SDK Reference
 description: Reference for verified Mocu extension SDK APIs, host behavior,
-  validation limits, packaging requirements, and shared global resource folders.
-  Retrieve it when building or reviewing a Node or Python extension, checking
-  SDK availability, or locating SDK source and Mocu-shipped extensions.
+  validation limits, packaging requirements, speech transcription and synthesis,
+  and shared global resource folders. Retrieve it when building or reviewing a
+  Node or Python extension, checking SDK availability, or locating SDK source
+  and Mocu-shipped extensions.
 keywords:
   - Mocu extension SDK
   - Node SDK
@@ -16,6 +17,10 @@ keywords:
   - saved agents
   - chat interaction
   - streaming progress
+  - speech transcription
+  - speech synthesis
+  - STT
+  - TTS
   - SDK packaging
   - local vendoring
   - global extension resources
@@ -29,10 +34,10 @@ keywords:
 This reference documents only capabilities verified in the Mocu SDK and host implementation.
 
 - Node package: `@mocu/extension-sdk`
-  - Exports `createExtension`, `MocuExtension`, `LlmApi`, `DecisionApi`, `EmbeddingApi`, `AgentsApi`, `ExtensionUiApi`, and related types.
+  - Exports `createExtension`, `MocuExtension`, `LlmApi`, `DecisionApi`, `EmbeddingApi`, `AgentsApi`, `SpeechApi`, `ExtensionUiApi`, and related types.
 - Python package: `mocu_extension_sdk`
-  - Exports `create_extension`, `MocuExtension`, and the corresponding API classes.
-- Each extension instance exposes `extension.llm`, `extension.decision`, `extension.embedding`, and `extension.agents`.
+  - Exports `create_extension`, `MocuExtension`, and the corresponding API classes, including `SpeechApi`.
+- Each extension instance exposes `extension.llm`, `extension.decision`, `extension.embedding`, `extension.agents`, and `extension.speech`.
 - For each command invocation, the context exposes chat UI access as `context.mocu.ui` in Node or `context["mocu"]["ui"]` in Python.
 
 ## Host LLM
@@ -116,6 +121,46 @@ Python `embed(texts)` returns a result dictionary.
 - At least one non-empty text is required.
 - A call can contain at most 64 texts.
 - Each text can contain at most 32,000 characters.
+
+## Speech (STT and TTS)
+
+Use `extension.speech` to transcribe audio to text (STT) and synthesize text to speech (TTS) with the STT/TTS models configured by the user in Mocu Settings, including the gateway, API key, models, and voice. No separate API key is needed, and no extra manifest permission is required.
+
+**Node:**
+
+```js
+const transcription = await extension.speech.transcribe({
+  audio: base64Audio,       // base64-encoded audio (wav / mp3 / ogg / webm)
+  mimeType: "audio/webm"    // optional; host defaults to "audio/webm" when omitted
+});
+return transcription.text;
+
+const speech = await extension.speech.speak({ text: "Hello there" });
+// speech.audio is base64-encoded synthesized speech; speech.mimeType is e.g. "audio/mpeg"
+```
+
+The Node method signatures are `extension.speech.transcribe({audio, mimeType?})`, returning `{text: string}`, and `extension.speech.speak({text})`, returning `{audio: string, mimeType: string}`.
+
+**Python:**
+
+```python
+transcription = extension.speech.transcribe(base64_audio, mime_type="audio/webm")
+text = transcription["text"]
+
+speech = extension.speech.speak("Hello there")
+audio = speech["audio"]        # base64-encoded synthesized speech
+mime = speech["mimeType"]      # e.g. "audio/mpeg"
+```
+
+The Python method signatures are `extension.speech.transcribe(audio, mime_type=None)` and `extension.speech.speak(text)`. Both return dictionaries.
+
+**Host behavior and limits:**
+
+- The protocol methods are `mocu.stt.transcribe` and `mocu.tts.speak`.
+- `audio` must be a non-empty base64 string. The host accepts at most 40,000,000 base64 characters (about 30 MB of raw audio).
+- A missing or empty `mimeType` defaults to `"audio/webm"` on the host.
+- TTS `text` must be non-empty and can contain at most 20,000 characters per call.
+- This API does not require an additional permission entry in the extension manifest.
 
 ## Saved agents
 
@@ -222,17 +267,17 @@ The import examples in this reference show SDK package names; they do not guaran
 
 - Do not treat permissions as a generic prompt or assume unverified permission strings.
 - The reviewed host implementation specifically checks `agents.invoke` before listing or running saved agents.
-- Other host APIs are routed through `host-service` without that named permission check in the reviewed implementation. Do not invent permission strings or promise additional enforcement.
+- Other host APIs—including speech (STT/TTS)—are routed through `host-service` without that named permission check in the reviewed implementation. Do not invent permission strings or promise additional enforcement.
 - Handle user and API-key data carefully, validate inputs, and catch errors.
 - Never print protocol data to stdout.
 
 ## Verified implementation sources
 
-- Node SDK: `extension-system/sdk-node/src/index.ts`, `extension.ts`, `llm.ts`, `decision.ts`, `embedding.ts`, `agents.ts`, and `ui.ts`.
-- Python SDK: matching modules under `extension-system/sdk-python/mocu_extension_sdk`.
-- Contracts: `extension-system/contracts/src/{llm,decision,embedding,agents,protocol}.ts`.
-- Active handlers: `src/extensions/services/host-service.ts` and `extension-agent-service.ts`.
+- Node SDK: `extension-system/sdk-node/src/index.ts`, `extension.ts`, `llm.ts`, `decision.ts`, `embedding.ts`, `agents.ts`, `speech.ts`, and `ui.ts`.
+- Python SDK: matching modules under `extension-system/sdk-python/mocu_extension_sdk`, including `speech.py`.
+- Contracts: `extension-system/contracts/src/{llm,decision,embedding,agents,speech,protocol}.ts`.
+- Active handlers: `src/extensions/services/host-service.ts` (including `handleSttTranscribe` / `handleTtsSpeak` with `base64ToBlob` / `blobToBase64` helpers) and `extension-agent-service.ts`.
 
 ## When to use this document
 
-Retrieve this reference when building or reviewing a Mocu extension that needs official SDK capabilities in Node or Python, or when checking API identifiers, manifest requirements, input limits, host behavior, chat interaction, cancellation, or streaming progress. Use it as well to check public SDK availability and local vendoring requirements, or to locate shared global resource folders, distinguish global SDK source from shipped and user-installed extensions, and determine which path-resolution approach is appropriate.
+Retrieve this reference when building or reviewing a Mocu extension that needs verified SDK capabilities in Node or Python, including speech transcription (STT) and speech synthesis (TTS). Use it to check API identifiers, manifest requirements, input limits, host behavior, chat interaction, cancellation, or streaming progress; to verify public SDK availability and local vendoring requirements; or to locate shared global resource folders and distinguish global SDK source from Mocu-shipped and user-installed extensions.

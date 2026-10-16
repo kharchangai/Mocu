@@ -6,6 +6,7 @@ import { AgentsApi } from "./agents.js";
 import { DecisionApi } from "./decision.js";
 import { EmbeddingApi } from "./embedding.js";
 import { LlmApi } from "./llm.js";
+import { SpeechApi } from "./speech.js";
 import { ExtensionUiApi } from "./ui.js";
 import { JsonRpcProtocolClient } from "./protocol-client.js";
 
@@ -34,6 +35,9 @@ export class MocuExtension {
   /** Create embedding vectors with Mocu's configured embedding model. */
   public readonly embedding: EmbeddingApi;
 
+  /** Transcribe audio (STT) and synthesize speech (TTS) with Mocu's configured models. */
+  public readonly speech: SpeechApi;
+
   /** Discover and invoke the current user's saved agents. */
   public readonly agents: AgentsApi;
 
@@ -43,6 +47,7 @@ export class MocuExtension {
     this.llm = new LlmApi(this.protocol);
     this.decision = new DecisionApi(this.protocol);
     this.embedding = new EmbeddingApi(this.protocol);
+    this.speech = new SpeechApi(this.protocol);
     this.agents = new AgentsApi(this.protocol);
 
     for (const [command, handler] of Object.entries(definition.commands ?? {})) {

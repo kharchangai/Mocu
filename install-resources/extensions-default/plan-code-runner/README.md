@@ -10,6 +10,14 @@ Run `run_plan` with the original plan path:
 {"planPath":"E:\\path\\to\\implementation-plan.json"}
 ```
 
+Optional `projectPath` tells the coder which project root folder to work in:
+
+```json
+{"planPath":"E:\\path\\to\\implementation-plan.json","projectPath":"E:\\path\\to\\project"}
+```
+
+If `projectPath` is omitted, the runner falls back to the plan's top-level `project_path` field (written by the Implementation Plan Architect). If neither is present, no project folder is passed to the coder. A `projectPath` or `project_path` that does not exist or is not a directory fails the run with stage `project_path` before any agent is invoked.
+
 For each plan, progress is stored beside it at:
 
 ```text

@@ -6,9 +6,9 @@ from .agents import AgentsApi
 from .decision import DecisionApi
 from .embedding import EmbeddingApi
 from .llm import LlmApi
+from .speech import SpeechApi
 from .protocol import JsonRpcProtocol
 from .types import CommandHandler
-from .ui import ExtensionUiApi
 
 
 class MocuExtension:
@@ -26,6 +26,7 @@ class MocuExtension:
         self.llm = LlmApi(self._protocol)
         self.decision = DecisionApi(self._protocol)
         self.embedding = EmbeddingApi(self._protocol)
+        self.speech = SpeechApi(self._protocol)
         self.agents = AgentsApi(self._protocol)
         self._protocol.register_handler(
             "extension.execute",
