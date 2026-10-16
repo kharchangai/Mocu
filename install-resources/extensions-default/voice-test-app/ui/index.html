@@ -1,0 +1,263 @@
+<!doctype html>
+<html lang="en" dir="ltr">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="light dark">
+  <title>Voice Test App</title>
+  <style>
+    :root {
+      color-scheme: light dark;
+      font-family: "Segoe UI", system-ui, sans-serif;
+      color: #292823;
+      background: #f7f6f3;
+    }
+    * { box-sizing: border-box; }
+    body { margin: 0; min-height: 100vh; padding: 28px 18px; }
+    main { max-width: 760px; margin: 0 auto; }
+    .card { padding: 24px; border: 1px solid #e8e4dd; border-radius: 18px; background: #fff; box-shadow: 0 12px 40px #28231a0a; }
+    .eyebrow { margin: 0 0 8px; color: #aa624b; font-size: 12px; font-weight: 700; letter-spacing: .04em; }
+    h1 { margin: 0; font-size: 24px; }
+    .intro { margin: 10px 0 20px; color: #706d66; font-size: 14px; line-height: 1.6; }
+    .toolbar { display: flex; flex-wrap: wrap; align-items: center; gap: 12px; }
+    button {
+      min-height: 44px; padding: 0 18px; border: 0; border-radius: 10px;
+      color: #fff; background: #a85239; cursor: pointer; font: inherit; font-size: 14px; font-weight: 700;
+      display: inline-flex; align-items: center; gap: 8px;
+    }
+    button:hover:not(:disabled) { background: #91452f; }
+    button:disabled { opacity: .45; cursor: not-allowed; }
+    button:focus-visible { outline: 3px solid #d6a191; outline-offset: 2px; }
+    #stop-btn { background: #8a3b3b; }
+    #stop-btn:hover:not(:disabled) { background: #742f2f; }
+    #play-btn { background: #3d6a4f; }
+    #play-btn:hover:not(:disabled) { background: #325a41; }
+    .hint { color: #726d64; font-size: 13px; }
+    .status { min-height: 22px; margin: 16px 0 10px; color: #706d66; font-size: 13px; }
+    .status.error { color: #b03a2e; font-weight: 700; }
+    textarea {
+      width: 100%; min-height: 190px; margin: 0; padding: 15px; resize: vertical;
+      border: 1px solid #e8e4dd; border-radius: 12px; background: #faf9f7; color: #302e2a;
+      font: 14px/1.6 inherit; white-space: pre-wrap; overflow-wrap: anywhere;
+    }
+    textarea:focus { outline: 2px solid #d6a191; }
+    .recording .card { border-color: #c2544b; }
+    .dot {
+      width: 10px; height: 10px; border-radius: 50%; background: #e74c3c;
+      display: inline-block; animation: blink 1s infinite;
+    }
+    @keyframes blink { 50% { opacity: .15; } }
+    .hidden { display: none; }
+    .privacy { margin: 14px 0 0; color: #817d75; font-size: 12px; line-height: 1.6; }
+    @media (prefers-color-scheme: dark) {
+      :root { color: #f1eee9; background: #1b1a18; }
+      .card { border-color: #3d3934; background: #24221f; box-shadow: none; }
+      .intro, .hint, .status, .privacy { color: #b8b2a8; }
+      textarea { border-color: #3d3934; background: #1b1a18; color: #f1eee9; }
+      .status.error { color: #ff8a7a; }
+    }
+  </style>
+</head>
+<body>
+  <main>
+    <section class="card" aria-labelledby="title">
+      <p class="eyebrow">Mocu Extension App</p>
+      <h1 id="title">Speech to Text & Text to Speech Test</h1>
+      <p class="intro">
+        Click "Start Recording", say something, then stop the recording —
+        your speech will appear here as text. You can then convert the same text
+        back to speech with "Play Text".
+      </p>
+
+      <div class="toolbar">
+        <button id="record-btn" type="button">🎙️ Start Recording</button>
+        <button id="stop-btn" type="button" class="hidden">⏹️ Stop Recording</button>
+        <button id="play-btn" type="button" disabled>🔊 Play Text</button>
+        <span id="hint" class="hint"></span>
+      </div>
+
+      <p id="status" class="status" role="status" aria-live="polite">Press the record button to get started.</p>
+
+      <textarea id="text" placeholder="Transcribed speech will appear here; you can also edit it…" spellcheck="false"></textarea>
+
+      <p class="privacy">
+        Audio is recorded via the browser microphone and transcribed with the STT model
+        configured in Mocu; text playback uses the Mocu TTS model.
+      </p>
+    </section>
+  </main>
+
+  <script src="./vendor/mocu-ui.js"></script>
+  <script>
+    (() => {
+      "use strict";
+
+      const recordBtn = document.getElementById("record-btn");
+      const stopBtn = document.getElementById("stop-btn");
+      const playBtn = document.getElementById("play-btn");
+      const hint = document.getElementById("hint");
+      const statusEl = document.getElementById("status");
+      const textArea = document.getElementById("text");
+
+      let mediaRecorder = null;
+      let audioChunks = [];
+      let stream = null;
+      let ttsAudio = null;   // base64 audio returned by TTS
+      let ttsMime = "audio/mpeg";
+
+      function setStatus(message, isError) {
+        statusEl.textContent = message;
+        statusEl.classList.toggle("error", Boolean(isError));
+      }
+
+      function setRecordingUi(recording) {
+        recordBtn.classList.toggle("hidden", recording);
+        stopBtn.classList.toggle("hidden", !recording);
+        playBtn.disabled = recording || !textArea.value.trim();
+        document.body.classList.toggle("recording", recording);
+      }
+
+      // ---- Recording -------------------------------------------------------
+
+      async function startRecording() {
+        if (!navigator.mediaDevices || !window.MediaRecorder) {
+          setStatus("Audio recording is not supported in this browser.", true);
+          return;
+        }
+        try {
+          stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+        } catch (error) {
+          setStatus("Microphone access denied: " + (error && error.message ? error.message : error), true);
+          return;
+        }
+
+        // Prefer webm/opus (the host default), fall back to whatever is supported.
+        let options = {};
+        if (typeof MediaRecorder.isTypeSupported === "function") {
+          if (MediaRecorder.isTypeSupported("audio/webm;codecs=opus")) {
+            options = { mimeType: "audio/webm;codecs=opus" };
+          } else if (MediaRecorder.isTypeSupported("audio/webm")) {
+            options = { mimeType: "audio/webm" };
+          }
+        }
+
+        try {
+          mediaRecorder = options.mimeType ? new MediaRecorder(stream, options) : new MediaRecorder(stream);
+        } catch (error) {
+          stream.getTracks().forEach((track) => track.stop());
+          setStatus("Failed to start recording: " + (error && error.message ? error.message : error), true);
+          return;
+        }
+
+        audioChunks = [];
+        mediaRecorder.ondataavailable = (event) => {
+          if (event.data && event.data.size > 0) audioChunks.push(event.data);
+        };
+        mediaRecorder.onerror = () => stopRecording();
+        mediaRecorder.onstop = () => {
+          stream.getTracks().forEach((track) => track.stop());
+          const blob = new Blob(audioChunks, { type: mediaRecorder.mimeType || "audio/webm" });
+          transcribeBlob(blob, mediaRecorder.mimeType || "audio/webm");
+        };
+
+        mediaRecorder.start();
+        setRecordingUi(true);
+        setStatus("Recording… press \"Stop Recording\" whenever you are done.");
+      }
+
+      function stopRecording() {
+        if (mediaRecorder && mediaRecorder.state !== "inactive") {
+          mediaRecorder.stop();
+        }
+        setRecordingUi(false);
+        setStatus("Sending audio for transcription…");
+      }
+
+      // ---- STT -------------------------------------------------------------
+
+      function blobToBase64(blob) {
+        return new Promise((resolve, reject) => {
+          const reader = new FileReader();
+          reader.onload = () => {
+            const result = String(reader.result || "");
+            const commaIndex = result.indexOf(",");
+            resolve(commaIndex >= 0 ? result.slice(commaIndex + 1) : result);
+          };
+          reader.onerror = () => reject(reader.error || new Error("Failed to read audio data."));
+          reader.readAsDataURL(blob);
+        });
+      }
+
+      async function transcribeBlob(blob, mimeType) {
+        try {
+          const base64Audio = await blobToBase64(blob);
+          const result = await window.mocu.extension.execute("transcribe", {
+            audio: base64Audio,
+            mimeType: mimeType,
+          });
+          const text = result && typeof result.text === "string" ? result.text : "";
+          textArea.value = text;
+          ttsAudio = null; // text changed -> previous TTS audio is stale
+          playBtn.disabled = !text.trim();
+          if (text.trim()) {
+            setStatus("Text ready. You can edit it or press \"Play Text\" to hear it.");
+          } else {
+            setStatus("No speech was recognized. Try again.");
+          }
+        } catch (error) {
+          setStatus("Speech-to-text failed: " + (error && error.message ? error.message : error), true);
+        }
+      }
+
+      // ---- TTS -------------------------------------------------------------
+
+      async function speakText() {
+        const text = textArea.value.trim();
+        if (!text) {
+          setStatus("Type some text or record your voice first.", true);
+          return;
+        }
+        playBtn.disabled = true;
+        setStatus("Converting text to speech…");
+        try {
+          // Reuse the previously synthesized audio when the text has not changed.
+          if (!ttsAudio) {
+            const result = await window.mocu.extension.execute("speak", { text });
+            ttsAudio = result && typeof result.audio === "string" ? result.audio : null;
+            ttsMime = result && typeof result.mimeType === "string" ? result.mimeType : "audio/mpeg";
+          }
+          if (!ttsAudio) throw new Error("No audio was returned from the TTS model.");
+
+          const binary = atob(ttsAudio);
+          const bytes = new Uint8Array(binary.length);
+          for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
+          const blob = new Blob([bytes], { type: ttsMime });
+          const url = URL.createObjectURL(blob);
+          const audio = new Audio(url);
+          audio.onended = () => {
+            URL.revokeObjectURL(url);
+            playBtn.disabled = !textArea.value.trim();
+          };
+          setStatus("Playing…");
+          await audio.play();
+        } catch (error) {
+          setStatus("Text-to-speech failed: " + (error && error.message ? error.message : error), true);
+          playBtn.disabled = !textArea.value.trim();
+        }
+      }
+
+      // ---- Wiring ----------------------------------------------------------
+
+      recordBtn.addEventListener("click", startRecording);
+      stopBtn.addEventListener("click", stopRecording);
+      playBtn.addEventListener("click", speakText);
+      textArea.addEventListener("input", () => {
+        ttsAudio = null; // edited text must be re-synthesized
+        playBtn.disabled = !textArea.value.trim();
+      });
+      setRecordingUi(false);
+      setStatus("Press the record button to get started.");
+    })();
+  </script>
+</body>
+</html>

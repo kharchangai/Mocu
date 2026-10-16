@@ -374,7 +374,8 @@ export function ExtensionAppsPage() {
             className="extension-apps-frame"
             src={appUrl}
             title={selectedApp.title}
-            sandbox="allow-scripts allow-forms"
+            sandbox="allow-scripts allow-forms allow-same-origin"
+            allow="microphone"
             referrerPolicy="no-referrer"
           />
         ) : <p className="extension-apps-status">Opening app…</p>}

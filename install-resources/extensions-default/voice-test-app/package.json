@@ -1,0 +1,10 @@
+{
+  "name": "voice-test-app",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Mocu extension app: speech-to-text and text-to-speech test",
+  "dependencies": {
+    "@mocu/extension-sdk": "file:./vendor/extension-sdk"
+  }
+}
