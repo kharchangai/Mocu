@@ -41,7 +41,7 @@ settings.json
 *.sw?
 
 # Mocu local data
-.mocu/
+**/.mocu/
 
 # Local backups and agent test artifacts
 .stale-js-backup/
