@@ -1,14 +1,16 @@
 import { EXTENSION_METHODS } from "@mocu/extension-contracts";
-import { LlmApi } from "./llm.js";
+import { AgentsApi } from "./agents.js";
 import { DecisionApi } from "./decision.js";
 import { EmbeddingApi } from "./embedding.js";
+import { LlmApi } from "./llm.js";
+import { SpeechApi } from "./speech.js";
 import { ExtensionUiApi } from "./ui.js";
 import { JsonRpcProtocolClient } from "./protocol-client.js";
 /**
- * The minimal Mocu extension SDK. An extension just registers command
- * handlers and calls `start()`; Mocu invokes the requested command on demand
- * via `extension.execute`. Extensions may also call host AI APIs and request
- * user interaction in Mocu chat through the execution context.
+ * The minimal Mocu extension SDK. An extension registers command handlers and
+ * calls `start()`; Mocu invokes commands on demand via `extension.execute`.
+ * Extensions may call host AI APIs, interact with the user, and run saved user
+ * agents through the host without bundling a model of their own.
  */
 export class MocuExtension {
     definition;
@@ -20,11 +22,17 @@ export class MocuExtension {
     decision;
     /** Create embedding vectors with Mocu's configured embedding model. */
     embedding;
+    /** Transcribe audio (STT) and synthesize speech (TTS) with Mocu's configured models. */
+    speech;
+    /** Discover and invoke the current user's saved agents. */
+    agents;
     constructor(definition = {}) {
         this.definition = definition;
         this.llm = new LlmApi(this.protocol);
         this.decision = new DecisionApi(this.protocol);
         this.embedding = new EmbeddingApi(this.protocol);
+        this.speech = new SpeechApi(this.protocol);
+        this.agents = new AgentsApi(this.protocol);
         for (const [command, handler] of Object.entries(definition.commands ?? {})) {
             this.commands.set(command, handler);
         }

@@ -5,7 +5,8 @@
   "type": "module",
   "description": "Mocu extension for YouTube channel insights.",
   "scripts": {
-    "test": "node --test"
+    "test": "node --test",
+    "vendor:sdk": "node scripts/vendor-sdk.js"
   },
   "engines": {
     "node": ">=20"

@@ -68,6 +68,8 @@ export declare const HOST_METHODS: {
     readonly llmGenerate: "mocu.llm.generate";
     readonly decisionAsk: "mocu.decision.ask";
     readonly embeddingEmbed: "mocu.embedding.embed";
+    readonly agentsList: "mocu.agents.list";
+    readonly agentsRun: "mocu.agents.run";
     readonly extensionInteract: "mocu.extension.interact";
     readonly extensionInteractionCancel: "mocu.extension.interaction.cancel";
 };

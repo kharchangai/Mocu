@@ -1,0 +1,16 @@
+{
+  "id": "2d9696e14a954bac98cd74db",
+  "title": "Hi, how's it going on?",
+  "createdAt": "2026-10-16T14:40:11.621Z",
+  "updatedAt": "2026-10-16T14:40:15.354Z",
+  "messages": [
+    {
+      "role": "user",
+      "text": "Hi, how's it going on?"
+    },
+    {
+      "role": "tutor",
+      "text": "I'm doing well, thanks! How about you? How's your day going?"
+    }
+  ]
+}

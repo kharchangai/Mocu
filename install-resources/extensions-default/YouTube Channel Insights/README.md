@@ -1,41 +1,10 @@
 # YouTube Channel Insights — Mocu extension
 
-Starter skeleton for a Mocu extension.
+Reads channel statistics, lists channel videos, fetches video details, and calculates aggregate YouTube channel insights using the YouTube Data API v3.
 
-## Structure
+## Commands
 
-```
-mocu-extension/
-├── manifest.json              # Extension metadata and command declarations
-├── package.json               # Node package (ESM) and dependencies
-├── index.js                   # Entry point: registers command handlers and starts the SDK
-├── src/
-│   └── commands/              # One file per command handler
-│       └── example-echo.js    # Placeholder command
-├── test/
-│   └── manifest.test.js       # Basic manifest checks
-└── vendor/
-    ├── extension-sdk/         # Local copy of @mocu/extension-sdk
-    └── extension-contracts/   # Local copy of @mocu/extension-contracts
-```
-
-## Adding a new command
-
-1. Create a handler in `src/commands/<name>.js`:
-   ```js
-   export async function myCommand(input, context, config) {
-     return { ok: true };
-   }
-   ```
-2. Add the command to the `commands` array in `manifest.json` (the `id` must be unique).
-3. Register it in `index.js` under the same name as its `id`:
-   ```js
-   commands: {
-     async my_command(input, context, config) {
-       return myCommand(input, context, config);
-     },
-   },
-   ```
+The extension exposes `get_channel_info`, `list_channel_videos`, `get_video_details`, and `analyze_channel`. Configure a YouTube Data API v3 key and your channel ID or handle in Mocu before invoking them.
 
 ## Important notes
 
@@ -45,10 +14,13 @@ mocu-extension/
 
 ## Local development
 
+The checked-in SDK is vendored locally, so installation does not depend on npm publishing Mocu's SDK. To refresh the local SDK and contracts from this repository's `install-resources/extension-system` source, run:
+
 ```powershell
+npm run vendor:sdk
 npm install
 npm test
 node index.js
 ```
 
-`node index.js` should wait quietly for JSON-RPC input from Mocu.
+If the SDK source is elsewhere, set `MOCU_EXTENSION_SYSTEM_DIR` to its directory before running `npm run vendor:sdk`. `node index.js` should wait quietly for JSON-RPC input from Mocu.

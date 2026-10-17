@@ -56,10 +56,8 @@ export interface ExtensionManifest {
      */
     engines?: ExtensionEngines;
     /**
-     * Declared extension capabilities.
-     *
-     * Permissions are descriptive in the first implementation and do not
-     * provide an operating-system sandbox.
+     * Declared extension capabilities. Host calls to user agent APIs require
+     * `"agents.invoke"`; this declaration is enforced by the host bridge.
      */
     permissions?: string[];
     /**

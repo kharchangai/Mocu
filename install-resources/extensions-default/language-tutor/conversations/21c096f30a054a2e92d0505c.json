@@ -1,0 +1,40 @@
+{
+  "id": "21c096f30a054a2e92d0505c",
+  "title": "Hey, how's it going?",
+  "createdAt": "2026-10-16T15:30:06.646Z",
+  "updatedAt": "2026-10-16T15:43:30.566Z",
+  "messages": [
+    {
+      "role": "user",
+      "text": "Hey, how's it going?"
+    },
+    {
+      "role": "tutor",
+      "text": "I'm doing well, thanks! Let's talk about weekend plans. What do you usually like to do on weekends?"
+    },
+    {
+      "role": "user",
+      "text": "I don't know. I'm watching YouTube and try to work on my project Moku."
+    },
+    {
+      "role": "tutor",
+      "text": "That sounds like a relaxing way to spend your time, with a little work mixed in! What kind of project is Moku?"
+    },
+    {
+      "role": "user",
+      "text": "Moku is my main project I worked for like six months, and now we can do something, but it is alpha version for now."
+    },
+    {
+      "role": "tutor",
+      "text": "That’s exciting! Six months of work is a big commitment. What can people do with Moku in its current alpha version?"
+    },
+    {
+      "role": "user",
+      "text": "Actually, I create mockup for helping people, create agent, and agent can help people on their work, not replace people. So, yeah, I'm working on that."
+    },
+    {
+      "role": "tutor",
+      "text": "That’s a thoughtful goal—building agents that support people rather than replace them. What kinds of tasks can Moku’s agents help people with?"
+    }
+  ]
+}

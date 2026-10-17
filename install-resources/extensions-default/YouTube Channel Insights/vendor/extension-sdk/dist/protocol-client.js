@@ -1,6 +1,6 @@
 import { createInterface } from "node:readline";
 import { HOST_METHODS } from "@mocu/extension-contracts";
-/**
+/*
  * Minimal stdin/stdout JSON-RPC client.
  *
  * Mocu writes `{ method, id, params }` to the extension's stdin; the SDK
@@ -73,7 +73,8 @@ export class JsonRpcProtocolClient {
                     }
                     this.pendingRequests.delete(id);
                     this.clearPendingRequest(pending);
-                    if (method === HOST_METHODS.extensionInteract) {
+                    if (method === HOST_METHODS.extensionInteract ||
+                        method === HOST_METHODS.agentsRun) {
                         this.notify(HOST_METHODS.extensionInteractionCancel, {
                             requestId: id,
                         });

@@ -1,0 +1,726 @@
+<!doctype html>
+<html lang="fa" dir="rtl">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="light dark">
+  <title>Language Tutor</title>
+  <style>
+    :root {
+      color-scheme: light dark;
+      font-family: "Segoe UI", Tahoma, system-ui, sans-serif;
+      font-synthesis: none;
+      text-rendering: optimizeLegibility;
+      --bg: #f6f7f9;
+      --surface: #ffffff;
+      --soft: #f7f8fa;
+      --ink: #232735;
+      --muted: #717887;
+      --line: #e8eaef;
+      --accent: #6955d9;
+      --accent-hover: #5945c5;
+      --accent-soft: #f1eefd;
+      --accent-ink: #51428c;
+      --green: #26836c;
+      --green-soft: #edf7f3;
+      --amber: #8b682d;
+      --amber-soft: #fbf7ee;
+      --amber-line: #eee4ce;
+      --danger: #bf4355;
+      --danger-soft: #fceff1;
+      color: var(--ink);
+      background: var(--bg);
+    }
+    * { box-sizing: border-box; }
+    body { margin: 0; padding: 24px; }
+    button, summary { -webkit-tap-highlight-color: transparent; }
+    button { font: inherit; cursor: pointer; }
+    button:focus-visible, summary:focus-visible { outline: 3px solid var(--accent); outline-offset: 4px; }
+    button { display: inline-flex; align-items: center; justify-content: center; gap: 8px; min-height: 40px; padding: 9px 14px; border: 1px solid var(--line); border-radius: 10px; color: var(--ink); background: var(--surface); font-size: 12px; font-weight: 650; line-height: 1.5; transition: background .16s ease, border-color .16s ease; }
+    button:hover:not(:disabled) { background: var(--soft); border-color: var(--muted); }
+    button:disabled { opacity: .5; cursor: not-allowed; }
+    .icon { width: 18px; height: 18px; flex: 0 0 auto; fill: none; stroke: currentColor; stroke-width: 1.7; stroke-linecap: round; stroke-linejoin: round; }
+    .icon-defs { position: absolute; width: 0; height: 0; overflow: hidden; }
+    main { width: min(100%, 1440px); height: calc(100dvh - 48px); min-height: 550px; margin: 0 auto; display: flex; flex-direction: column; gap: 22px; }
+    .topbar { display: flex; align-items: center; justify-content: space-between; gap: 16px; flex: 0 0 auto; }
+    .brand { display: flex; align-items: center; gap: 11px; min-width: 0; }
+    .brand-mark { width: 42px; height: 42px; display: grid; place-items: center; flex: 0 0 auto; border: 1px solid #ded8f5; border-radius: 13px; color: var(--accent); background: var(--accent-soft); }
+    .brand-mark .icon { width: 23px; height: 23px; }
+    .brand-name { margin: 0; font-size: 14px; font-weight: 750; }
+    .brand-caption { margin: 3px 0 0; color: var(--muted); font-size: 11px; }
+    .top-actions { position: relative; display: flex; align-items: center; gap: 8px; }
+    #new-conv-btn { border-color: transparent; background: var(--accent-soft); color: var(--accent); }
+    #new-conv-btn:hover:not(:disabled) { border-color: var(--accent); }
+    #conv-btn.active { color: var(--accent); border-color: var(--accent); }
+    .page-heading { display: flex; align-items: center; justify-content: space-between; gap: 20px; flex: 0 0 auto; }
+    .eyebrow { margin: 0 0 5px; color: var(--accent); font-size: 11px; font-weight: 700; }
+    h1 { margin: 0; font-size: clamp(22px, 2.3vw, 29px); line-height: 1.5; letter-spacing: -.6px; font-weight: 750; }
+    .intro { max-width: 630px; margin: 7px 0 0; color: var(--muted); font-size: 12px; line-height: 1.9; }
+    .practice-tag { display: inline-flex; align-items: center; gap: 7px; padding: 8px 11px; border: 1px solid var(--line); border-radius: 9px; background: var(--surface); color: var(--muted); font-size: 11px; white-space: nowrap; }
+    .practice-tag .icon { width: 15px; height: 15px; color: var(--accent); }
+    .workspace { display: grid; grid-template-columns: minmax(0, 1fr) 340px; gap: 18px; flex: 1; min-height: 0; }
+    .card { min-width: 0; border: 1px solid var(--line); border-radius: 16px; background: var(--surface); box-shadow: 0 3px 12px #18213b03; }
+    .practice-card { display: flex; flex-direction: column; overflow: hidden; }
+    .section-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; min-height: 67px; padding: 16px 20px; border-bottom: 1px solid var(--line); flex: 0 0 auto; }
+    .section-title { display: flex; align-items: center; gap: 9px; margin: 0; font-size: 13px; font-weight: 750; white-space: nowrap; }
+    .live-dot { width: 7px; height: 7px; border-radius: 50%; background: var(--green); box-shadow: 0 0 0 4px var(--green-soft); margin-inline: 4px; }
+    .session-label { min-width: 0; max-width: 48%; overflow: hidden; color: var(--muted); font-size: 11px; text-overflow: ellipsis; white-space: nowrap; }
+    .session-content { display: flex; flex: 1; min-height: 0; padding: 20px; overflow: hidden; }
+    .welcome { display: grid; place-items: center; flex: 1; min-width: 0; padding: 24px 12px; text-align: center; overflow-y: auto; }
+    .welcome-art { width: 76px; height: 76px; display: grid; place-items: center; margin: 0 auto 22px; border: 1px solid #e2dcfa; border-radius: 24px; background: var(--accent-soft); color: var(--accent); box-shadow: 0 0 0 9px var(--surface), 0 0 0 10px var(--line); }
+    .welcome-art .icon { width: 31px; height: 31px; stroke-width: 1.4; }
+    .welcome h2 { margin: 0; font-size: 19px; font-weight: 700; }
+    .welcome p { max-width: 340px; margin: 9px auto 0; color: var(--muted); font-size: 12px; line-height: 1.95; }
+    .starter { display: inline-block; margin-top: 22px; padding: 10px 14px; border: 1px dashed var(--line); border-radius: 10px; color: var(--muted); font-size: 12px; line-height: 1.6; }
+    .transcript { width: 100%; margin: 0; display: flex; flex-direction: column; gap: 18px; overflow-y: auto; padding: 0 3px 4px; direction: ltr; scroll-behavior: smooth; scrollbar-gutter: stable; }
+    .transcript:empty { display: none; }
+    .msg { width: fit-content; max-width: 88%; min-width: 0; }
+    .msg.user { align-self: flex-end; }
+    .msg.tutor { align-self: flex-start; }
+    .msg-label { display: block; margin: 0 3px 6px; color: var(--muted); font-size: 10px; line-height: 1.6; }
+    .msg.user .msg-label { text-align: right; }
+    .msg.tutor .msg-label { text-align: left; }
+    .msg-text { padding: 12px 16px; border: 1px solid var(--line); border-radius: 14px; background: var(--soft); color: var(--ink); font-size: 14px; line-height: 1.85; text-align: start; white-space: pre-wrap; overflow-wrap: anywhere; unicode-bidi: plaintext; }
+    .msg.user .msg-text { border-top-right-radius: 4px; }
+    .msg.tutor .msg-text { border-color: transparent; border-top-left-radius: 4px; background: var(--accent-soft); color: var(--accent-ink); }
+    .controls { flex: 0 0 auto; padding: 15px 20px 14px; border-top: 1px solid var(--line); background: var(--surface); }
+    .toolbar { display: flex; flex-wrap: wrap; align-items: center; gap: 9px; }
+    #record-btn, #stop-btn { min-height: 44px; padding-inline: 20px; color: #fff; background: var(--accent); border-color: transparent; }
+    #record-btn:hover:not(:disabled) { background: var(--accent-hover); }
+    #stop-btn { background: var(--danger); }
+    #stop-btn:hover:not(:disabled) { filter: brightness(.93); }
+    #replay-btn { color: var(--muted); }
+    .control-hint { margin-inline-start: auto; color: var(--muted); font-size: 10px; }
+    .status { min-height: 18px; margin: 10px 0 0; color: var(--muted); font-size: 11px; line-height: 1.7; overflow-wrap: anywhere; }
+    .status.error { color: var(--danger); }
+    .recording .live-dot { background: var(--danger); box-shadow: 0 0 0 4px var(--danger-soft); }
+    .recording #stop-btn .icon { animation: record-pulse 1.2s ease-in-out infinite; }
+    @keyframes record-pulse { 50% { opacity: .35; } }
+    .side-column { display: flex; flex-direction: column; gap: 12px; min-height: 0; }
+    .tutor-side { display: flex; flex-direction: column; min-height: 0; flex: 1; overflow: hidden; }
+    .side-heading { display: flex; align-items: center; gap: 8px; margin: 0; font-size: 13px; font-weight: 750; }
+    .side-heading .icon { color: var(--accent); }
+    .side-kicker { color: var(--muted); font-size: 10px; }
+    .side-scroll { min-height: 0; overflow-y: auto; padding: 18px; scrollbar-gutter: stable; }
+    .feedback-empty { padding: 22px 10px 27px; text-align: center; }
+    .feedback-empty > .icon { width: 30px; height: 30px; margin-bottom: 10px; color: var(--accent); stroke-width: 1.3; }
+    .feedback-empty h3 { margin: 0; font-size: 13px; font-weight: 650; }
+    .feedback-empty p { margin: 8px 0 0; color: var(--muted); font-size: 12px; line-height: 1.9; }
+    .tutor-side:has(.grammar:not(:empty), .examples:not(:empty)) .feedback-empty { display: none; }
+    .feedback-block { margin-bottom: 18px; }
+    .feedback-block:has(.grammar:empty), .feedback-block:has(.examples:empty) { display: none; }
+    .block-label { display: flex; align-items: center; gap: 7px; margin: 0 0 9px; color: var(--muted); font-size: 11px; font-weight: 650; }
+    .block-label .icon { width: 14px; height: 14px; }
+    .grammar { padding: 13px 14px; border: 1px solid var(--amber-line); border-radius: 11px; background: var(--amber-soft); color: var(--amber); font-size: 12px; line-height: 2; white-space: pre-wrap; overflow-wrap: anywhere; text-align: start; unicode-bidi: plaintext; }
+    .examples { margin: 0; padding: 0; display: grid; gap: 8px; list-style: none; counter-reset: examples; }
+    .examples li { position: relative; padding: 10px 12px 10px 36px; border: 1px solid var(--line); border-radius: 10px; background: var(--soft); font-size: 12px; line-height: 1.8; text-align: start; white-space: pre-wrap; overflow-wrap: anywhere; unicode-bidi: plaintext; counter-increment: examples; }
+    .examples li::before { content: counter(examples, decimal-leading-zero); position: absolute; left: 11px; top: 12px; color: var(--accent); font-size: 10px; font-weight: 650; }
+    .turn-detail { border-top: 1px solid var(--line); }
+    summary { cursor: pointer; list-style: none; }
+    summary::-webkit-details-marker { display: none; }
+    .turn-detail summary, .learning-side summary { display: flex; align-items: center; gap: 8px; padding: 14px 0; color: var(--muted); font-size: 11px; font-weight: 650; }
+    .chevron { width: 14px; height: 14px; margin-inline-start: auto; transition: transform .16s ease; }
+    details[open] > summary .chevron { transform: rotate(180deg); }
+    .you-bubble, .tutor-bubble { margin-bottom: 14px; padding: 11px 12px; border: 1px solid var(--line); border-radius: 10px; background: var(--soft); color: var(--muted); font-size: 12px; line-height: 1.9; white-space: pre-wrap; overflow-wrap: anywhere; text-align: start; unicode-bidi: plaintext; }
+    .tutor-bubble { color: var(--accent-ink); background: var(--accent-soft); border-color: transparent; }
+    .learning-side { flex: 0 0 auto; padding: 0 16px; }
+    .learning-side summary { padding: 15px 0; color: var(--ink); font-size: 12px; }
+    .learning-side summary > .icon:first-child { color: var(--green); }
+    .learned-issues { max-height: 180px; overflow-y: auto; margin: 0 0 15px; padding: 0; display: grid; gap: 8px; list-style: none; }
+    .learned-issues li { padding: 10px 12px; border-radius: 9px; background: var(--green-soft); color: var(--muted); font-size: 11px; line-height: 1.9; white-space: pre-wrap; overflow-wrap: anywhere; }
+    .learned-rule { display: block; color: var(--green); font-weight: 650; }
+    .learned-example { display: block; direction: ltr; text-align: left; margin-top: 4px; }
+    .privacy { display: flex; align-items: flex-start; gap: 6px; flex: 0 0 auto; margin: 0 4px; color: var(--muted); font-size: 10px; line-height: 1.8; }
+    .privacy .icon { width: 13px; height: 13px; margin-top: 3px; }
+    .conv-panel { display: none; position: absolute; top: calc(100% + 10px); left: 0; z-index: 10; width: min(360px, calc(100vw - 32px)); padding: 16px; border: 1px solid var(--line); border-radius: 13px; background: var(--surface); box-shadow: 0 12px 40px #18213b18; }
+    .conv-panel.open { display: block; }
+    .panel-caption { margin: 0 0 12px; color: var(--muted); font-size: 11px; line-height: 1.8; }
+    #conv-list { max-height: min(360px, 60dvh); overflow-y: auto; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 8px; list-style: none; }
+    .conv-item { display: flex; align-items: center; gap: 6px; padding: 5px; border: 1px solid var(--line); border-radius: 9px; background: var(--soft); }
+    .conv-main { flex: 1; min-width: 0; display: block; min-height: 34px; padding: 6px; overflow: hidden; background: transparent; border-color: transparent; text-align: start; text-overflow: ellipsis; white-space: nowrap; font-size: 11px; unicode-bidi: plaintext; }
+    .conv-del { min-height: 32px; padding: 6px 9px; border-color: transparent; color: var(--danger); background: var(--danger-soft); font-size: 10px; }
+    .conv-empty { color: var(--muted); font-size: 11px; line-height: 1.9; }
+    .hidden { display: none !important; }
+    @media (max-width: 1100px) {
+      body { padding: 18px; }
+      main { height: calc(100dvh - 36px); gap: 18px; }
+      .workspace { grid-template-columns: minmax(0, 1fr) 300px; gap: 14px; }
+      .session-content { padding: 16px; }
+      .section-head { padding-inline: 16px; }
+      .control-hint { display: none; }
+    }
+    @media (max-width: 900px) {
+      body { padding: 16px; }
+      main { height: auto; min-height: calc(100dvh - 32px); gap: 20px; }
+      .workspace { grid-template-columns: 1fr; flex: none; }
+      .practice-card { height: clamp(440px, 65dvh, 700px); }
+      .side-column { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); align-items: start; }
+      .tutor-side { grid-row: span 2; }
+      .side-scroll { max-height: 480px; }
+      .privacy { grid-column: 2; }
+    }
+    @media (max-width: 560px) {
+      body { padding: 12px; }
+      main { min-height: calc(100dvh - 24px); gap: 18px; }
+      .topbar { gap: 10px; align-items: flex-start; }
+      .brand-mark { width: 36px; height: 36px; border-radius: 11px; }
+      .brand { gap: 8px; }
+      .brand-name { font-size: 12px; }
+      .brand-caption { font-size: 10px; }
+      .top-actions { gap: 6px; }
+      .top-actions button { width: 36px; min-height: 36px; padding: 8px; }
+      .action-label { display: none; }
+      .page-heading { align-items: flex-start; }
+      h1 { font-size: 23px; }
+      .intro { font-size: 11px; }
+      .practice-tag { display: none; }
+      .card { border-radius: 13px; }
+      .practice-card { height: clamp(430px, 70dvh, 620px); }
+      .section-head { min-height: 58px; padding: 13px 14px; }
+      .section-title { font-size: 12px; }
+      .session-label { font-size: 10px; max-width: 43%; }
+      .session-content { padding: 14px 10px; }
+      .msg { max-width: 94%; }
+      .msg-text { font-size: 13px; padding: 10px 12px; }
+      .controls { padding: 13px; }
+      .toolbar { gap: 7px; }
+      #record-btn, #stop-btn { flex: 1; padding-inline: 12px; }
+      #replay-btn { padding-inline: 10px; font-size: 11px; }
+      .status { font-size: 10px; }
+      .welcome h2 { font-size: 17px; }
+      .welcome p { font-size: 11px; }
+      .starter { font-size: 11px; }
+      .side-column { display: flex; }
+      .side-scroll { max-height: none; padding: 16px; }
+      .learning-side, .tutor-side { width: 100%; }
+      .privacy { margin-bottom: 8px; }
+    }
+    @media (prefers-color-scheme: dark) {
+      :root { --bg: #17191f; --surface: #20232b; --soft: #282c35; --ink: #ebedf3; --muted: #a2a9ba; --line: #343844; --accent: #aa9af6; --accent-hover: #7c67d7; --accent-soft: #302c45; --accent-ink: #ddd5ff; --green: #7ccbb1; --green-soft: #253b34; --amber: #e1c38e; --amber-soft: #373124; --amber-line: #504533; --danger: #e87889; --danger-soft: #412b32; }
+      .brand-mark, .welcome-art { border-color: #48405f; }
+      #record-btn { background: #7560d0; }
+      #stop-btn { background: #a33f52; }
+    }
+    @media (prefers-reduced-motion: reduce) { *, *::before, *::after { scroll-behavior: auto !important; animation: none !important; transition: none !important; } }
+  </style>
+</head>
+<body>
+  <svg class="icon-defs" xmlns="http://www.w3.org/2000/svg" aria-hidden="true"><defs>
+    <symbol id="i-chat" viewBox="0 0 24 24"><path d="M21 11.5a8.5 8.5 0 0 1-8.5 8.5H4l-2 2V11.5A8.5 8.5 0 0 1 10.5 3h2a8.5 8.5 0 0 1 8.5 8.5Z"/><path d="M7 10h9M7 14h6"/></symbol>
+    <symbol id="i-mic" viewBox="0 0 24 24"><rect x="9" y="2" width="6" height="12" rx="3"/><path d="M5 10v2a7 7 0 0 0 14 0v-2M12 19v3M8 22h8"/></symbol>
+    <symbol id="i-plus" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></symbol>
+    <symbol id="i-history" viewBox="0 0 24 24"><path d="M3 11a9 9 0 1 1 2.6 7.4M3 4v7h7M12 7v5l3 2"/></symbol>
+    <symbol id="i-spark" viewBox="0 0 24 24"><path d="m12 3 2.5 6.5L21 12l-6.5 2.5L12 21l-2.5-6.5L3 12l6.5-2.5ZM20 2v4M18 4h4"/></symbol>
+    <symbol id="i-book" viewBox="0 0 24 24"><path d="M12 5c-3-2-6-2-10-1v15c4-1 7-1 10 1 3-2 6-2 10-1V4c-4-1-7-1-10 1Zm0 0v15"/></symbol>
+    <symbol id="i-check" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="m8 12 3 3 5-6"/></symbol>
+    <symbol id="i-chevron" viewBox="0 0 24 24"><path d="m6 9 6 6 6-6"/></symbol>
+    <symbol id="i-replay" viewBox="0 0 24 24"><path d="M3 10a9 9 0 1 1 2 8M3 3v7h7"/><path d="m11 8 5 4-5 4Z"/></symbol>
+    <symbol id="i-stop" viewBox="0 0 24 24"><rect x="6" y="6" width="12" height="12" rx="2"/></symbol>
+    <symbol id="i-shield" viewBox="0 0 24 24"><path d="m12 3 8 3v6c0 5-8 9-8 9s-8-4-8-9V6Z"/><path d="m8 12 3 3 5-6"/></symbol>
+  </defs></svg>
+  <main>
+    <header class="topbar">
+      <div class="brand">
+        <div class="brand-mark" aria-hidden="true"><svg class="icon"><use href="#i-chat"/></svg></div>
+        <div><p class="brand-name" dir="ltr">Language Tutor</p><p class="brand-caption">همراه تمرین انگلیسی شما</p></div>
+      </div>
+      <div class="top-actions">
+        <button id="new-conv-btn" type="button" aria-label="مکالمهٔ جدید" title="مکالمهٔ جدید"><svg class="icon" aria-hidden="true"><use href="#i-plus"/></svg><span class="action-label">مکالمهٔ جدید</span></button>
+        <button id="conv-btn" type="button" aria-label="گفتگوهای قبلی" title="گفتگوهای قبلی" aria-expanded="false" aria-controls="conv-panel"><svg class="icon" aria-hidden="true"><use href="#i-history"/></svg><span class="action-label">گفتگوهای قبلی</span></button>
+        <div id="conv-panel" class="conv-panel" role="region" aria-label="گفتگوهای قبلی">
+          <p class="panel-caption">یک مکالمه را انتخاب کنید و از همان‌جا ادامه بدهید.</p>
+          <ul id="conv-list"></ul>
+        </div>
+      </div>
+    </header>
+
+    <section class="page-heading" aria-labelledby="page-title">
+      <div>
+        <p class="eyebrow">هر مکالمه، یک قدم رو به جلو</p>
+        <h1 id="page-title">امروز دربارهٔ چی حرف بزنیم؟</h1>
+        <p class="intro">شما انگلیسی حرف بزنید؛ مربی گفت‌وگو را ادامه می‌دهد و نکته‌های گرامری را همین‌جا با شما مرور می‌کند.</p>
+      </div>
+      <span class="practice-tag"><svg class="icon" aria-hidden="true"><use href="#i-mic"/></svg>تمرین گفتاری <span aria-hidden="true">·</span> <bdi lang="en">English</bdi></span>
+    </section>
+
+    <div class="workspace">
+      <section class="card practice-card" aria-label="تمرین مکالمه">
+        <div class="section-head">
+          <h2 class="section-title"><span class="live-dot" aria-hidden="true"></span>مکالمهٔ شما</h2>
+          <bdi id="conv-title" class="session-label" style="display:none"></bdi>
+        </div>
+        <div class="session-content">
+          <div id="welcome-state" class="welcome">
+            <div>
+              <div class="welcome-art" aria-hidden="true"><svg class="icon"><use href="#i-mic"/></svg></div>
+              <h2>از یک سلام ساده شروع کنید</h2>
+              <p>دکمهٔ میکروفون را بزنید و از روزتان بگویید.<br>لازم نیست بی‌نقص باشید؛ اینجا جای تمرین است.</p>
+              <span class="starter" dir="ltr" lang="en">“Hi! Let me tell you about my day…”</span>
+            </div>
+          </div>
+          <div id="transcript" class="transcript" role="log" aria-label="متن مکالمه" aria-live="polite"></div>
+        </div>
+        <div class="controls">
+          <div class="toolbar">
+            <button id="record-btn" type="button"><svg class="icon" aria-hidden="true"><use href="#i-mic"/></svg>شروع صحبت</button>
+            <button id="stop-btn" type="button" class="hidden"><svg class="icon" aria-hidden="true"><use href="#i-stop"/></svg>توقف و ارسال</button>
+            <button id="replay-btn" type="button" class="hidden"><svg class="icon" aria-hidden="true"><use href="#i-replay"/></svg>پخش دوباره</button>
+            <span class="control-hint">با صدای خودتان، با سرعت خودتان</span>
+          </div>
+          <p id="status" class="status" role="status" aria-live="polite">هر وقت آماده بودید، میکروفون را بزنید.</p>
+        </div>
+      </section>
+
+      <aside class="side-column" aria-label="راهنمای تمرین">
+        <section class="card tutor-side">
+          <div class="section-head">
+            <h2 class="side-heading"><svg class="icon" aria-hidden="true"><use href="#i-spark"/></svg>راهنمای مربی</h2>
+            <span class="side-kicker">یادگیری در لحظه</span>
+          </div>
+          <div class="side-scroll">
+            <div class="feedback-empty">
+              <svg class="icon" aria-hidden="true"><use href="#i-book"/></svg>
+              <h3>نکته‌های کوچک، پیشرفت واقعی</h3>
+              <p>بعد از صحبت شما، نکته‌های گرامری و جمله‌های پیشنهادی اینجا ظاهر می‌شوند.</p>
+            </div>
+            <section class="feedback-block" aria-label="نکتهٔ گرامری">
+              <h3 class="block-label"><svg class="icon" aria-hidden="true"><use href="#i-spark"/></svg>نکتهٔ این نوبت</h3>
+              <div id="grammar" class="grammar" dir="auto"></div>
+            </section>
+            <section class="feedback-block" aria-label="جمله‌های پیشنهادی">
+              <h3 class="block-label"><svg class="icon" aria-hidden="true"><use href="#i-chat"/></svg>این‌طوری هم می‌توانید بگویید</h3>
+              <ul id="examples" class="examples"></ul>
+            </section>
+            <details class="turn-detail">
+              <summary>آخرین گفتار شما<svg class="icon chevron" aria-hidden="true"><use href="#i-chevron"/></svg></summary>
+              <div id="you-said" class="you-bubble" dir="auto">هنوز چیزی ضبط نشده است.</div>
+            </details>
+            <details class="turn-detail">
+              <summary>آخرین پاسخ مربی<svg class="icon chevron" aria-hidden="true"><use href="#i-chevron"/></svg></summary>
+              <div id="tutor-reply" class="tutor-bubble" dir="auto">پاسخ مربی بعد از اولین تمرین اینجا نمایش داده می‌شود.</div>
+            </details>
+          </div>
+        </section>
+
+        <details class="card learning-side">
+          <summary><svg class="icon" aria-hidden="true"><use href="#i-check"/></svg>چیزهایی که یاد گرفته‌اید<svg class="icon chevron" aria-hidden="true"><use href="#i-chevron"/></svg></summary>
+          <ul id="learned-issues" class="learned-issues"><li class="conv-empty">هنوز نکته‌ای ثبت نشده است.</li></ul>
+        </details>
+        <p class="privacy"><svg class="icon" aria-hidden="true"><use href="#i-shield"/></svg><span>پردازش و پخش صدا با مدل‌های STT و TTS انتخاب‌شده در تنظیمات مکو انجام می‌شود.</span></p>
+      </aside>
+    </div>
+  </main>
+
+  <script src="./vendor/mocu-ui.js"></script>
+  <script>
+    (() => {
+      "use strict";
+
+      const recordBtn = document.getElementById("record-btn");
+      const stopBtn = document.getElementById("stop-btn");
+      const replayBtn = document.getElementById("replay-btn");
+      const newConvBtn = document.getElementById("new-conv-btn");
+      const convBtn = document.getElementById("conv-btn");
+      const convPanel = document.getElementById("conv-panel");
+      const convList = document.getElementById("conv-list");
+      const convTitleEl = document.getElementById("conv-title");
+      const transcriptEl = document.getElementById("transcript");
+      const welcomeState = document.getElementById("welcome-state");
+      const statusEl = document.getElementById("status");
+      const youSaidEl = document.getElementById("you-said");
+      const tutorReplyEl = document.getElementById("tutor-reply");
+      const grammarEl = document.getElementById("grammar");
+      const examplesEl = document.getElementById("examples");
+      const learnedIssuesEl = document.getElementById("learned-issues");
+
+      let mediaRecorder = null;
+      let audioChunks = [];
+      let stream = null;
+      let conversationId = "";
+      let lastTts = null;
+      let currentAudio = null;
+
+      function setStatus(message, isError) {
+        statusEl.textContent = message;
+        statusEl.classList.toggle("error", Boolean(isError));
+      }
+
+      function renderTranscript(messages) {
+        transcriptEl.textContent = "";
+        const validMessages = Array.isArray(messages)
+          ? messages.filter((message) => message && typeof message.text === "string" && message.text.trim())
+          : [];
+        welcomeState.classList.toggle("hidden", validMessages.length > 0);
+        if (!validMessages.length) {
+          convTitleEl.style.display = "none";
+          return;
+        }
+        for (const message of validMessages) {
+          const div = document.createElement("div");
+          div.className = "msg " + (message.role === "user" ? "user" : "tutor");
+          const label = document.createElement("span");
+          label.className = "msg-label";
+          label.dir = "rtl";
+          label.textContent = message.role === "user" ? "شما" : "مربی";
+          const text = document.createElement("div");
+          text.className = "msg-text";
+          text.dir = "auto";
+          text.textContent = message.text;
+          div.append(label, text);
+          transcriptEl.appendChild(div);
+        }
+        transcriptEl.scrollTop = transcriptEl.scrollHeight;
+      }
+
+      function setConversation(id, title, messages) {
+        conversationId = id || "";
+        if (title && messages && messages.length) {
+          convTitleEl.textContent = title;
+          convTitleEl.style.display = "";
+        } else {
+          convTitleEl.style.display = "none";
+        }
+        renderTranscript(messages);
+      }
+
+      function setRecordingUi(recording) {
+        recordBtn.classList.toggle("hidden", recording);
+        stopBtn.classList.toggle("hidden", !recording);
+        document.body.classList.toggle("recording", recording);
+      }
+
+      async function startRecording() {
+        if (currentAudio) { currentAudio.pause(); currentAudio = null; }
+        if (!navigator.mediaDevices || !window.MediaRecorder) {
+          setStatus("ضبط صدا در این مرورگر پشتیبانی نمی‌شود.", true);
+          return;
+        }
+        try {
+          stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+        } catch (error) {
+          setStatus("دسترسی به میکروفون رد شد: " + (error && error.message ? error.message : error), true);
+          return;
+        }
+
+        let options = {};
+        if (typeof MediaRecorder.isTypeSupported === "function") {
+          if (MediaRecorder.isTypeSupported("audio/webm;codecs=opus")) options = { mimeType: "audio/webm;codecs=opus" };
+          else if (MediaRecorder.isTypeSupported("audio/webm")) options = { mimeType: "audio/webm" };
+        }
+
+        try {
+          mediaRecorder = options.mimeType ? new MediaRecorder(stream, options) : new MediaRecorder(stream);
+        } catch (error) {
+          stream.getTracks().forEach((track) => track.stop());
+          setStatus("شروع ضبط ناموفق بود: " + (error && error.message ? error.message : error), true);
+          return;
+        }
+
+        audioChunks = [];
+        mediaRecorder.ondataavailable = (event) => {
+          if (event.data && event.data.size > 0) audioChunks.push(event.data);
+        };
+        mediaRecorder.onerror = () => stopRecording();
+        mediaRecorder.onstop = () => {
+          stream.getTracks().forEach((track) => track.stop());
+          const blob = new Blob(audioChunks, { type: mediaRecorder.mimeType || "audio/webm" });
+          handleRecording(blob, mediaRecorder.mimeType || "audio/webm");
+        };
+
+        mediaRecorder.start();
+        setRecordingUi(true);
+        setStatus("در حال ضبط… هر وقت تمام شد، «توقف و ارسال» را بزنید.");
+      }
+
+      function stopRecording() {
+        if (mediaRecorder && mediaRecorder.state !== "inactive") mediaRecorder.stop();
+        setRecordingUi(false);
+        setStatus("در حال تبدیل صدای شما به متن…");
+      }
+
+      function blobToBase64(blob) {
+        return new Promise((resolve, reject) => {
+          const reader = new FileReader();
+          reader.onload = () => {
+            const result = String(reader.result || "");
+            const commaIndex = result.indexOf(",");
+            resolve(commaIndex >= 0 ? result.slice(commaIndex + 1) : result);
+          };
+          reader.onerror = () => reject(reader.error || new Error("خواندن دادهٔ صوتی ناموفق بود."));
+          reader.readAsDataURL(blob);
+        });
+      }
+
+      function normalizeExamples(value) {
+        const toText = (item) => {
+          if (typeof item === "string") return item.trim();
+          if (!item || typeof item !== "object") return "";
+          const english = item.english || item.example || item.text || item.corrected || item.sentence || "";
+          const explanation = item.persian || item.translation || item.note || item.explanation || "";
+          return [english, explanation].filter((part) => typeof part === "string" && part.trim()).join("\n").trim();
+        };
+        const items = Array.isArray(value) ? value.map(toText) : typeof value === "string" ? value.split(/\r?\n/) : [];
+        return items.map((item) => item.replace(/^\s*(?:[-*•]|\d+[.)])\s*/, "").trim()).filter(Boolean);
+      }
+
+      function parseTutorJson(raw) {
+        let rawText = typeof raw === "string" ? raw : (raw && typeof raw.text === "string" ? raw.text : "");
+        if (!rawText.trim()) throw new Error("پاسخ ایجنت خالی بود.");
+        const fenced = rawText.match(/```(?:json)?\s*([\s\S]*?)```/i);
+        if (fenced) rawText = fenced[1];
+        const start = rawText.indexOf("{");
+        const end = rawText.lastIndexOf("}");
+        if (start < 0 || end <= start) throw new Error("پاسخ ایجنت JSON معتبر نبود.");
+        const parsed = JSON.parse(rawText.slice(start, end + 1));
+        return {
+          conversation: typeof parsed.conversation === "string" ? parsed.conversation : "",
+          grammarFeedback: typeof parsed.grammarFeedback === "string" ? parsed.grammarFeedback : "",
+          grammarIssue: parsed.grammarIssue && typeof parsed.grammarIssue === "object" ? parsed.grammarIssue : null,
+          examples: normalizeExamples(parsed.examples),
+        };
+      }
+
+      async function refreshLearnedIssues() {
+        try {
+          const response = await window.mocu.extension.execute("getLearningProgress", {});
+          const issues = response && response.learnerProgress && Array.isArray(response.learnerProgress.issues)
+            ? response.learnerProgress.issues.filter((issue) => issue && issue.mastered === true)
+            : [];
+          learnedIssuesEl.textContent = "";
+          if (!issues.length) {
+            const empty = document.createElement("li");
+            empty.className = "conv-empty";
+            empty.textContent = "هنوز نکته‌ای ثبت نشده است. سه پاسخ درست در نوبت‌های جداگانه، یک نکته را به این فهرست اضافه می‌کند.";
+            learnedIssuesEl.appendChild(empty);
+            return;
+          }
+          for (const issue of issues) {
+            const item = document.createElement("li");
+            const rule = document.createElement("span");
+            rule.className = "learned-rule";
+            rule.textContent = issue.rule || issue.id;
+            const example = document.createElement("span");
+            example.className = "learned-example";
+            example.textContent = issue.correction || "";
+            item.append(rule, example);
+            learnedIssuesEl.appendChild(item);
+          }
+        } catch {
+          // Keep the rest of the conversation usable if progress cannot be loaded.
+        }
+      }
+
+      async function base64ToAudio(base64, mimeType) {
+        const binary = atob(base64);
+        const bytes = new Uint8Array(binary.length);
+        for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
+        const blob = new Blob([bytes], { type: mimeType || "audio/mpeg" });
+        return new Audio(URL.createObjectURL(blob));
+      }
+
+      async function playAudio(audio) {
+        if (currentAudio) currentAudio.pause();
+        currentAudio = audio;
+        await audio.play();
+        return new Promise((resolve) => {
+          audio.onended = () => {
+            URL.revokeObjectURL(audio.src);
+            if (currentAudio === audio) currentAudio = null;
+            resolve();
+          };
+        });
+      }
+
+      async function handleRecording(blob, mimeType) {
+        recordBtn.disabled = true;
+        try {
+          const base64Audio = await blobToBase64(blob);
+          const stt = await window.mocu.extension.execute("transcribe", { audio: base64Audio, mimeType });
+          const saidText = stt && typeof stt.text === "string" ? stt.text.trim() : "";
+          youSaidEl.textContent = saidText || "—";
+          youSaidEl.dir = "auto";
+          if (!saidText) {
+            setStatus("صدایی شناسایی نشد. دوباره تلاش کنید.", true);
+            return;
+          }
+
+          setStatus("مربی دارد فکر می‌کند…");
+          const tutorRes = await window.mocu.extension.execute("tutor", {
+            text: saidText,
+            conversationId: conversationId || undefined,
+          });
+          const returnedId = tutorRes && typeof tutorRes.conversationId === "string" ? tutorRes.conversationId : "";
+          if (returnedId) conversationId = returnedId;
+          const parsed = parseTutorJson(tutorRes && typeof tutorRes.reply === "string" ? tutorRes.reply : "");
+
+          tutorReplyEl.textContent = parsed.conversation || "—";
+          grammarEl.textContent = parsed.grammarFeedback || "";
+          grammarEl.dir = "auto";
+          examplesEl.textContent = "";
+          for (const example of parsed.examples) {
+            const li = document.createElement("li");
+            li.dir = "auto";
+            li.textContent = example;
+            examplesEl.appendChild(li);
+          }
+          await refreshLearnedIssues();
+
+          try {
+            const conv = await window.mocu.extension.execute("getConversation", { id: conversationId });
+            setConversation(conv.id, conv.title, conv.messages);
+          } catch { /* Keep the last turn visible. */ }
+
+          setStatus("در حال تبدیل پاسخ مربی به صدا…");
+          const tts = await window.mocu.extension.execute("speak", { text: parsed.conversation });
+          lastTts = { audio: tts.audio, mimeType: tts.mimeType };
+          replayBtn.classList.remove("hidden");
+          if (lastTts.audio) {
+            const audio = await base64ToAudio(lastTts.audio, lastTts.mimeType);
+            await playAudio(audio);
+          }
+          setStatus("پایان نوبت مربی. دوباره ضبط کنید تا مکالمه ادامه پیدا کند.");
+        } catch (error) {
+          setStatus("خطا: " + (error && error.message ? error.message : error), true);
+        } finally {
+          recordBtn.disabled = false;
+        }
+      }
+
+      async function refreshConversationList() {
+        convList.textContent = "";
+        let conversations = [];
+        try {
+          const response = await window.mocu.extension.execute("listConversations", {});
+          conversations = Array.isArray(response && response.conversations) ? response.conversations : [];
+        } catch (error) {
+          const item = document.createElement("li");
+          item.className = "conv-empty";
+          item.textContent = "خطا در خواندن گفتگوها: " + (error && error.message ? error.message : error);
+          convList.appendChild(item);
+          return;
+        }
+        if (!conversations.length) {
+          const item = document.createElement("li");
+          item.className = "conv-empty";
+          item.textContent = "هنوز گفتگویی ذخیره نشده است. اولین ضبط را انجام دهید!";
+          convList.appendChild(item);
+          return;
+        }
+        for (const conv of conversations) {
+          const item = document.createElement("li");
+          item.className = "conv-item";
+          const openBtn = document.createElement("button");
+          openBtn.type = "button";
+          openBtn.className = "conv-main";
+          const date = conv.updatedAt ? new Date(conv.updatedAt).toLocaleString("fa-IR") : "";
+          openBtn.textContent = conv.title + " — " + date;
+          openBtn.addEventListener("click", async () => {
+            try {
+              const full = await window.mocu.extension.execute("getConversation", { id: conv.id });
+              setConversation(full.id, full.title, full.messages);
+              convPanel.classList.remove("open");
+              convBtn.classList.remove("active");
+              convBtn.setAttribute("aria-expanded", "false");
+              lastTts = null;
+              replayBtn.classList.add("hidden");
+              const lastTutor = [...(full.messages || [])].reverse().find((message) => message.role === "tutor");
+              const lastUser = [...(full.messages || [])].reverse().find((message) => message.role === "user");
+              tutorReplyEl.textContent = lastTutor ? lastTutor.text : "پاسخی در این مکالمه نیست.";
+              tutorReplyEl.dir = "auto";
+              youSaidEl.textContent = lastUser ? lastUser.text : "هنوز گفتاری ثبت نشده است.";
+              youSaidEl.dir = "auto";
+              grammarEl.textContent = "";
+              examplesEl.textContent = "";
+              setStatus("گفتگوی «" + full.title + "» بارگذاری شد. ادامه بدهید!");
+            } catch (error) {
+              setStatus("بارگذاری گفتگو ناموفق بود: " + (error && error.message ? error.message : error), true);
+            }
+          });
+          const deleteBtn = document.createElement("button");
+          deleteBtn.type = "button";
+          deleteBtn.className = "conv-del";
+          deleteBtn.textContent = "حذف";
+          deleteBtn.addEventListener("click", async () => {
+            try {
+              await window.mocu.extension.execute("deleteConversation", { id: conv.id });
+              if (conversationId === conv.id) {
+                conversationId = "";
+                convTitleEl.style.display = "none";
+                renderTranscript([]);
+                youSaidEl.textContent = "هنوز چیزی ضبط نشده است.";
+                tutorReplyEl.textContent = "پاسخ مربی بعد از اولین تمرین اینجا نمایش داده می‌شود.";
+              }
+              await refreshConversationList();
+            } catch (error) {
+              setStatus("حذف ناموفق بود: " + (error && error.message ? error.message : error), true);
+            }
+          });
+          item.append(openBtn, deleteBtn);
+          convList.appendChild(item);
+        }
+      }
+
+      async function startNewConversation() {
+        if (currentAudio) { currentAudio.pause(); currentAudio = null; }
+        try {
+          newConvBtn.disabled = true;
+          const conv = await window.mocu.extension.execute("newConversation", {});
+          setConversation(conv.id, "", []);
+          grammarEl.textContent = "";
+          examplesEl.textContent = "";
+          youSaidEl.textContent = "هنوز چیزی ضبط نشده است.";
+          tutorReplyEl.textContent = "پاسخ مربی بعد از اولین تمرین اینجا نمایش داده می‌شود.";
+          lastTts = null;
+          replayBtn.classList.add("hidden");
+          setStatus("مکالمه جدید شروع شد. دکمهٔ ضبط را بزنید.");
+        } catch (error) {
+          setStatus("خطا: " + (error && error.message ? error.message : error), true);
+        } finally {
+          newConvBtn.disabled = false;
+        }
+      }
+
+      function toggleConvPanel() {
+        const open = !convPanel.classList.contains("open");
+        convPanel.classList.toggle("open", open);
+        convBtn.classList.toggle("active", open);
+        convBtn.setAttribute("aria-expanded", String(open));
+        if (open) refreshConversationList();
+      }
+
+      async function replayLast() {
+        if (!lastTts || !lastTts.audio) return;
+        try {
+          const audio = await base64ToAudio(lastTts.audio, lastTts.mimeType);
+          await playAudio(audio);
+        } catch (error) {
+          setStatus("پخش دوباره ناموفق بود: " + (error && error.message ? error.message : error), true);
+        }
+      }
+
+      recordBtn.addEventListener("click", startRecording);
+      stopBtn.addEventListener("click", stopRecording);
+      newConvBtn.addEventListener("click", startNewConversation);
+      convBtn.addEventListener("click", toggleConvPanel);
+      replayBtn.addEventListener("click", replayLast);
+      document.addEventListener("click", (event) => {
+        if (!convPanel.classList.contains("open") || convPanel.contains(event.target) || convBtn.contains(event.target)) return;
+        convPanel.classList.remove("open");
+        convBtn.classList.remove("active");
+        convBtn.setAttribute("aria-expanded", "false");
+      });
+      document.addEventListener("keydown", (event) => {
+        if (event.key !== "Escape" || !convPanel.classList.contains("open")) return;
+        convPanel.classList.remove("open");
+        convBtn.classList.remove("active");
+        convBtn.setAttribute("aria-expanded", "false");
+        convBtn.focus();
+      });
+
+      renderTranscript([]);
+      refreshLearnedIssues();
+      refreshConversationList();
+    })();
+  </script>
+</body>
+</html>

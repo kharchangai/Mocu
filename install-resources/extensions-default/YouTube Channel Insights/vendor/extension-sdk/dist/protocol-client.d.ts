@@ -1,12 +1,4 @@
 type RequestHandler = (params: unknown) => Promise<unknown>;
-/**
- * Minimal stdin/stdout JSON-RPC client.
- *
- * Mocu writes `{ method, id, params }` to the extension's stdin; the SDK
- * dispatches to the matching handler and writes `{ id, result/error }` back
- * on stdout. In the reverse direction, `request()` lets the extension call
- * host methods (e.g. `mocu.llm.generate`) and await the answer.
- */
 export declare class JsonRpcProtocolClient {
     private nextRequestId;
     private readonly requestHandlers;
