@@ -24,6 +24,16 @@ Build an AI team around the way **you** work. Teach it your methods. Give it the
 
 ---
 
+## New in Mocu 0.2.0: Build apps inside Mocu
+
+Mocu Apps let you create custom apps with their own user interfaces and open them right inside Mocu. Describe what you want to build, and Mocu can help create an app tailored to your workflow—so you can get a useful interface without having to write the code yourself.
+
+Apps can connect to Mocu through extensions and, with the permissions you approve, use supported Mocu capabilities such as invoking your saved agents or working with selected files. Turn the tasks you do every day into tools you can open and use right where you work, with an interface designed around your needs.
+
+AI-assisted app creation may still produce code that needs review and testing. Access to Mocu features and files is controlled by extension permissions.
+
+---
+
 ## Your own AI team—without learning to program
 
 A generic assistant doesn't know how you want every job done. With Mocu, you can create **personal specialist agents** for your work simply by describing what you need in natural language.

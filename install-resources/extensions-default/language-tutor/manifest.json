@@ -1,0 +1,61 @@
+{
+  "id": "com.mocu.language-tutor",
+  "name": "Language Tutor",
+  "description": "English conversation and focused skill practice with a dedicated learning coach, saved challenges, and guided reviews.",
+  "version": "1.0.0",
+  "runtime": "node",
+  "entry": "index.js",
+  "showInSlashCommand": false,
+  "permissions": ["agents.invoke"],
+  "commands": [
+    {
+      "id": "transcribe",
+      "title": "Speech to Text",
+      "description": "Converts recorded audio (base64) to text using the Mocu STT model."
+    },
+    {
+      "id": "newConversation",
+      "title": "New Conversation",
+      "description": "Creates a fresh conversation or a focused-practice session for a selected difficulty."
+    },
+    {
+      "id": "listConversations",
+      "title": "List Conversations",
+      "description": "Lists saved conversations (summaries, newest first)."
+    },
+    {
+      "id": "getConversation",
+      "title": "Get Conversation",
+      "description": "Returns a saved conversation with all its messages."
+    },
+    {
+      "id": "setConversationTopic",
+      "title": "Save Conversation Topic",
+      "description": "Saves a topic or description on one specific conversation."
+    },
+    {
+      "id": "deleteConversation",
+      "title": "Delete Conversation",
+      "description": "Deletes a saved conversation file."
+    },
+    {
+      "id": "getLearningProgress",
+      "title": "Get Learning Progress",
+      "description": "Returns saved grammar issues, practice streaks, and mastered items."
+    },
+    {
+      "id": "tutor",
+      "title": "Ask English Tutor",
+      "description": "Routes messages to the general conversation or focused-practice coach based on the selected mode, then saves conversation turns and validated learning progress."
+    },
+    {
+      "id": "speak",
+      "title": "Text to Speech",
+      "description": "Converts input text to audio using the Mocu TTS model and returns it as base64."
+    }
+  ],
+  "app": {
+    "entry": "ui/index.html",
+    "title": "Language Tutor"
+  }
+}
