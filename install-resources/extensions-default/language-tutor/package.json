@@ -1,6 +1,6 @@
 {
   "name": "language-tutor",
-  "version": "1.0.0",
+  "version": "0.1.0",
   "private": true,
   "type": "module",
   "description": "Mocu extension app: voice-based English conversation practice with the English Tutor agent",

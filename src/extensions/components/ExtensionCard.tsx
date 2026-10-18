@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { LoaderCircle } from "lucide-react";
 
 import type {
   ExtensionConfigField,
@@ -13,6 +14,10 @@ import {
 
 interface ExtensionCardProps {
   extension: InstalledExtension;
+  updateAvailable?: boolean;
+  updateVersion?: string;
+  updateBusy?: boolean;
+  onUpdate?: (extensionId: string) => void | Promise<void>;
   onUninstall: (extensionId: string) => void | Promise<void>;
 }
 
@@ -41,6 +46,10 @@ function fieldInputValue(
  */
 export function ExtensionCard({
   extension,
+  updateAvailable = false,
+  updateVersion,
+  updateBusy = false,
+  onUpdate,
   onUninstall,
 }: ExtensionCardProps) {
   const [error, setError] = useState<string | null>(null);
@@ -274,6 +283,16 @@ export function ExtensionCard({
       )}
 
       <div className="extensions-card-actions">
+        {updateAvailable && onUpdate && (
+          <button
+            type="button"
+            className="extensions-button is-primary"
+            disabled={updateBusy}
+            onClick={() => void onUpdate(manifest.id)}
+          >
+            {updateBusy ? <><LoaderCircle size={14} /> Updating…</> : `Update to ${updateVersion ?? "new version"}`}
+          </button>
+        )}
         <button
           type="button"
           className="extensions-button is-danger"

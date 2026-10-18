@@ -2,7 +2,7 @@
   "id": "com.mocu.voice-test-app",
   "name": "Voice Test App",
   "description": "Speech testing app: record audio, convert speech to text and text to speech using the STT/TTS models configured in Mocu.",
-  "version": "1.0.0",
+  "version": "0.1.0",
   "runtime": "node",
   "entry": "index.js",
   "showInSlashCommand": false,

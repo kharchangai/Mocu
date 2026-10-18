@@ -2,7 +2,7 @@
   "id": "com.mocu.apps.news-reader",
   "name": "News",
   "description": "Read stories from the latest date-named folder in a user-approved news archive.",
-  "version": "1.2.0",
+  "version": "0.1.0",
   "runtime": "node",
   "entry": "index.js",
   "showInSlashCommand": false,

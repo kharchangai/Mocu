@@ -11,6 +11,7 @@ import {
   installExtensionFromZip,
   installBundledExtension,
   uninstallExtension,
+  updateBundledExtension,
   type InstalledExtensionResult,
 } from "../services/extension-installer";
 
@@ -59,6 +60,15 @@ export function useExtensions() {
     [refresh],
   );
 
+  const updateBundled = useCallback(
+    async (entry: ExtensionCatalogEntry): Promise<InstalledExtensionResult> => {
+      const result = await updateBundledExtension(entry);
+      await refresh();
+      return result;
+    },
+    [refresh],
+  );
+
   const uninstall = useCallback(
     async (extensionId: string): Promise<void> => {
       await uninstallExtension(extensionId);
@@ -71,5 +81,5 @@ export function useExtensions() {
     void refresh();
   }, [refresh]);
 
-  return { extensions, catalog, loading, error, refresh, install, installBundled, uninstall };
+  return { extensions, catalog, loading, error, refresh, install, installBundled, updateBundled, uninstall };
 }

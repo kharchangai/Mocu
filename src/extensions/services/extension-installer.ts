@@ -10,6 +10,7 @@ import {
 
 import {
   exists,
+  lstat,
   mkdir,
   readDir,
   readFile,
@@ -19,6 +20,7 @@ import {
 } from "@tauri-apps/plugin-fs";
 
 import { stopExtension } from "./extension-client";
+import { isNewerExtensionVersion } from "./extension-version";
 
 type ArchiveFile = {
   relativePath: string;
@@ -409,16 +411,60 @@ export async function installBundledExtension(
   return { extensionId, installedDirectory, fileCount: files.length };
 }
 
-/**
- * Best-effort Windows detection. Same rationale as the terminal tool:
- * navigator.userAgent reflects the host operating system inside Tauri.
- */
-function isWindowsPlatform(): boolean {
-  return navigator.userAgent
-    ?.toLowerCase()
-    .includes("windows") ?? false;
+export type BundledExtensionUpdate = Pick<BundledExtension, "id" | "sourcePath"> & { version: string };
+
+/** Update an installed extension from its matching bundled default version. */
+export async function updateBundledExtension(
+  bundled: BundledExtensionUpdate,
+): Promise<InstalledExtensionResult> {
+  const extensionId = sanitizeExtensionName(bundled.id);
+  const extensionsRoot = await getExtensionsRoot();
+  const installedDirectory = await join(extensionsRoot, extensionId);
+  const installedManifestPath = await join(installedDirectory, "manifest.json");
+
+  if (!(await exists(installedManifestPath))) {
+    throw new Error(`Installed extension manifest not found: ${installedManifestPath}`);
+  }
+
+  const installedManifest = JSON.parse(await readTextFile(installedManifestPath)) as { id?: unknown; version?: unknown };
+  if (typeof installedManifest.id !== "string" || sanitizeExtensionName(installedManifest.id) !== extensionId) {
+    throw new Error("Installed extension ID does not match its folder.");
+  }
+  if (typeof installedManifest.version !== "string" || !isNewerExtensionVersion(bundled.version, installedManifest.version)) {
+    throw new Error("The bundled extension is not newer than the installed version.");
+  }
+
+  const sourceManifestPath = await join(bundled.sourcePath, "manifest.json");
+  if (!(await exists(sourceManifestPath))) {
+    throw new Error(`Bundled extension manifest not found: ${sourceManifestPath}`);
+  }
+  const sourceManifest = JSON.parse(await readTextFile(sourceManifestPath)) as { id?: unknown; version?: unknown };
+  if (
+    typeof sourceManifest.id !== "string" || sanitizeExtensionName(sourceManifest.id) !== extensionId ||
+    sourceManifest.version !== bundled.version
+  ) {
+    throw new Error("Bundled extension ID or version does not match manifest.json.");
+  }
+
+  const files: ArchiveFile[] = [];
+  await collectFolderFiles(bundled.sourcePath, bundled.sourcePath, "", files);
+  if (!files.some((file) => file.relativePath.toLocaleLowerCase() === "manifest.json")) {
+    throw new Error("The bundled extension must contain manifest.json.");
+  }
+
+  try {
+    await stopExtension(extensionId);
+  } catch (error) {
+    console.warn(`Failed to stop extension '${extensionId}' before update:`, error);
+  }
+
+  await updateExtensionFiles(installedDirectory, files);
+  return { extensionId, installedDirectory, fileCount: files.length };
 }
 
+function isWindowsPlatform(): boolean {
+  return navigator.userAgent?.toLowerCase().includes("windows") ?? false;
+}
 /**
  * Run `npm install` inside an installed extension directory so extensions
  * that declare dependencies (e.g. the pi Agent and its pi SDK) become
@@ -456,35 +502,72 @@ async function runNpmInstall(
   }
 }
 
-/**
- * Copy the prepared files into `directoryPath`, then, when the extension
- * ships a package.json, install its dependencies. On any failure the
- * partially-installed directory is removed so the UI stays consistent.
- */
 async function installExtensionFiles(
   directoryPath: string,
   files: ArchiveFile[],
 ): Promise<void> {
   await installFilesIntoDirectory(directoryPath, files);
 
+  await installDependenciesIfNeeded(directoryPath, files, true);
+}
+
+/** Update only files shipped by the bundled extension, retaining all other files and folders. */
+async function updateExtensionFiles(
+  directoryPath: string,
+  files: ArchiveFile[],
+): Promise<void> {
+  await mkdir(directoryPath, { recursive: true });
+
+  for (const file of files) {
+    const pathParts = file.relativePath.split("/");
+    const filePath = await join(directoryPath, ...pathParts);
+
+    if (pathParts.length > 1) {
+      const parentDirectory = await join(directoryPath, ...pathParts.slice(0, -1));
+      await mkdir(parentDirectory, { recursive: true });
+    }
+
+    if (await exists(filePath)) {
+      const currentInfo = await lstat(filePath);
+      if (!currentInfo.isFile || currentInfo.isSymlink) {
+        throw new Error(`Cannot replace extension file because the path is not a regular file: ${file.relativePath}`);
+      }
+    }
+
+    await writeFile(filePath, file.data);
+  }
+
+  await installDependenciesIfNeeded(directoryPath, files, false);
+}
+
+async function installDependenciesIfNeeded(
+  directoryPath: string,
+  files: ArchiveFile[],
+  removeOnFailure: boolean,
+): Promise<void> {
   const hasPackageJson = files.some(
-    (file) =>
-      file.relativePath.toLocaleLowerCase() === "package.json",
+    (file) => file.relativePath.toLocaleLowerCase() === "package.json",
   );
 
-  if (!hasPackageJson) {
-    return;
+  if (!hasPackageJson) return;
+
+  const packageLock = await join(directoryPath, "package-lock.json");
+  if (!removeOnFailure && await exists(packageLock)) {
+    const lockInfo = await lstat(packageLock);
+    if (!lockInfo.isFile || lockInfo.isSymlink) {
+      throw new Error("Cannot refresh extension dependencies because package-lock.json is not a regular file.");
+    }
   }
 
   try {
     await runNpmInstall(directoryPath);
   } catch (error) {
-    try {
-      await remove(directoryPath, {
-        recursive: true,
-      });
-    } catch {
-      // Keep the original installation error.
+    if (removeOnFailure) {
+      try {
+        await remove(directoryPath, { recursive: true });
+      } catch {
+        // Keep the original installation error.
+      }
     }
 
     throw error;

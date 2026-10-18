@@ -2,8 +2,6 @@ use std::{fs, io, path::Path};
 
 use tauri::{AppHandle, Manager};
 
-const INSTALL_MARKER: &str = ".mocu-install-resources-v3";
-
 const RESOURCE_FOLDERS: [(&str, &str); 5] = [
     ("agents", "agents"),
     ("docs", "docs"),
@@ -14,13 +12,6 @@ const RESOURCE_FOLDERS: [(&str, &str); 5] = [
 
 pub fn initialize(app: &AppHandle) -> Result<(), Box<dyn std::error::Error>> {
     let app_data = app.path().app_data_dir()?;
-    let marker = app_data.join(INSTALL_MARKER);
-
-    // Install bundled resources only once.
-    if marker.is_file() {
-        return Ok(());
-    }
-
     let bundled_resources = app.path().resource_dir()?.join("install-resources");
 
     if !bundled_resources.is_dir() {
@@ -51,16 +42,13 @@ pub fn initialize(app: &AppHandle) -> Result<(), Box<dyn std::error::Error>> {
             .into());
         }
 
-        copy_missing_files(&source, &destination)?;
+        copy_bundled_files(&source, &destination)?;
     }
-
-    // Create the marker only after all resources have been copied successfully.
-    fs::write(marker, b"Mocu install resources initialized\n")?;
 
     Ok(())
 }
 
-fn copy_missing_files(source: &Path, destination: &Path) -> io::Result<()> {
+fn copy_bundled_files(source: &Path, destination: &Path) -> io::Result<()> {
     fs::create_dir_all(destination)?;
 
     for entry in fs::read_dir(source)? {
@@ -92,12 +80,11 @@ fn copy_missing_files(source: &Path, destination: &Path) -> io::Result<()> {
         let target = destination.join(&name);
 
         if file_type.is_dir() {
-            copy_missing_files(&entry.path(), &target)?;
+            copy_bundled_files(&entry.path(), &target)?;
         } else if file_type.is_file() {
-            // Preserve any files that already exist in the user's AppData folder.
-            if !target.exists() {
-                fs::copy(entry.path(), target)?;
-            }
+            // Refresh bundled files on every launch while preserving files that
+            // exist only in the user's AppData folders.
+            fs::copy(entry.path(), target)?;
         }
     }
 

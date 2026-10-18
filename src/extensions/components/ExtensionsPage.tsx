@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { LoaderCircle } from "lucide-react";
+import { isNewerExtensionVersion } from "../services/extension-version";
 import { ResourceDeleteDialog } from "../../components/ResourceDeleteDialog";
 import { open } from "@tauri-apps/plugin-dialog";
 import { ExtensionCard } from "./ExtensionCard";
@@ -17,6 +18,7 @@ export function ExtensionsPage() {
     refresh,
     install,
     installBundled,
+    updateBundled,
     uninstall,
   } = useExtensions();
 
@@ -198,14 +200,29 @@ export function ExtensionsPage() {
 
       {!loading && view === "installed" && (
         <section className="extensions-grid">
-          {extensions.length === 0 && <p className="extensions-empty">No extensions are installed yet.</p>}
-          {extensions.map((extension) => (
-            <ExtensionCard
-              key={extension.manifest.id}
-              extension={extension}
-              onUninstall={(id) => handleUninstall(id, extension.manifest.name)}
-            />
-          ))}
+          {extensions.map((extension) => {
+            const bundledUpdate = catalog.find((candidate) =>
+              candidate.id === extension.manifest.id &&
+              isNewerExtensionVersion(candidate.version, extension.manifest.version),
+            );
+            return (
+              <ExtensionCard
+                key={extension.manifest.id}
+                extension={extension}
+                updateAvailable={Boolean(bundledUpdate)}
+                updateVersion={bundledUpdate?.version}
+                updateBusy={busyIds.has(extension.manifest.id)}
+                onUpdate={() => {
+                  if (bundledUpdate) void withBusy(
+                    extension.manifest.id,
+                    () => updateBundled(bundledUpdate),
+                    `Updating to ${bundledUpdate.version}…`,
+                  );
+                }}
+                onUninstall={(id) => handleUninstall(id, extension.manifest.name)}
+              />
+            );
+          })}
         </section>
       )}
 

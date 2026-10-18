@@ -3,7 +3,7 @@
   "id": "youtube-channel-insights",
   "name": "YouTube Channel Insights",
   "description": "Reads your own YouTube channel through the YouTube Data API v3: channel stats, video lists, single-video details, and aggregate channel analysis.",
-  "version": "0.2.0",
+  "version": "0.1.0",
   "runtime": "node",
   "entry": "index.js",
   "engines": {

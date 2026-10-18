@@ -2,7 +2,7 @@
   "id": "com.mocu.language-tutor",
   "name": "Language Tutor",
   "description": "English conversation and focused skill practice with a dedicated learning coach, saved challenges, and guided reviews.",
-  "version": "1.0.0",
+  "version": "0.1.0",
   "runtime": "node",
   "entry": "index.js",
   "showInSlashCommand": false,
