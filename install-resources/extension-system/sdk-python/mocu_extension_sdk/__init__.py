@@ -6,6 +6,7 @@ from .extension import (
     create_extension,
 )
 from .llm import LlmApi
+from .summarize import SummarizeApi
 from .speech import SpeechApi
 from .ui import ExtensionUiApi
 __all__ = [
@@ -13,6 +14,7 @@ __all__ = [
     "create_extension",
     "LlmApi",
     "DecisionApi",
+    "SummarizeApi",
     "EmbeddingApi",
     "SpeechApi",
     "AgentsApi",

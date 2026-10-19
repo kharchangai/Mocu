@@ -6,7 +6,7 @@ import { generateSpeech, transcribeAudio } from "../../services/aiService";
 import { getJevDecision } from "../../services/ai/tools/decision/Jev_model";
 
 import { TextSimilarity } from "../../services/ai/tools/textSimilarity";
-
+import { summarizeTextTool } from "../../services/ai/tools/summarize-text-tool";
 import { dispatchAgentToolActivity } from "../../chat/services/toolActivity";
 import { cancelExtensionAgentRun, handleAgentRun, handleAgentsList } from "./extension-agent-host";
 import { respondExtension } from "./extension-client";
@@ -21,6 +21,8 @@ import type { ExtensionInteractionButton } from "../types/extension-interaction"
 
 const MAX_LLM_PROMPT_LENGTH = 100_000;
 const MAX_LLM_SYSTEM_PROMPT_LENGTH = 20_000;
+const MAX_SUMMARIZE_TEXT_LENGTH = 100_000;
+const MAX_SUMMARIZE_INSTRUCTIONS_LENGTH = 20_000;
 const MAX_DECISION_QUESTIONS = 32;
 const MAX_EMBEDDING_TEXTS = 64;
 const MAX_EMBEDDING_TEXT_LENGTH = 32_000;
@@ -123,6 +125,11 @@ async function handleHostMessage(
       cancelExtensionAgentRun(extensionId, interactionRequestId);
       cancelExtensionInteraction(extensionId, interactionRequestId);
     }
+    return;
+  }
+
+  if (method === "mocu.summarize.text") {
+    await handleSummarizeText(extensionId, requestId, params);
     return;
   }
 
@@ -369,6 +376,58 @@ async function handleExtensionInteraction(
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
     await fail(message);
+  }
+}
+
+/**
+ * Handle `mocu.summarize.text` using Mocu's separately configured Summarize LLM.
+ */
+async function handleSummarizeText(
+  extensionId: string,
+  requestId: string | number | null,
+  params: Record<string, unknown>,
+): Promise<void> {
+  try {
+    const text = typeof params.text === "string" ? params.text.trim() : "";
+    if (!text) {
+      throw new Error("mocu.summarize.text requires non-empty 'text'.");
+    }
+    if (text.length > MAX_SUMMARIZE_TEXT_LENGTH) {
+      throw new Error(
+        `mocu.summarize.text text is too long (maximum ${MAX_SUMMARIZE_TEXT_LENGTH} characters).`,
+      );
+    }
+
+    const instructions =
+      typeof params.instructions === "string"
+        ? params.instructions.trim()
+        : undefined;
+    if (
+      instructions &&
+      instructions.length > MAX_SUMMARIZE_INSTRUCTIONS_LENGTH
+    ) {
+      throw new Error(
+        `mocu.summarize.text instructions are too long (maximum ${MAX_SUMMARIZE_INSTRUCTIONS_LENGTH} characters).`,
+      );
+    }
+
+    const summary = await summarizeTextTool.invoke({ text, instructions });
+    if (requestId !== null) {
+      await respondExtension(extensionId, requestId, { summary }, null);
+    }
+  } catch (error) {
+    const errorMessage = error instanceof Error ? error.message : String(error);
+    console.error(
+      `[Mocu Extension] mocu.summarize.text failed for '${extensionId}':`,
+      error,
+    );
+    if (requestId !== null) {
+      await respondExtension(extensionId, requestId, null, {
+        code: -32603,
+        message: errorMessage,
+        data: null,
+      });
+    }
   }
 }
 

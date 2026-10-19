@@ -91,11 +91,7 @@ The active extension scanner requires non-empty values for:
 
 It also supports optional `permissions`, optional `commands`, an optional UI `config` array, and an optional `app` object for an extension-provided App UI. The active manifest shape does **not** require `manifestVersion`.
 
-Keep the extension ID stable and unique. A reverse-domain ID such as `com.example.hello` is a safe convention. Each implemented command key must match a command ID declared in the manifest.
-
-### Do not confuse the contracts validator with the active manifest
-
-The separate `extension-system/contracts` module has a validator that expects `manifestVersion: 1` and a different `configuration` object schema. That validator-only shape is not the active app runtime’s manifest shape. Do not copy it into an extension intended for the active app. Follow the active scanner types and working examples instead.
+Keep the extension ID stable and unique. A reverse-domain ID such as `com.example.hello` is a safe convention. Each implemented command key must match a command ID declared in the manifest. The SDK also exposes host AI services as `extension.llm`, `extension.summarize`, `extension.decision`, `extension.embedding`, `extension.speech`, and `extension.agents` (saved-agent operations require `agents.invoke`).
 
 ## Extension-provided App UI
 

@@ -3,9 +3,9 @@ id: mocu-extension-sdk-reference
 title: Mocu Extension SDK Reference
 description: Reference for verified Mocu extension SDK APIs, host behavior,
   validation limits, packaging requirements, speech transcription and synthesis,
-  and shared global resource folders. Retrieve it when building or reviewing a
-  Node or Python extension, checking SDK availability, or locating SDK source
-  and Mocu-shipped extensions.
+  summarization, and shared global resource folders. Retrieve it when building
+  or reviewing a Node or Python extension, checking SDK availability, or
+  locating SDK source and Mocu-shipped extensions.
 keywords:
   - Mocu extension SDK
   - Node SDK
@@ -17,6 +17,8 @@ keywords:
   - saved agents
   - chat interaction
   - streaming progress
+  - text summarization
+  - Summarize model
   - speech transcription
   - speech synthesis
   - STT
@@ -34,11 +36,12 @@ keywords:
 This reference documents only capabilities verified in the Mocu SDK and host implementation.
 
 - Node package: `@mocu/extension-sdk`
-  - Exports `createExtension`, `MocuExtension`, `LlmApi`, `DecisionApi`, `EmbeddingApi`, `AgentsApi`, `SpeechApi`, `ExtensionUiApi`, and related types.
+  - Exports `createExtension`, `MocuExtension`, `LlmApi`, `SummarizeApi`, `DecisionApi`, `EmbeddingApi`, `AgentsApi`, `SpeechApi`, `ExtensionUiApi`, and related types.
 - Python package: `mocu_extension_sdk`
-  - Exports `create_extension`, `MocuExtension`, and the corresponding API classes, including `SpeechApi`.
-- Each extension instance exposes `extension.llm`, `extension.decision`, `extension.embedding`, `extension.agents`, and `extension.speech`.
+  - Exports `create_extension`, `MocuExtension`, and the corresponding API classes, including `SummarizeApi` and `SpeechApi`.
+- Each extension instance exposes `extension.llm`, `extension.summarize`, `extension.decision`, `extension.embedding`, `extension.agents`, and `extension.speech`.
 - For each command invocation, the context exposes chat UI access as `context.mocu.ui` in Node or `context["mocu"]["ui"]` in Python.
+- Both Node and Python extensions can call `extension.summarize.text` to summarize source text with Mocu Settings’ separately configured Summarize model.
 
 ## Host LLM
 
@@ -71,6 +74,34 @@ The Python method signature is `extension.llm.generate(prompt, system_prompt=Non
 - `systemPrompt` can contain at most 20,000 characters.
 - A finite `temperature` is clamped to the range `[0, 2]`.
 - `maxTokens` is accepted when it is a positive integer.
+
+## Summarization
+
+Use `extension.summarize.text` to summarize source text using the separately configured Summarize model in Mocu Settings. Optionally pass extra requirements such as desired length, language, or format. The response is plain text in a `summary` field; no separate model or API key is needed beyond the user’s Mocu settings.
+
+**Node:**
+
+```js
+const result = await extension.summarize.text({
+  text: "The complete source text",
+  instructions: "Summarize in three bullet points" // optional
+});
+return result.summary;
+```
+
+**Python:**
+
+```python
+result = extension.summarize.text(
+    "The complete source text",
+    instructions="Summarize in three bullet points",  # optional
+)
+return result["summary"]
+```
+
+- Node signature: `extension.summarize.text({text, instructions?})`, returning `{summary: string}`.
+- Python signature: `extension.summarize.text(text, instructions=None)`, returning a dictionary with `summary`.
+- The host accepts non-empty text and instructions up to 100,000 and 20,000 characters respectively. Summarization uses the configured Summarize LLM.
 
 ## Structured decisions (Jev)
 
@@ -249,6 +280,9 @@ The global folders serve different purposes:
 - `extension-system` contains SDK source packages: `sdk-node`, `sdk-python`, and `contracts`. These are useful as build-time dependencies or source references.
 - `extensions-default` contains Mocu-shipped, browsable and installable extension folders. Inspect each extension’s `manifest.json` and source to verify its APIs and capabilities.
 - User-installed extensions are stored separately under global app data at `extensions/<sanitized id>`.
+- Node SDK: `extension-system/sdk-node/src/index.ts`, `extension.ts`, `llm.ts`, `summarize.ts`, `decision.ts`, `embedding.ts`, `agents.ts`, `speech.ts`, and `ui.ts`.
+- Python SDK: matching modules under `extension-system/sdk-python/mocu_extension_sdk`, including `summarize.py` and `speech.py`.
+- Contracts: `extension-system/contracts/src/{llm,summarize,decision,embedding,agents,speech,protocol}.ts`.
 
 The source checkout contains copies under `install-resources/extension-system` and `install-resources/extensions-default`. These locations are source-checkout paths, not a substitute for resolving the user’s global app-data root at runtime. For a portable extension, vendor required SDK packages locally and do not depend on any global resource folder after installation.
 
@@ -273,11 +307,10 @@ The import examples in this reference show SDK package names; they do not guaran
 
 ## Verified implementation sources
 
-- Node SDK: `extension-system/sdk-node/src/index.ts`, `extension.ts`, `llm.ts`, `decision.ts`, `embedding.ts`, `agents.ts`, `speech.ts`, and `ui.ts`.
-- Python SDK: matching modules under `extension-system/sdk-python/mocu_extension_sdk`, including `speech.py`.
-- Contracts: `extension-system/contracts/src/{llm,decision,embedding,agents,speech,protocol}.ts`.
-- Active handlers: `src/extensions/services/host-service.ts` (including `handleSttTranscribe` / `handleTtsSpeak` with `base64ToBlob` / `blobToBase64` helpers) and `extension-agent-service.ts`.
+- Node SDK: `extension-system/sdk-node/src/index.ts`, `extension.ts`, `llm.ts`, `summarize.ts`, `decision.ts`, `embedding.ts`, `agents.ts`, `speech.ts`, and `ui.ts`.
+- Python SDK: matching modules under `extension-system/sdk-python/mocu_extension_sdk`, including `summarize.py` and `speech.py`.
+- Contracts: `extension-system/contracts/src/{llm,summarize,decision,embedding,agents,speech,protocol}.ts`.
 
 ## When to use this document
 
-Retrieve this reference when building or reviewing a Mocu extension that needs verified SDK capabilities in Node or Python, including speech transcription (STT) and speech synthesis (TTS). Use it to check API identifiers, manifest requirements, input limits, host behavior, chat interaction, cancellation, or streaming progress; to verify public SDK availability and local vendoring requirements; or to locate shared global resource folders and distinguish global SDK source from Mocu-shipped and user-installed extensions.
+Retrieve this reference when building or reviewing a Mocu extension that needs verified SDK capabilities in Node or Python, including `extension.summarize.text` for summarizing source text with optional instructions using the separately configured Mocu Settings Summarize model. Use it to check API identifiers, summary response fields, manifest requirements, input limits, host behavior, chat interaction, cancellation, or streaming progress; to verify public SDK availability and local vendoring requirements; or to locate shared global resource folders and distinguish global SDK source from Mocu-shipped and user-installed extensions.

@@ -1,28 +1,26 @@
 ---
 id: mocu-extension-docs-map
 title: Mocu Extension Docs Map
-description: This document maps common Mocu extension questions to focused
-  guides, including App UI, filesystem writes, SDK packaging, speech APIs, and
-  global extension resource folders. Retrieve it when choosing a guide or
-  determining where to inspect bundled examples, SDK sources, saved-agent
-  access, speech transcription or synthesis, filesystem write behavior, or
-  installed extensions.
+description: Maps common Mocu extension questions to focused guides, including
+  SDK APIs for host LLM generation, text summarization, structured decisions
+  (Jev), embeddings, and speech, plus App UI, filesystem writes, packaging, and
+  global resource folders. Retrieve it to find the right guide for an extension
+  development or runtime question.
 keywords:
   - Mocu extension documentation map
   - extension development guide
   - extension runtime and installation
   - Mocu SDK reference
+  - extension.summarize
+  - extension.summarize.text
+  - extension summarization
+  - خلاصه‌سازی اکستنشن
+  - host LLM and Jev
+  - Summarize model
   - npm E404
   - local SDK vendoring
   - Python package caveats
   - global extension folders
-  - extensions-default
-  - extension-system
-  - Mocu Extension App UI
-  - agents.invoke
-  - extension.speech STT TTS
-  - filesystem.write permission
-  - اکستنشن افزونه ساخت افزونه
 ---
 # Mocu Extension Docs Map
 
@@ -34,7 +32,7 @@ Use the guide that matches the extension question:
 - **Runtime and installation:** [Mocu Extension Runtime](mocu-extension-runtime.md) covers manifest fields, configuration, installation, extension selection, and process lifecycle.
 - **App UI:** [Mocu Extension App UI](mocu-extension-app-ui.md) covers the optional manifest `app` entry, an in-Mocu App sidebar page, the iframe sandbox, the browser UI SDK and message bridge, folder-scoped read and write access, and how App UI can call declared commands.
 - **App UI filesystem writes:** [Mocu Filesystem Write API](mocu-filesystem-write-api.md) documents the write contract, the raw `postMessage` protocol, Rust host commands, the `filesystem.write` permission, `writeText()`, and write path security.
-- **SDK APIs:** [Mocu Extension SDK Reference](mocu-extension-sdk-reference.md) covers verified Node and Python API methods, including the speech (STT/TTS) API methods `extension.speech.transcribe` and `extension.speech.speak`, their parameters, host behavior, and limits. For distributing the SDK within an extension, read the explicit packaging guide below.
+- **SDK APIs:** [Mocu Extension SDK Reference](mocu-extension-sdk-reference.md) covers verified Node and Python API methods, including text summarization through `extension.summarize.text` and speech (STT/TTS) through `extension.speech.transcribe` and `extension.speech.speak`. For summarization, provide source text and optionally instructions. The API uses the separately configured **Summarize model** in Mocu Settings and returns plain text in `summary` for Node or `result["summary"]` for Python. The SDK reference also documents API parameters, host behavior, and limits. For distributing the SDK within an extension, read the explicit packaging guide below.
 - **SDK packaging and distribution:** [Mocu Extension SDK Local Vendoring and Packaging](mocu-extension-sdk-local-vendoring-and-packaging.md) covers npm E404, copying the Node SDK and contracts into an extension, local dependencies, Python package caveats, and clean ZIP verification.
 
 ## Global extension resource folders
@@ -57,4 +55,4 @@ The documents cross-link to related guidance. Start with the relevant focused gu
 
 ## When to use this document
 
-Retrieve this map when choosing which Mocu extension guide to consult, including questions about development, runtime, App UI, the filesystem write API, SDK APIs, speech transcription and synthesis (STT/TTS), packaging, npm E404, local SDK vendoring, independent extension distribution, saved-agent access with `agents.invoke`, global extension folders, bundled examples or defaults, SDK source discovery, or installed extension locations.
+Retrieve this map when choosing which Mocu extension guide to consult, including questions about development, runtime, App UI, the filesystem write API, SDK APIs, text summarization with `extension.summarize.text`, the Summarize model setting, speech transcription and synthesis (STT/TTS), packaging, npm E404, local SDK vendoring, independent extension distribution, saved-agent access with `agents.invoke`, global extension folders, bundled examples or defaults, SDK source discovery, or installed extension locations.

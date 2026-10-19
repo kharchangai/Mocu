@@ -20,7 +20,7 @@ import {
 
 import { terminalExecutionTool } from "../tools/terminal_execution_tool";
 import { perplexitySearchTool } from "../tools/perplexity_search_tool";
-import { skillLoaderTool } from "../tools/skill_loader_tool";
+import { summarizeTextTool } from "../tools/summarize-text-tool";
 import { scheduleTool } from "../../../schedule/schedule-tool";
 import { createAgentTool } from "../tools/create_agent_tool";
 import { agentManagementTools } from "../tools/agent-management-tools";
@@ -110,7 +110,7 @@ async function buildMainAgentToolRuntime(
       ...(projectPath ? { projectPath } : {}),
     }),
     perplexitySearchTool,
-    skillLoaderTool,
+    summarizeTextTool,
     scheduleTool,
     createAgentTool,
     ...agentManagementTools,

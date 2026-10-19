@@ -6,6 +6,7 @@ from .agents import AgentsApi
 from .decision import DecisionApi
 from .embedding import EmbeddingApi
 from .llm import LlmApi
+from .summarize import SummarizeApi
 from .speech import SpeechApi
 from .protocol import JsonRpcProtocol
 from .types import CommandHandler
@@ -15,7 +16,8 @@ class MocuExtension:
     """
     Minimal Mocu extension. Extensions can call Mocu's host AI APIs, interact
     with the user in chat, and invoke saved user agents through the host; they
-    do not need to bundle a language model for these features.
+    do not need to bundle a language model for these features. The configured
+    Summarize model is also available through `self.summarize`.
     """
 
     def __init__(self) -> None:
@@ -26,6 +28,7 @@ class MocuExtension:
         self.llm = LlmApi(self._protocol)
         self.decision = DecisionApi(self._protocol)
         self.embedding = EmbeddingApi(self._protocol)
+        self.summarize = SummarizeApi(self._protocol)
         self.speech = SpeechApi(self._protocol)
         self.agents = AgentsApi(self._protocol)
         self._protocol.register_handler(

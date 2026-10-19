@@ -4,7 +4,7 @@ import type { RunnableConfig } from "@langchain/core/runnables";
 import { getAsyncLLM, getMainAgentLlm, getSelectedChatModel } from "../llm";
 import { terminalExecutionTool } from "../tools/terminal_execution_tool";
 import { perplexitySearchTool } from "../tools/perplexity_search_tool";
-import { skillLoaderTool } from "../tools/skill_loader_tool";
+import { summarizeTextTool } from "../tools/summarize-text-tool";
 import { scheduleTool } from "../../../schedule/schedule-tool";
 import { createAgentTool } from "../tools/create_agent_tool";
 import { agentManagementTools } from "../tools/agent-management-tools";
@@ -46,7 +46,7 @@ async function buildTaskTools(config: RunnableConfig, projectPath?: string): Pro
   const tools: FocusToolLike[] = [
     terminalExecutionTool(projectPath ? { projectPath } : {}) as FocusToolLike,
     perplexitySearchTool as FocusToolLike,
-    skillLoaderTool as FocusToolLike,
+    summarizeTextTool as FocusToolLike,
     scheduleTool as FocusToolLike,
     createAgentTool as FocusToolLike,
     ...(agentManagementTools as unknown as FocusToolLike[]),

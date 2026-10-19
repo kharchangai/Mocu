@@ -30,6 +30,11 @@ export const AGENT_TOOL_CATALOG = [
       "Search the live web for current information, sources, news, and factual research.",
   },
   {
+    name: "summarize_text",
+    description:
+      "Summarize supplied text using the separately configured Summarize LLM, with optional instructions for the summary format and level of detail.",
+  },
+  {
     name: "load_skill",
     description:
       "Load the full instructions of a selected skill by its exact name.",

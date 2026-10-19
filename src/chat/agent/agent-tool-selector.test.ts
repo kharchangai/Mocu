@@ -49,6 +49,20 @@ describe("agent-tool-selector", () => {
     expect(selected).toEqual([{ name: "terminal_executor", relevance: 0.94 }]);
   });
 
+  it("selects the summarization tool when summary work is explicitly requested", async () => {
+    getJevDecision.mockResolvedValue({
+      answers: Object.fromEntries(
+        AGENT_TOOL_CATALOG.map(({ name }) => [name, { noul: 0.01 }]),
+      ),
+    });
+
+    const selected = await selectAgentTools(
+      "Create an agent that summarizes long reports into concise bullet points.",
+    );
+
+    expect(selected.map(({ name }) => name)).toContain("summarize_text");
+  });
+
   it("honors explicitly requested tool categories in Persian even when Jev scores them low", async () => {
     getJevDecision.mockResolvedValue({
       answers: Object.fromEntries(

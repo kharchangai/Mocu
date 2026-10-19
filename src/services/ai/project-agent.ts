@@ -105,10 +105,10 @@ import {
 import {
   desktopVisionTool,
 } from "./tools/desktop-vision-tool";
-
 import {
   perplexitySearchTool,
 } from "./tools/perplexity_search_tool";
+import { summarizeTextTool } from "./tools/summarize-text-tool";
 
 import {
   textToSpeechTool,
@@ -834,6 +834,15 @@ const createProjectToolExecutor = (
     },
   });
 
+  toolExecutor.registerTool({
+    name: summarizeTextTool.name,
+    description: summarizeTextTool.description,
+    execute: async (args) =>
+      summarizeTextTool.invoke(
+        args as { text: string; instructions?: string },
+        config,
+      ),
+  });
   toolExecutor.registerTool({
     name:
       "create_agent",
@@ -2110,7 +2119,7 @@ export const callProjectAgent =
     const graphToolLogTool = createGraphToolLogTool(normalizedProjectPath);
     const specialistMemoryTool = createFindSpecialistProjectMemoryTool(normalizedProjectPath);
     const llmWithTools = llm.bindTools([
-      askUserTool, scheduleTool, desktopVisionTool, terminalTool, perplexitySearchTool,
+      askUserTool, scheduleTool, desktopVisionTool, terminalTool, perplexitySearchTool, summarizeTextTool,
       textToSpeechTool, speechControlTool, skillLoaderTool, createAgentTool,
       ...agentManagementTools,
       readFileTool, writeFileTool, editFileTool, findFileTool,

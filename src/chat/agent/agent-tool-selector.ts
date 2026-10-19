@@ -25,6 +25,7 @@ const EXPLICIT_TOOL_MENTIONS: Record<AgentToolName, RegExp> = {
   documents: /\b(?:documents?|knowledge\s+docs?|docs?)\b|داک|مستند|سند/iu,
   notes: /\bnotes?\b|یادداشت|نوت/iu,
   perplexity_search: /\b(?:web\s+search|perplexity|live\s+web)\b|جستجوی?\s+وب/iu,
+  summarize_text: /\b(?:summari[sz](?:e|es|ed|ing|ation)?|summar(?:y|ies))\b|خلاصه|جمع‌بندی|جمع بندی/iu,
   load_skill: /\bskills?\b|مهارت/iu,
   schedule_action: /\b(?:schedule|reminder|calendar|alarm)\b|یادآور|زمان‌بندی/iu,
 };

@@ -6,6 +6,7 @@ import { AgentsApi } from "./agents.js";
 import { DecisionApi } from "./decision.js";
 import { EmbeddingApi } from "./embedding.js";
 import { LlmApi } from "./llm.js";
+import { SummarizeApi } from "./summarize.js";
 import { SpeechApi } from "./speech.js";
 import { ExtensionUiApi } from "./ui.js";
 import { JsonRpcProtocolClient } from "./protocol-client.js";
@@ -20,7 +21,7 @@ import type {
  * The minimal Mocu extension SDK. An extension registers command handlers and
  * calls `start()`; Mocu invokes commands on demand via `extension.execute`.
  * Extensions may call host AI APIs, interact with the user, and run saved user
- * agents through the host without bundling a model of their own.
+ * agents through the host without bundling their own model.
  */
 export class MocuExtension {
   private readonly protocol = new JsonRpcProtocolClient();
@@ -29,6 +30,8 @@ export class MocuExtension {
   /** Call the Mocu host LLM from inside a command. */
   public readonly llm: LlmApi;
 
+  /** Summarize text with Mocu's configured Summarize model. */
+  public readonly summarize: SummarizeApi;
   /** Ask typed probabilistic questions via the Jev decision model. */
   public readonly decision: DecisionApi;
 
@@ -45,6 +48,7 @@ export class MocuExtension {
     private readonly definition: MocuExtensionDefinition = {},
   ) {
     this.llm = new LlmApi(this.protocol);
+    this.summarize = new SummarizeApi(this.protocol);
     this.decision = new DecisionApi(this.protocol);
     this.embedding = new EmbeddingApi(this.protocol);
     this.speech = new SpeechApi(this.protocol);

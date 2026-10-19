@@ -5,6 +5,7 @@ import { relaunch } from "@tauri-apps/plugin-process";
 import {
   OPENROUTER_GATEWAY_URL, OPENROUTER_DEFAULT_LLM_MODEL,
   OPENROUTER_CHEAP_DEFAULT_MODEL, OPENROUTER_MEDIUM_DEFAULT_MODEL, OPENROUTER_EXPENSIVE_DEFAULT_MODEL,
+  OPENROUTER_SUMMARIZE_DEFAULT_MODEL,
   OPENROUTER_STT_DEFAULT_MODEL, OPENROUTER_TTS_DEFAULT_MODEL, OPENROUTER_TTS_DEFAULT_VOICE,
   OPENROUTER_VISION_DEFAULT_MODEL, OPENROUTER_EMBEDDING_DEFAULT_MODEL, OPENROUTER_PERPLEXITY_DEFAULT_MODEL,
   OPENROUTER_DECISION_DEFAULT_ENDPOINT, OPENROUTER_DECISION_DEFAULT_MODEL,
@@ -37,6 +38,7 @@ export const Settings: React.FC<SettingsProps> = ({
   const [cheapModel, setCheapModel] = useState(OPENROUTER_CHEAP_DEFAULT_MODEL);
   const [mediumModel, setMediumModel] = useState(OPENROUTER_MEDIUM_DEFAULT_MODEL);
   const [expensiveModel, setExpensiveModel] = useState(OPENROUTER_EXPENSIVE_DEFAULT_MODEL);
+  const [summarizeModel, setSummarizeModel] = useState(OPENROUTER_SUMMARIZE_DEFAULT_MODEL);
 
   // Speech settings
   const [sttModel, setSttModel] = useState(OPENROUTER_STT_DEFAULT_MODEL);
@@ -124,6 +126,7 @@ export const Settings: React.FC<SettingsProps> = ({
         setCheapModel(settings.cheapModel);
         setMediumModel(settings.mediumModel);
         setExpensiveModel(settings.expensiveModel);
+        setSummarizeModel(settings.summarizeModel);
         setSttModel(settings.sttModel);
         setTtsModel(settings.ttsModel);
         setTtsVoice(settings.ttsVoice);
@@ -203,6 +206,7 @@ export const Settings: React.FC<SettingsProps> = ({
         llmModel,
         cheapBaseUrl: gatewayBaseUrl,
         cheapModel,
+        summarizeModel,
 
         mediumBaseUrl: gatewayBaseUrl,
         mediumModel,
@@ -418,7 +422,7 @@ export const Settings: React.FC<SettingsProps> = ({
                   className="settings-input"
                 />
                 <p className="settings-card-description">
-                  Shared by all models and Decision (Jev), unless you configure a separate key.
+                  Shared by all models and Decision, unless you configure a separate key.
                 </p>
                 {gatewayError && <p className="settings-card-description" role="alert">{gatewayError}</p>}
               </div>
@@ -429,13 +433,14 @@ export const Settings: React.FC<SettingsProps> = ({
             <LlmTierCard title="Cheap LLM" description="Fast, low-cost tasks." model={cheapModel} disabled={isSaving} onModelChange={setCheapModel} />
             <LlmTierCard title="Medium LLM" description="Balanced daily use." model={mediumModel} disabled={isSaving} onModelChange={setMediumModel} />
             <LlmTierCard title="Expensive LLM" description="Complex requests." model={expensiveModel} disabled={isSaving} onModelChange={setExpensiveModel} />
+            <LlmTierCard title="Summarize LLM" description="Model setting for future summarization support; not wired up yet." model={summarizeModel} disabled={isSaving} onModelChange={setSummarizeModel} />
           </details>
           </div>
 
           <div className="settings-card settings-model-summary">
             <p className="settings-card-description">Preconfigured models — change any model below if needed. A custom gateway must support the selected models and APIs.</p>
             <div className="settings-model-list">
-              {[['Main chat', llmModel], ['Cheap', cheapModel], ['Medium', mediumModel], ['Expensive', expensiveModel], ['STT', sttModel], ['TTS', ttsModel], ['Vision', visionModel], ['Embedding', embeddingModel], ['Perplexity', perplexityModel], ['Decision (Jev)', decisionModel]].map(([name, model]) => <div className="settings-model-row" key={name}><span className="settings-model-tier">{name}</span><span className="settings-model-id">{model}</span></div>)}
+              {[["Main chat", llmModel], ["Cheap", cheapModel], ["Medium", mediumModel], ["Expensive", expensiveModel], ["Summarize", summarizeModel], ["STT", sttModel], ["TTS", ttsModel], ["Vision", visionModel], ["Embedding", embeddingModel], ["Perplexity", perplexityModel], ["Decision", decisionModel]].map(([name, model]) => <div className="settings-model-row" key={name}><span className="settings-model-tier">{name}</span><span className="settings-model-id">{model}</span></div>)}
             </div>
           </div>
         </section>
@@ -496,7 +501,7 @@ export const Settings: React.FC<SettingsProps> = ({
 
         {/* ---------- Decision (Jev) ---------- */}
         <section className="settings-section">
-          <h5 className="settings-section-label">Decision (Jev)</h5>
+          <h5 className="settings-section-label">Decision</h5>
 
           <div className="settings-card">
             <div className="settings-card-header">

@@ -38,6 +38,7 @@ import {
 import { docTools } from '../../services/ai/tools/docs_tools';
 import { notesTools } from '../../services/ai/tools/notes_tools';
 import { perplexitySearchTool } from '../../services/ai/tools/perplexity_search_tool';
+import { summarizeTextTool } from '../../services/ai/tools/summarize-text-tool';
 import { skillLoaderTool } from '../../services/ai/tools/skill_loader_tool';
 import { AGENT_TOOL_CATALOG, type AgentToolName } from './agent-tool-catalog';
 import { resolveSelectedSkills } from '../components/skills/selected-skill-loader';
@@ -178,6 +179,7 @@ async function runAgentNode(
     ...selectedNoteTools,
     ...(includeTool('perplexity_search') ? [perplexitySearchTool] : []),
     ...(includeTool('load_skill') ? [skillLoaderTool] : []),
+    summarizeTextTool,
     ...(includeTool('schedule_action') ? [scheduleTool] : []),
     ...extensionTools.tools,
     ...mcpTools.tools,
@@ -199,6 +201,11 @@ async function runAgentNode(
       execute: (args) => perplexitySearchTool.invoke(args as { query: string }, runnableConfig),
     });
   }
+  executor.registerTool({
+    name: summarizeTextTool.name,
+    description: summarizeTextTool.description,
+    execute: (args) => summarizeTextTool.invoke(args as { text: string; instructions?: string }, runnableConfig),
+  });
   if (includeTool('load_skill')) {
     executor.registerTool({
       name: 'load_skill',

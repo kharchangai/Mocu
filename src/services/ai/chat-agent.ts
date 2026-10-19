@@ -108,6 +108,7 @@ import {
 import {
   perplexitySearchTool,
 } from "./tools/perplexity_search_tool";
+import { summarizeTextTool } from "./tools/summarize-text-tool";
 
 import {
   textToSpeechTool,
@@ -793,6 +794,15 @@ const createToolExecutor = (
     },
   });
 
+  toolExecutor.registerTool({
+    name: summarizeTextTool.name,
+    description: summarizeTextTool.description,
+    execute: async (args) =>
+      summarizeTextTool.invoke(
+        args as { text: string; instructions?: string },
+        config,
+      ),
+  });
   toolExecutor.registerTool({
     name:
       "text_to_speech",
@@ -1707,6 +1717,7 @@ export const callChatAgent =
       desktopVisionTool,
       terminalTool,
       perplexitySearchTool,
+      summarizeTextTool,
       textToSpeechTool,
       speechControlTool,
       skillLoaderTool,

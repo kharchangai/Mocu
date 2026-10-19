@@ -18,6 +18,7 @@ export const OPENROUTER_VISION_DEFAULT_MODEL = "openai/gpt-6-luna";
 export const OPENROUTER_EMBEDDING_DEFAULT_MODEL = "openai/text-embedding-3-large";
 export const OPENROUTER_PERPLEXITY_DEFAULT_MODEL = "sonar";
 export const OPENROUTER_DECISION_DEFAULT_MODEL = "~typesafe/jev-latest";
+export const OPENROUTER_SUMMARIZE_DEFAULT_MODEL = "scaledown/summarize";
 
 /** Decisions uses the gateway's API root, without the chat /v1 suffix. */
 export function getDecisionEndpointForGateway(baseUrl: string): string {
@@ -43,6 +44,7 @@ export type AppSettings = {
   expensiveBaseUrl: string;
   expensiveModel: string;
 
+  summarizeModel: string;
   // Speech settings
   sttModel: string;
   ttsModel: string;
@@ -156,6 +158,7 @@ export async function readSettings(): Promise<AppSettings> {
   const savedCheapModel = await store.get<string>("MOCU_CHEAP_MODEL");
   const savedMediumModel = await store.get<string>("MOCU_MEDIUM_MODEL");
   const savedExpensiveModel = await store.get<string>("MOCU_EXPENSIVE_MODEL");
+  const savedSummarizeModel = await store.get<string>("MOCU_SUMMARIZE_MODEL");
   return {
     apiKey, gatewayBaseUrl,
     llmModel: modelOrDefault(legacyLlmModel, OPENROUTER_DEFAULT_LLM_MODEL),
@@ -165,6 +168,7 @@ export async function readSettings(): Promise<AppSettings> {
     mediumModel: modelOrDefault(savedMediumModel, OPENROUTER_MEDIUM_DEFAULT_MODEL),
     expensiveBaseUrl: legacyBaseUrl || savedExpensiveBaseUrl || gatewayBaseUrl,
     expensiveModel: modelOrDefault(savedExpensiveModel, OPENROUTER_EXPENSIVE_DEFAULT_MODEL),
+    summarizeModel: modelOrDefault(savedSummarizeModel, OPENROUTER_SUMMARIZE_DEFAULT_MODEL),
     sttModel: modelOrDefault(await store.get<string>("MOCU_STT_MODEL"), OPENROUTER_STT_DEFAULT_MODEL),
     ttsModel: modelOrDefault(await store.get<string>("MOCU_TTS_MODEL"), OPENROUTER_TTS_DEFAULT_MODEL),
     ttsVoice: modelOrDefault(await store.get<string>("MOCU_TTS_VOICE"), OPENROUTER_TTS_DEFAULT_VOICE),
@@ -227,7 +231,7 @@ export async function saveSettings(settings: AppSettings): Promise<void> {
     "MOCU_EXPENSIVE_MODEL",
     modelOrDefault(settings.expensiveModel, OPENROUTER_EXPENSIVE_DEFAULT_MODEL),
   );
-
+  await store.set("MOCU_SUMMARIZE_MODEL", modelOrDefault(settings.summarizeModel, OPENROUTER_SUMMARIZE_DEFAULT_MODEL));
   // Speech settings
   await store.set("MOCU_STT_MODEL", modelOrDefault(settings.sttModel, OPENROUTER_STT_DEFAULT_MODEL));
   await store.set("MOCU_TTS_MODEL", modelOrDefault(settings.ttsModel, OPENROUTER_TTS_DEFAULT_MODEL));

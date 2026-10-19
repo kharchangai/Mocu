@@ -28,6 +28,7 @@ const expectedModels = {
   embeddingModel: "openai/text-embedding-3-large",
   perplexityModel: "sonar",
   decisionModel: "~typesafe/jev-latest",
+  summarizeModel: "scaledown/summarize",
   searchDepth: 3,
 };
 const urlFields = ["gatewayBaseUrl", "cheapBaseUrl", "mediumBaseUrl", "expensiveBaseUrl", "visionBaseUrl", "embeddingBaseUrl", "perplexityBaseUrl"] as const;
@@ -87,8 +88,9 @@ describe("gateway defaults", () => {
     values.set("MOCU_LLM_MODEL", "saved-chat");
     values.set("MOCU_CHEAP_MODEL", "openrouter/auto");
     values.set("MOCU_MEDIUM_MODEL", "saved-medium");
+    values.set("MOCU_SUMMARIZE_MODEL", "saved-summarize");
     values.set("MOCU_TTS_VOICE", "saved-voice");
-    expect(await readSettings()).toMatchObject({ llmModel: "saved-chat", cheapModel: "openrouter/auto", mediumModel: "saved-medium", ttsVoice: "saved-voice" });
+    expect(await readSettings()).toMatchObject({ llmModel: "saved-chat", cheapModel: "openrouter/auto", mediumModel: "saved-medium", summarizeModel: "saved-summarize", ttsVoice: "saved-voice" });
     expect(mockStore.set).not.toHaveBeenCalled();
   });
 
@@ -97,9 +99,10 @@ describe("gateway defaults", () => {
     values.set("MOCU_VISION_MODEL", "");
     const settings = await readSettings();
     expect(settings).toMatchObject(expectedModels);
-    await saveSettings({ ...settings, cheapModel: " ", mediumModel: "", expensiveModel: "", sttModel: " ", ttsVoice: "" });
+    await saveSettings({ ...settings, cheapModel: " ", mediumModel: "", expensiveModel: "", summarizeModel: " ", sttModel: " ", ttsVoice: "" });
     expect(await readSettings()).toMatchObject(expectedModels);
     expect(values.get("MOCU_CHEAP_MODEL")).toBe(expectedModels.cheapModel);
+    expect(values.get("MOCU_SUMMARIZE_MODEL")).toBe(expectedModels.summarizeModel);
   });
 
   it("retains legacy dedicated URLs and keys when loading existing settings", async () => {
