@@ -3,6 +3,7 @@ import { DecisionApi } from "./decision.js";
 import { EmbeddingApi } from "./embedding.js";
 import { LlmApi } from "./llm.js";
 import { SummarizeApi } from "./summarize.js";
+import { ExtractApi } from "./extract.js";
 import { SpeechApi } from "./speech.js";
 import type { ExtensionCommandHandler, MocuExtensionDefinition } from "./types.js";
 /**
@@ -19,7 +20,8 @@ export declare class MocuExtension {
     readonly llm: LlmApi;
     /** Summarize text with Mocu's configured Summarize model. */
     readonly summarize: SummarizeApi;
-    /** Ask typed probabilistic questions via the Jev decision model. */
+    /** Extract named entities with Mocu's configured Extract model. */
+    readonly extract: ExtractApi;
     readonly decision: DecisionApi;
     /** Create embedding vectors with Mocu's configured embedding model. */
     readonly embedding: EmbeddingApi;

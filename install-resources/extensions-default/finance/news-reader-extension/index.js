@@ -22,6 +22,33 @@ const extension = createExtension({
       });
       return result.text;
     },
+    async entities(input) {
+      const title = input && typeof input === "object" && typeof input.title === "string"
+        ? input.title.trim()
+        : "";
+      const articleText = input && typeof input === "object" && typeof input.text === "string"
+        ? input.text.trim()
+        : "";
+
+      if (!articleText) throw new Error("The news story has no text to analyze.");
+      const text = `${title ? `Title: ${title}\n\n` : ""}News story:\n${articleText}`;
+      if (text.length > 100_000) {
+        throw new Error("This story is too long to analyze (maximum 100,000 characters).");
+      }
+
+      const result = await extension.extract.entities({
+        text,
+        entities: {
+          company: "Company, corporation, business, or publicly traded organization mentioned in the news.",
+          precious_metal: "A precious metal mentioned in the news, such as gold, silver, platinum, or palladium.",
+          country: "A country or nation mentioned in the news.",
+          currency: "A currency unit mentioned in the news by its name, common symbol, or ISO code, such as the US dollar,USD, euro,EUR, British pound,GBP, yen,JPY, yuan/CNY, or Swiss franc/CHF. Extract the currency itself only; never extract an amount, number, percentage, price, or other numeric value as a currency."
+        },
+        threshold: 0.65,
+        top_n: 200,
+      });
+      return { entities: result.entities };
+    },
     async summarize(input) {
       const title = input && typeof input === "object" && typeof input.title === "string"
         ? input.title.trim()

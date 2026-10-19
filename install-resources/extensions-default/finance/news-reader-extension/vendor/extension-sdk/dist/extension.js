@@ -4,6 +4,7 @@ import { DecisionApi } from "./decision.js";
 import { EmbeddingApi } from "./embedding.js";
 import { LlmApi } from "./llm.js";
 import { SummarizeApi } from "./summarize.js";
+import { ExtractApi } from "./extract.js";
 import { SpeechApi } from "./speech.js";
 import { ExtensionUiApi } from "./ui.js";
 import { JsonRpcProtocolClient } from "./protocol-client.js";
@@ -21,7 +22,8 @@ export class MocuExtension {
     llm;
     /** Summarize text with Mocu's configured Summarize model. */
     summarize;
-    /** Ask typed probabilistic questions via the Jev decision model. */
+    /** Extract named entities with Mocu's configured Extract model. */
+    extract;
     decision;
     /** Create embedding vectors with Mocu's configured embedding model. */
     embedding;
@@ -33,6 +35,7 @@ export class MocuExtension {
         this.definition = definition;
         this.llm = new LlmApi(this.protocol);
         this.summarize = new SummarizeApi(this.protocol);
+        this.extract = new ExtractApi(this.protocol);
         this.decision = new DecisionApi(this.protocol);
         this.embedding = new EmbeddingApi(this.protocol);
         this.speech = new SpeechApi(this.protocol);

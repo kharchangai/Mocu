@@ -71,6 +71,7 @@ export declare const HOST_METHODS: {
     readonly agentsList: "mocu.agents.list";
     readonly agentsRun: "mocu.agents.run";
     readonly summarizeText: "mocu.summarize.text";
+    readonly extractEntities: "mocu.extract.entities";
     readonly extensionInteract: "mocu.extension.interact";
     readonly extensionInteractionCancel: "mocu.extension.interaction.cancel";
 };

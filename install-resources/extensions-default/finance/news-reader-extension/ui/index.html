@@ -58,6 +58,15 @@
     .summary-heading-mark { display:grid; width:23px; height:23px; place-items:center; border-radius:8px; color:#b44631; background:#fbe9e3; font-size:14px; }
     .summary-text { margin:0; color:#353630; white-space:pre-wrap; overflow-wrap:anywhere; font:14px/1.8 Inter,"Segoe UI",system-ui,sans-serif; }
     .summary-panel.summary-error { border-color:#efd4cc; color:#a33e32; background:#fff8f5; }
+    .entities-panel { margin-top:22px; padding:16px 18px; border:1px solid #e4e2dc; border-radius:12px; background:#fff; }
+    .entities-heading { margin:0 0 12px; color:#55564f; font:700 11px/1.4 Inter,"Segoe UI",system-ui,sans-serif; letter-spacing:.06em; text-transform:uppercase; }
+    .entity-group { display:flex; flex-wrap:wrap; align-items:center; gap:7px; margin-top:9px; }
+    .entity-group-label { min-width:105px; color:#85847b; font-size:10px; font-weight:700; text-transform:capitalize; }
+    .entity-chip { padding:6px 10px; border:1px solid #e7e5de; border-radius:99px; color:#484941; background:#f8f7f3; cursor:pointer; font-size:11px; }
+    .entity-chip:hover,.entity-chip:focus-visible { border-color:#d88e7c; color:#a83f2c; background:#fff4f0; outline:none; }
+    .entity-status { margin:0; color:#77776e; font-size:12px; line-height:1.6; }
+    .entity-highlight { border-radius:3px; padding:1px 0; background:#ffe27a; color:inherit; box-shadow:0 0 0 2px #ffe27a; }
+    .entity-highlight.entity-highlight-active { background:#ffb54d; box-shadow:0 0 0 2px #ffb54d; }
     .summary-panel.summary-error .summary-heading,.summary-panel.summary-error .summary-text { color:#a33e32; }
     .reader-content { width: min(740px,100%); margin: 0 auto; padding: clamp(34px,7vw,72px) clamp(23px,6vw,52px) 86px; }
     .reader-kicker { color: #c04b35; font-size: 10px; font-weight: 750; letter-spacing: .12em; text-transform: uppercase; }
@@ -117,8 +126,8 @@
     <p class="footer">Choose your news archive folder to open the latest date-named edition.</p>
   </main>
   <section id="reader" class="reader hidden" aria-modal="true" role="dialog" aria-labelledby="reader-title">
-    <header class="reader-bar"><button id="back" class="back-button" type="button"><span aria-hidden="true">←</span> All stories</button><div class="reader-tools"><button id="summarize-article" class="summarize-button" type="button" aria-controls="summary-panel"><span aria-hidden="true">✦</span> Summarize in English</button><button id="font-smaller" class="reader-action" type="button" aria-label="Decrease text size">A−</button><button id="font-larger" class="reader-action" type="button" aria-label="Increase text size">A+</button></div></header>
-    <article id="reader-article" class="reader-content"><div id="reader-kicker" class="reader-kicker"></div><h1 id="reader-title" class="reader-title"></h1><div id="reader-meta" class="reader-meta"></div><section id="summary-panel" class="summary-panel hidden" role="status" aria-live="polite" aria-labelledby="summary-heading"><h2 id="summary-heading" class="summary-heading"><span class="summary-heading-mark" aria-hidden="true">✦</span> Key points &amp; financial insights</h2><p id="summary-text" class="summary-text"></p></section><div id="reader-body" class="reader-body"></div><div id="reader-bottom" class="reader-bottom"></div></article>
+    <header class="reader-bar"><button id="back" class="back-button" type="button"><span aria-hidden="true">←</span> All stories</button><div class="reader-tools"><button id="find-entities" class="reader-action" type="button" aria-controls="entities-panel" title="Find companies, precious metals, countries, and currencies">Find entities</button><button id="summarize-article" class="summarize-button" type="button" aria-controls="summary-panel"><span aria-hidden="true">✦</span> Summarize in English</button><button id="font-smaller" class="reader-action" type="button" aria-label="Decrease text size">A−</button><button id="font-larger" class="reader-action" type="button" aria-label="Increase text size">A+</button></div></header>
+    <article id="reader-article" class="reader-content"><div id="reader-kicker" class="reader-kicker"></div><h1 id="reader-title" class="reader-title"></h1><div id="reader-meta" class="reader-meta"></div><section id="entities-panel" class="entities-panel hidden" role="region" aria-labelledby="entities-heading"><h2 id="entities-heading" class="entities-heading">Companies, precious metals, countries &amp; currencies</h2><div id="entities-content" aria-live="polite"></div></section><section id="summary-panel" class="summary-panel hidden" role="status" aria-live="polite" aria-labelledby="summary-heading"><h2 id="summary-heading" class="summary-heading"><span class="summary-heading-mark" aria-hidden="true">✦</span> Key points &amp; financial insights</h2><p id="summary-text" class="summary-text"></p></section><div id="reader-body" class="reader-body"></div><div id="reader-bottom" class="reader-bottom"></div></article>
     <button id="selection-translate" class="selection-translate hidden" type="button" aria-label="Translate selected text into Persian" title="Translate to Persian">
       <svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m5 8 6 6M4 14l6-6 2-3M2 5h12M7 2h1M13 21l5-10 5 10M15 17h6"/></svg>
     </button>
@@ -151,6 +160,11 @@
         let currentArticle = null;
         let summaryInProgress = false;
         let summaryRequestId = 0;
+        const entitiesButton = document.getElementById("find-entities");
+        const entitiesPanel = document.getElementById("entities-panel");
+        const entitiesContent = document.getElementById("entities-content");
+        let entitiesInProgress = false;
+        let entitiesRequestId = 0;
 
         function escapeHtml(value) {
           return String(value).replace(/[&<>"']/g, (character) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", "\"": "&quot;", "'": "&#39;" })[character]);
@@ -241,6 +255,211 @@
           }
         }
 
+        function clearEntityHighlights() {
+          reader.querySelectorAll(".entity-highlight").forEach((mark) => {
+            mark.replaceWith(document.createTextNode(mark.textContent || ""));
+          });
+          reader.normalize();
+        }
+
+        function highlightEntity(text) {
+          clearEntityHighlights();
+          const needle = String(text || "").trim();
+          if (!needle) return null;
+          const nodes = [];
+          for (const root of readerArticle.querySelectorAll("#reader-title, #reader-body")) {
+            const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT, {
+              acceptNode(node) {
+                return node.parentElement?.closest("script,style,code,pre") ? NodeFilter.FILTER_REJECT : NodeFilter.FILTER_ACCEPT;
+              },
+            });
+            while (walker.nextNode()) nodes.push(walker.currentNode);
+          }
+
+          // Join text nodes into one searchable stream so full extracted excerpts can
+          // span inline markup and multiple paragraphs; keep offsets back to DOM nodes.
+          let source = "";
+          const positions = [];
+          let previousBlock = null;
+          for (const node of nodes) {
+            const block = node.parentElement?.closest("p,h1,h2,h3,h4,h5,h6,li,blockquote,div") || node.parentElement;
+            if (source && block !== previousBlock) {
+              source += "\n";
+              positions.push(null);
+            }
+            const value = node.nodeValue || "";
+            for (let offset = 0; offset < value.length; offset += 1) {
+              source += value[offset];
+              positions.push({ node, start: offset, end: offset + 1 });
+            }
+            previousBlock = block;
+          }
+
+          // Normalize whitespace while retaining a map from each searchable character
+          // to its source text node and offset. This also handles wrapped inline text.
+          let normalizedSource = "";
+          const normalizedPositions = [];
+          let pendingWhitespace = false;
+          let pendingWhitespacePosition = null;
+          for (let index = 0; index < source.length; index += 1) {
+            if (/\s/.test(source[index])) {
+              pendingWhitespace = true;
+              if (!pendingWhitespacePosition && positions[index]) pendingWhitespacePosition = positions[index];
+              continue;
+            }
+            if (pendingWhitespace && normalizedSource) {
+              normalizedSource += " ";
+              normalizedPositions.push(pendingWhitespacePosition);
+            }
+            pendingWhitespace = false;
+            pendingWhitespacePosition = null;
+            normalizedSource += source[index];
+            normalizedPositions.push(positions[index]);
+          }
+          const normalizedNeedle = needle.replace(/\s+/g, " ").trim().toLocaleLowerCase();
+          normalizedSource = normalizedSource.toLocaleLowerCase();
+          if (!normalizedNeedle) return null;
+
+          const matches = [];
+          let from = 0;
+          while (from < normalizedSource.length) {
+            const index = normalizedSource.indexOf(normalizedNeedle, from);
+            if (index < 0) break;
+            const endIndex = index + normalizedNeedle.length - 1;
+            const segments = [];
+            let segment = null;
+            for (let cursor = index; cursor <= endIndex; cursor += 1) {
+              const position = normalizedPositions[cursor];
+              if (!position) continue;
+              if (segment && segment.node === position.node && segment.end === position.start) {
+                segment.end = position.end;
+              } else {
+                if (segment) segments.push(segment);
+                segment = { node: position.node, start: position.start, end: position.end };
+              }
+            }
+            if (segment) segments.push(segment);
+            if (segments.length) matches.push(segments);
+            from = index + Math.max(normalizedNeedle.length, 1);
+          }
+
+          for (let matchIndex = matches.length - 1; matchIndex >= 0; matchIndex -= 1) {
+            const segments = matches[matchIndex];
+            for (let segmentIndex = segments.length - 1; segmentIndex >= 0; segmentIndex -= 1) {
+              const segment = segments[segmentIndex];
+              const range = document.createRange();
+              range.setStart(segment.node, segment.start);
+              range.setEnd(segment.node, segment.end);
+              const mark = document.createElement("mark");
+              mark.className = "entity-highlight";
+              range.surroundContents(mark);
+            }
+          }
+          const firstMatch = readerArticle.querySelector(".entity-highlight");
+          if (firstMatch) {
+            firstMatch.classList.add("entity-highlight-active");
+            firstMatch.scrollIntoView({ behavior: "smooth", block: "center" });
+          }
+          return firstMatch;
+        }
+
+        function renderEntities(entities) {
+          entitiesContent.replaceChildren();
+          const groups = ["company", "precious_metal", "country", "currency"];
+          const labels = { company: "Companies", precious_metal: "Precious metals", country: "Countries", currency: "Currencies" };
+          const unique = new Map();
+          for (const entity of entities) {
+            if (!entity || typeof entity.text !== "string" || !entity.text.trim() || !groups.includes(entity.type)) continue;
+            const key = `${entity.type}:${entity.text.trim().toLocaleLowerCase()}`;
+            if (!unique.has(key)) unique.set(key, { ...entity, text: entity.text.trim() });
+          }
+          const grouped = Object.fromEntries(groups.map((type) => [type, []]));
+          for (const entity of unique.values()) grouped[entity.type].push(entity);
+          const context = document.createElement("p");
+          context.className = "entity-status";
+          context.setAttribute("aria-live", "polite");
+          context.textContent = "Click an entity to highlight the full extracted passage about it in the story.";
+          let foundAny = false;
+          for (const type of groups) {
+            if (!grouped[type].length) continue;
+            foundAny = true;
+            const row = document.createElement("div");
+            row.className = "entity-group";
+            const label = document.createElement("span");
+            label.className = "entity-group-label";
+            label.textContent = labels[type];
+            row.append(label);
+            for (const entity of grouped[type]) {
+              const chip = document.createElement("button");
+              chip.type = "button";
+              chip.className = "entity-chip";
+              chip.textContent = entity.text;
+              chip.addEventListener("click", () => {
+                // Highlight the extracted context passage, not the entity label.
+                const excerpt = typeof entity.text === "string" ? entity.text.trim() : "";
+                const firstMatch = excerpt ? highlightEntity(excerpt) : null;
+                context.textContent = firstMatch
+                  ? excerpt
+                  : excerpt
+                    ? `${excerpt} (No exact context passage was found in the displayed story text.)`
+                    : "No context passage is available for this entity.";
+              });
+              row.append(chip);
+            }
+            entitiesContent.append(row);
+          }
+          if (!foundAny) context.textContent = "No companies, precious metals, countries, or currencies were found in this story.";
+          entitiesContent.append(context);
+        }
+
+        async function findEntitiesForCurrentArticle() {
+          if (!currentArticle || entitiesInProgress) return;
+          const article = currentArticle;
+          const requestId = ++entitiesRequestId;
+          entitiesInProgress = true;
+          entitiesButton.disabled = true;
+          entitiesButton.textContent = "Finding…";
+          entitiesPanel.classList.remove("hidden");
+          entitiesContent.replaceChildren();
+          const status = document.createElement("p");
+          status.className = "entity-status";
+          status.textContent = "Finding companies, precious metals, countries, and currencies…";
+          entitiesContent.append(status);
+          try {
+            const result = await window.mocu.extension.execute("entities", { title: article.title, text: article.content });
+            const entities = Array.isArray(result) ? result : result && Array.isArray(result.entities) ? result.entities : [];
+            if (requestId === entitiesRequestId && currentArticle === article) {
+              article.entities = entities;
+              renderEntities(entities);
+            }
+          } catch (error) {
+            if (requestId === entitiesRequestId && currentArticle === article) {
+              entitiesContent.replaceChildren();
+              const message = document.createElement("p");
+              message.className = "entity-status";
+              message.textContent = error instanceof Error ? error.message : String(error);
+              entitiesContent.append(message);
+            }
+          } finally {
+            if (requestId === entitiesRequestId) {
+              entitiesInProgress = false;
+              if (currentArticle === article) {
+                entitiesButton.disabled = false;
+                entitiesButton.textContent = "Find entities";
+              }
+            }
+          }
+        }
+
+        entitiesButton.addEventListener("click", () => {
+          if (currentArticle?.entities) {
+            entitiesPanel.classList.remove("hidden");
+            renderEntities(currentArticle.entities);
+            return;
+          }
+          void findEntitiesForCurrentArticle();
+        });
+
         async function summarizeCurrentArticle() {
           if (!currentArticle || summaryInProgress) return;
           const article = currentArticle;
@@ -322,6 +541,13 @@
 
         function openArticle(article) {
           currentArticle = article;
+          entitiesRequestId += 1;
+          entitiesInProgress = false;
+          entitiesButton.disabled = false;
+          entitiesButton.textContent = "Find entities";
+          entitiesPanel.classList.add("hidden");
+          entitiesContent.replaceChildren();
+          clearEntityHighlights();
           summaryRequestId += 1;
           summaryInProgress = false;
           summaryPanel.classList.add("hidden");
@@ -344,6 +570,13 @@
 
         function closeArticle() {
           reader.classList.add("hidden"); home.classList.remove("hidden"); history.replaceState(null, "", "");
+          entitiesRequestId += 1;
+          entitiesInProgress = false;
+          entitiesButton.disabled = false;
+          entitiesButton.textContent = "Find entities";
+          entitiesPanel.classList.add("hidden");
+          entitiesContent.replaceChildren();
+          clearEntityHighlights();
           translationCard.classList.add("hidden");
           summaryRequestId += 1;
           summaryInProgress = false;

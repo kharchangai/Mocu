@@ -116,7 +116,13 @@
 
   mocu.filesystem = Object.assign(mocu.filesystem || {}, {
     request(method, params, options) {
-      if (method !== "filesystem.chooseFolder" && method !== "filesystem.list" && method !== "filesystem.readText") {
+      const supported = [
+        "filesystem.chooseFolder",
+        "filesystem.list",
+        "filesystem.readText",
+        "filesystem.writeText",
+      ];
+      if (!supported.includes(method)) {
         return Promise.reject(new TypeError("Unsupported Mocu filesystem method."));
       }
       return request(method, params, options);
@@ -138,6 +144,28 @@
         throw new Error("Mocu returned an invalid filesystem.readText response.");
       }
       return result.text;
+    },
+    /**
+     * Write UTF-8 text to a file inside the user-approved folder.
+     * Requires the manifest's `filesystem.write` permission; `filesystem.write`
+     * is checked by the host separately from `filesystem.read`.
+     */
+    async writeText(relativePath, text, requestOptions) {
+      if (typeof relativePath !== "string" || !relativePath.trim()) {
+        throw new TypeError("filesystem.writeText requires a non-empty relative path.");
+      }
+      if (typeof text !== "string") {
+        throw new TypeError("filesystem.writeText requires text to be a string.");
+      }
+      const result = await request(
+        "filesystem.writeText",
+        { relativePath, text },
+        requestOptions
+      );
+      if (result && typeof result.written === "boolean") {
+        return result.written;
+      }
+      return true;
     },
   });
 
