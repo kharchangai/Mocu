@@ -7,6 +7,7 @@ from .decision import DecisionApi
 from .embedding import EmbeddingApi
 from .llm import LlmApi
 from .summarize import SummarizeApi
+from .extract import ExtractApi
 from .speech import SpeechApi
 from .protocol import JsonRpcProtocol
 from .types import CommandHandler
@@ -29,6 +30,7 @@ class MocuExtension:
         self.decision = DecisionApi(self._protocol)
         self.embedding = EmbeddingApi(self._protocol)
         self.summarize = SummarizeApi(self._protocol)
+        self.extract = ExtractApi(self._protocol)
         self.speech = SpeechApi(self._protocol)
         self.agents = AgentsApi(self._protocol)
         self._protocol.register_handler(

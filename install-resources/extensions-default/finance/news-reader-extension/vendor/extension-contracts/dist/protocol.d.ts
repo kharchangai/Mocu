@@ -70,6 +70,7 @@ export declare const HOST_METHODS: {
     readonly embeddingEmbed: "mocu.embedding.embed";
     readonly agentsList: "mocu.agents.list";
     readonly agentsRun: "mocu.agents.run";
+    readonly summarizeText: "mocu.summarize.text";
     readonly extensionInteract: "mocu.extension.interact";
     readonly extensionInteractionCancel: "mocu.extension.interaction.cancel";
 };

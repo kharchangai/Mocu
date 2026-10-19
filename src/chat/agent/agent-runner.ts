@@ -40,6 +40,7 @@ import { notesTools } from '../../services/ai/tools/notes_tools';
 import { perplexitySearchTool } from '../../services/ai/tools/perplexity_search_tool';
 import { summarizeTextTool } from '../../services/ai/tools/summarize-text-tool';
 import { skillLoaderTool } from '../../services/ai/tools/skill_loader_tool';
+import { extractEntitiesTool } from '../../services/ai/tools/extract-entities-tool';
 import { AGENT_TOOL_CATALOG, type AgentToolName } from './agent-tool-catalog';
 import { resolveSelectedSkills } from '../components/skills/selected-skill-loader';
 import { loadExtensionAgentTools } from '../../extensions/services/extension-agent-tools';
@@ -180,6 +181,7 @@ async function runAgentNode(
     ...(includeTool('perplexity_search') ? [perplexitySearchTool] : []),
     ...(includeTool('load_skill') ? [skillLoaderTool] : []),
     summarizeTextTool,
+    ...(includeTool('extract_entities') ? [extractEntitiesTool] : []),
     ...(includeTool('schedule_action') ? [scheduleTool] : []),
     ...extensionTools.tools,
     ...mcpTools.tools,
@@ -206,6 +208,16 @@ async function runAgentNode(
     description: summarizeTextTool.description,
     execute: (args) => summarizeTextTool.invoke(args as { text: string; instructions?: string }, runnableConfig),
   });
+  if (includeTool('extract_entities')) {
+    executor.registerTool({
+      name: extractEntitiesTool.name,
+      description: extractEntitiesTool.description,
+      execute: (args) => extractEntitiesTool.invoke(
+        args as { text: string; entities: Record<string, string>; threshold?: number; top_n?: number },
+        runnableConfig,
+      ),
+    });
+  }
   if (includeTool('load_skill')) {
     executor.registerTool({
       name: 'load_skill',

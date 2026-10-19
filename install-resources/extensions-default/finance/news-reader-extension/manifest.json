@@ -12,6 +12,11 @@
       "id": "translate",
       "title": "Translate selected news text",
       "description": "Translate selected text into Persian using Mocu's configured language model."
+    },
+    {
+      "id": "summarize",
+      "title": "Summarize news story in English",
+      "description": "Summarize the key points and important financial information from the open news story using Mocu's configured Summarize model."
     }
   ],
   "app": {

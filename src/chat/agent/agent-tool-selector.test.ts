@@ -63,6 +63,20 @@ describe("agent-tool-selector", () => {
     expect(selected.map(({ name }) => name)).toContain("summarize_text");
   });
 
+  it("selects the entity extraction tool when entity extraction is requested", async () => {
+    getJevDecision.mockResolvedValue({
+      answers: Object.fromEntries(
+        AGENT_TOOL_CATALOG.map(({ name }) => [name, { noul: 0.01 }]),
+      ),
+    });
+
+    const selected = await selectAgentTools(
+      "Create an agent that extracts invoice numbers, vendors, and totals from documents.",
+    );
+
+    expect(selected.map(({ name }) => name)).toContain("extract_entities");
+  });
+
   it("honors explicitly requested tool categories in Persian even when Jev scores them low", async () => {
     getJevDecision.mockResolvedValue({
       answers: Object.fromEntries(

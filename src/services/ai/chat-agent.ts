@@ -109,6 +109,7 @@ import {
   perplexitySearchTool,
 } from "./tools/perplexity_search_tool";
 import { summarizeTextTool } from "./tools/summarize-text-tool";
+import { extractEntitiesTool } from "./tools/extract-entities-tool";
 
 import {
   textToSpeechTool,
@@ -802,6 +803,14 @@ const createToolExecutor = (
         args as { text: string; instructions?: string },
         config,
       ),
+  });
+  toolExecutor.registerTool({
+    name: extractEntitiesTool.name,
+    description: extractEntitiesTool.description,
+    execute: async (args) => extractEntitiesTool.invoke(
+      args as { text: string; entities: Record<string, string>; threshold?: number; top_n?: number },
+      config,
+    ),
   });
   toolExecutor.registerTool({
     name:
@@ -1728,6 +1737,7 @@ export const callChatAgent =
       findFileTool,
       graphDigestTool.runnable,
       graphToolLogTool.runnable,
+      extractEntitiesTool,
       ...docTools,
       ...notesTools,
       ...extensionTools.tools,

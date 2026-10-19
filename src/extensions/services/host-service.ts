@@ -7,6 +7,7 @@ import { getJevDecision } from "../../services/ai/tools/decision/Jev_model";
 
 import { TextSimilarity } from "../../services/ai/tools/textSimilarity";
 import { summarizeTextTool } from "../../services/ai/tools/summarize-text-tool";
+import { extractEntitiesTool } from "../../services/ai/tools/extract-entities-tool";
 import { dispatchAgentToolActivity } from "../../chat/services/toolActivity";
 import { cancelExtensionAgentRun, handleAgentRun, handleAgentsList } from "./extension-agent-host";
 import { respondExtension } from "./extension-client";
@@ -23,6 +24,8 @@ const MAX_LLM_PROMPT_LENGTH = 100_000;
 const MAX_LLM_SYSTEM_PROMPT_LENGTH = 20_000;
 const MAX_SUMMARIZE_TEXT_LENGTH = 100_000;
 const MAX_SUMMARIZE_INSTRUCTIONS_LENGTH = 20_000;
+const MAX_EXTRACT_TEXT_LENGTH = 100_000;
+const MAX_EXTRACT_ENTITY_TYPES = 64;
 const MAX_DECISION_QUESTIONS = 32;
 const MAX_EMBEDDING_TEXTS = 64;
 const MAX_EMBEDDING_TEXT_LENGTH = 32_000;
@@ -130,6 +133,11 @@ async function handleHostMessage(
 
   if (method === "mocu.summarize.text") {
     await handleSummarizeText(extensionId, requestId, params);
+    return;
+  }
+
+  if (method === "mocu.extract.entities") {
+    await handleExtractEntities(extensionId, requestId, params);
     return;
   }
 
@@ -431,6 +439,56 @@ async function handleSummarizeText(
   }
 }
 
+/** Handle `mocu.extract.entities` using Mocu's configured Extract LLM. */
+async function handleExtractEntities(
+  extensionId: string,
+  requestId: string | number | null,
+  params: Record<string, unknown>,
+): Promise<void> {
+  try {
+    const text = typeof params.text === "string" ? params.text.trim() : "";
+    if (!text) throw new Error("mocu.extract.entities requires non-empty 'text'.");
+    if (text.length > MAX_EXTRACT_TEXT_LENGTH) {
+      throw new Error(`mocu.extract.entities text is too long (maximum ${MAX_EXTRACT_TEXT_LENGTH} characters).`);
+    }
+
+    const entities = params.entities;
+    if (!entities || typeof entities !== "object" || Array.isArray(entities)) {
+      throw new Error("mocu.extract.entities requires an 'entities' object of name-to-description pairs.");
+    }
+    const entries = Object.entries(entities as Record<string, unknown>);
+    if (!entries.length || entries.length > MAX_EXTRACT_ENTITY_TYPES) {
+      throw new Error(`mocu.extract.entities requires between 1 and ${MAX_EXTRACT_ENTITY_TYPES} entity definitions.`);
+    }
+    const entityDefinitions: Record<string, string> = {};
+    for (const [name, description] of entries) {
+      if (!name.trim() || typeof description !== "string" || !description.trim()) {
+        throw new Error("Each entity must have a non-empty name and description.");
+      }
+      entityDefinitions[name] = description.trim();
+    }
+
+    const rawThreshold = params.threshold;
+    if (rawThreshold !== undefined && (typeof rawThreshold !== "number" || !Number.isFinite(rawThreshold) || rawThreshold < 0 || rawThreshold > 1)) {
+      throw new Error("mocu.extract.entities threshold must be a number from 0 to 1.");
+    }
+    const threshold = typeof rawThreshold === "number" ? rawThreshold : undefined;
+    const rawTopN = params.top_n;
+    if (rawTopN !== undefined && (typeof rawTopN !== "number" || !Number.isInteger(rawTopN) || rawTopN < 1 || rawTopN > 10_000)) {
+      throw new Error("mocu.extract.entities top_n must be a positive integer no greater than 10000.");
+    }
+    const top_n = typeof rawTopN === "number" ? rawTopN : undefined;
+
+    const result = await extractEntitiesTool.invoke({ text, entities: entityDefinitions, threshold, top_n });
+    if (requestId !== null) await respondExtension(extensionId, requestId, result, null);
+  } catch (error) {
+    const errorMessage = error instanceof Error ? error.message : String(error);
+    console.error(`[Mocu Extension] mocu.extract.entities failed for '${extensionId}':`, error);
+    if (requestId !== null) {
+      await respondExtension(extensionId, requestId, null, { code: -32603, message: errorMessage, data: null });
+    }
+  }
+}
 /**
  * Handle `mocu.decision.ask`: forward a typed question set to Mocu's
  * configured Jev decision model (OpenRouter Decisions API) and pass the

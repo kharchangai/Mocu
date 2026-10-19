@@ -49,6 +49,16 @@
     .reader-bar { position: sticky; z-index: 2; top: 0; display: flex; min-height: 58px; align-items: center; justify-content: space-between; padding: 0 clamp(16px,4vw,40px); border-bottom: 1px solid #e7e5df; background: rgba(255,255,253,.96); backdrop-filter: blur(15px); }
     .back-button,.reader-action { display: inline-flex; min-height: 35px; align-items: center; gap: 7px; padding: 0 9px; border: 0; border-radius: 8px; color: #51524b; background: transparent; cursor: pointer; font-size: 12px; }
     .reader-tools { display: flex; align-items: center; gap: 6px; }
+    .summarize-button { display:inline-flex; min-height:35px; align-items:center; gap:7px; padding:0 12px; border:1px solid #f0d6cf; border-radius:9px; color:#a83f2c; background:#fff7f4; cursor:pointer; font-size:12px; font-weight:650; transition:background .15s,border-color .15s; }
+    .summarize-button:hover:not(:disabled) { border-color:#dfb4a8; background:#fff0eb; }
+    .summarize-button:focus-visible { outline:3px solid rgba(201,79,56,.2); outline-offset:2px; }
+    .summarize-button:disabled { cursor:wait; opacity:.65; }
+    .summary-panel { margin-top:24px; padding:18px 20px; border:1px solid #ecd8d0; border-radius:13px; background:#fffaf7; box-shadow:0 4px 16px rgba(65,42,32,.035); }
+    .summary-heading { display:flex; align-items:center; gap:8px; margin:0 0 10px; color:#a83f2c; font:700 12px/1.4 Inter,"Segoe UI",system-ui,sans-serif; letter-spacing:.04em; text-transform:uppercase; }
+    .summary-heading-mark { display:grid; width:23px; height:23px; place-items:center; border-radius:8px; color:#b44631; background:#fbe9e3; font-size:14px; }
+    .summary-text { margin:0; color:#353630; white-space:pre-wrap; overflow-wrap:anywhere; font:14px/1.8 Inter,"Segoe UI",system-ui,sans-serif; }
+    .summary-panel.summary-error { border-color:#efd4cc; color:#a33e32; background:#fff8f5; }
+    .summary-panel.summary-error .summary-heading,.summary-panel.summary-error .summary-text { color:#a33e32; }
     .reader-content { width: min(740px,100%); margin: 0 auto; padding: clamp(34px,7vw,72px) clamp(23px,6vw,52px) 86px; }
     .reader-kicker { color: #c04b35; font-size: 10px; font-weight: 750; letter-spacing: .12em; text-transform: uppercase; }
     .reader-title { margin: 15px 0; font: 500 clamp(30px,5vw,43px)/1.16 Georgia,"Times New Roman",serif; letter-spacing: -.045em; }
@@ -87,7 +97,7 @@
     .translation-text { margin:0; white-space:pre-wrap; overflow-wrap:anywhere; font-size:14px; line-height:1.8; }
     .translation-error { color:#a33e32; }
     .hidden { display: none !important; }
-    @media(max-width:600px) { .header-note { display:none; } main { padding-top:27px; } .hero { align-items:flex-start; flex-direction:column; gap:12px; } .article-card { grid-template-columns:31px minmax(0,1fr) 16px; gap:10px; padding:14px; } .article-number { width:30px; height:30px; } .translation-card { right:10px; bottom:10px; width:calc(100vw - 20px); } }
+    @media(max-width:600px) { .header-note { display:none; } main { padding-top:27px; } .hero { align-items:flex-start; flex-direction:column; gap:12px; } .article-card { grid-template-columns:31px minmax(0,1fr) 16px; gap:10px; padding:14px; } .article-number { width:30px; height:30px; } .reader-tools { gap:2px; } .summarize-button { gap:5px; padding:0 8px; font-size:11px; } .translation-card { right:10px; bottom:10px; width:calc(100vw - 20px); } }
   </style>
 </head>
 <body>
@@ -107,8 +117,8 @@
     <p class="footer">Choose your news archive folder to open the latest date-named edition.</p>
   </main>
   <section id="reader" class="reader hidden" aria-modal="true" role="dialog" aria-labelledby="reader-title">
-    <header class="reader-bar"><button id="back" class="back-button" type="button"><span aria-hidden="true">←</span> All stories</button><div class="reader-tools"><button id="font-smaller" class="reader-action" type="button" aria-label="Decrease text size">A−</button><button id="font-larger" class="reader-action" type="button" aria-label="Increase text size">A+</button></div></header>
-    <article id="reader-article" class="reader-content"><div id="reader-kicker" class="reader-kicker"></div><h1 id="reader-title" class="reader-title"></h1><div id="reader-meta" class="reader-meta"></div><div id="reader-body" class="reader-body"></div><div id="reader-bottom" class="reader-bottom"></div></article>
+    <header class="reader-bar"><button id="back" class="back-button" type="button"><span aria-hidden="true">←</span> All stories</button><div class="reader-tools"><button id="summarize-article" class="summarize-button" type="button" aria-controls="summary-panel"><span aria-hidden="true">✦</span> Summarize in English</button><button id="font-smaller" class="reader-action" type="button" aria-label="Decrease text size">A−</button><button id="font-larger" class="reader-action" type="button" aria-label="Increase text size">A+</button></div></header>
+    <article id="reader-article" class="reader-content"><div id="reader-kicker" class="reader-kicker"></div><h1 id="reader-title" class="reader-title"></h1><div id="reader-meta" class="reader-meta"></div><section id="summary-panel" class="summary-panel hidden" role="status" aria-live="polite" aria-labelledby="summary-heading"><h2 id="summary-heading" class="summary-heading"><span class="summary-heading-mark" aria-hidden="true">✦</span> Key points &amp; financial insights</h2><p id="summary-text" class="summary-text"></p></section><div id="reader-body" class="reader-body"></div><div id="reader-bottom" class="reader-bottom"></div></article>
     <button id="selection-translate" class="selection-translate hidden" type="button" aria-label="Translate selected text into Persian" title="Translate to Persian">
       <svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m5 8 6 6M4 14l6-6 2-3M2 5h12M7 2h1M13 21l5-10 5 10M15 17h6"/></svg>
     </button>
@@ -135,6 +145,12 @@
         const translationText = document.getElementById("translation-text");
         let selectedTextForTranslation = "";
         let translationInProgress = false;
+        const summarizeButton = document.getElementById("summarize-article");
+        const summaryPanel = document.getElementById("summary-panel");
+        const summaryText = document.getElementById("summary-text");
+        let currentArticle = null;
+        let summaryInProgress = false;
+        let summaryRequestId = 0;
 
         function escapeHtml(value) {
           return String(value).replace(/[&<>"']/g, (character) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", "\"": "&quot;", "'": "&#39;" })[character]);
@@ -225,6 +241,43 @@
           }
         }
 
+        async function summarizeCurrentArticle() {
+          if (!currentArticle || summaryInProgress) return;
+          const article = currentArticle;
+          const requestId = ++summaryRequestId;
+          summaryInProgress = true;
+          summarizeButton.disabled = true;
+          summarizeButton.textContent = "Summarizing…";
+          summaryPanel.classList.remove("hidden", "summary-error");
+          summaryText.textContent = "Finding the key points and financial details…";
+          try {
+            const result = await window.mocu.extension.execute("summarize", {
+              title: article.title,
+              text: article.content,
+            });
+            const summary = typeof result === "string"
+              ? result
+              : result && typeof result.summary === "string" ? result.summary : "";
+            if (!summary.trim()) throw new Error("The Summarize model returned no summary.");
+            if (requestId === summaryRequestId && currentArticle === article) summaryText.textContent = summary.trim();
+          } catch (error) {
+            if (requestId === summaryRequestId && currentArticle === article) {
+              summaryPanel.classList.add("summary-error");
+              summaryText.textContent = error instanceof Error ? error.message : String(error);
+            }
+          } finally {
+            if (requestId === summaryRequestId) {
+              summaryInProgress = false;
+              if (currentArticle === article) {
+                summarizeButton.disabled = false;
+                summarizeButton.innerHTML = '<span aria-hidden="true">✦</span> Summarize in English';
+              }
+            }
+          }
+        }
+
+        summarizeButton.addEventListener("click", () => void summarizeCurrentArticle());
+
         reader.addEventListener("mouseup", () => setTimeout(updateSelectionTranslateButton, 0));
         reader.addEventListener("keyup", updateSelectionTranslateButton);
         reader.addEventListener("touchend", () => setTimeout(updateSelectionTranslateButton, 0));
@@ -268,6 +321,14 @@
         }
 
         function openArticle(article) {
+          currentArticle = article;
+          summaryRequestId += 1;
+          summaryInProgress = false;
+          summaryPanel.classList.add("hidden");
+          summaryPanel.classList.remove("summary-error");
+          summaryText.textContent = "";
+          summarizeButton.disabled = false;
+          summarizeButton.innerHTML = '<span aria-hidden="true">✦</span> Summarize in English';
           document.getElementById("reader-kicker").textContent = "NEWS · FULL STORY";
           document.getElementById("reader-title").textContent = article.title;
           document.getElementById("reader-meta").innerHTML = `<span>${escapeHtml(article.date || currentDate || "Latest edition")}</span><span>·</span><span>${escapeHtml(article.fileName)}</span>`;
@@ -284,6 +345,10 @@
         function closeArticle() {
           reader.classList.add("hidden"); home.classList.remove("hidden"); history.replaceState(null, "", "");
           translationCard.classList.add("hidden");
+          summaryRequestId += 1;
+          summaryInProgress = false;
+          summaryPanel.classList.add("hidden");
+          currentArticle = null;
           hideTranslationButton();
         }
 

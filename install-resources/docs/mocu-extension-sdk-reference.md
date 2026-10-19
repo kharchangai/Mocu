@@ -2,32 +2,25 @@
 id: mocu-extension-sdk-reference
 title: Mocu Extension SDK Reference
 description: Reference for verified Mocu extension SDK APIs, host behavior,
-  validation limits, packaging requirements, speech transcription and synthesis,
-  summarization, and shared global resource folders. Retrieve it when building
-  or reviewing a Node or Python extension, checking SDK availability, or
-  locating SDK source and Mocu-shipped extensions.
+  validation limits, packaging requirements, and shared global resource folders.
+  Retrieve it when building or reviewing a Node or Python extension, checking
+  SDK availability, or locating SDK source and Mocu-shipped extensions.
 keywords:
   - Mocu extension SDK
   - Node SDK
   - Python SDK
   - extension API reference
+  - entity extraction
+  - Extract API
+  - Scaledown Extract
+  - structured entity extraction
   - host LLM
-  - structured decisions
-  - embeddings
-  - saved agents
-  - chat interaction
-  - streaming progress
   - text summarization
-  - Summarize model
   - speech transcription
   - speech synthesis
-  - STT
-  - TTS
   - SDK packaging
   - local vendoring
   - global extension resources
-  - MOCU GLOBAL DIRECTORY
-  - npm E404
 ---
 # Mocu Extension SDK Reference
 
@@ -36,12 +29,13 @@ keywords:
 This reference documents only capabilities verified in the Mocu SDK and host implementation.
 
 - Node package: `@mocu/extension-sdk`
-  - Exports `createExtension`, `MocuExtension`, `LlmApi`, `SummarizeApi`, `DecisionApi`, `EmbeddingApi`, `AgentsApi`, `SpeechApi`, `ExtensionUiApi`, and related types.
+  - Exports `createExtension`, `MocuExtension`, `LlmApi`, `SummarizeApi`, `DecisionApi`, `EmbeddingApi`, `AgentsApi`, `SpeechApi`, `ExtractApi`, `ExtensionUiApi`, and related types.
 - Python package: `mocu_extension_sdk`
-  - Exports `create_extension`, `MocuExtension`, and the corresponding API classes, including `SummarizeApi` and `SpeechApi`.
-- Each extension instance exposes `extension.llm`, `extension.summarize`, `extension.decision`, `extension.embedding`, `extension.agents`, and `extension.speech`.
+  - Exports `create_extension`, `MocuExtension`, and the corresponding API classes, including `SummarizeApi`, `SpeechApi`, and `ExtractApi`.
+- Each extension instance exposes `extension.llm`, `extension.summarize`, `extension.decision`, `extension.embedding`, `extension.agents`, `extension.speech`, and `extension.extract`.
 - For each command invocation, the context exposes chat UI access as `context.mocu.ui` in Node or `context["mocu"]["ui"]` in Python.
-- Both Node and Python extensions can call `extension.summarize.text` to summarize source text with Mocu Settings’ separately configured Summarize model.
+- Node and Python extensions can call `extension.summarize.text` to summarize source text with Mocu Settings’ separately configured Summarize model.
+- Node and Python extensions can call `extension.extract.entities` to extract typed entities with Mocu Settings’ separately configured Extract model.
 
 ## Host LLM
 
@@ -102,6 +96,63 @@ return result["summary"]
 - Node signature: `extension.summarize.text({text, instructions?})`, returning `{summary: string}`.
 - Python signature: `extension.summarize.text(text, instructions=None)`, returning a dictionary with `summary`.
 - The host accepts non-empty text and instructions up to 100,000 and 20,000 characters respectively. Summarization uses the configured Summarize LLM.
+
+## Entity extraction (Scaledown Extract)
+
+Use `extension.extract.entities` to extract entities of specified types from text. It uses the separately configured Extract model in Mocu Settings; no separate API key is needed. The exact host protocol method is `mocu.extract.entities`, and the host delegates the request to its internal entity extraction tool. In the reviewed host implementation, this API does not require a separate permission entry in the extension manifest.
+
+The `entities` argument maps entity type names to non-empty descriptions of what to extract. Each extracted entity includes its type, matched text, confidence, character offsets, and context.
+
+**Node:**
+
+```js
+const result = await extension.extract.entities({
+  text: "Invoice INV-2041 from Northwind Traders. Total: $4,250.",
+  entities: {
+    vendor: "Name of the company",
+    invoice_number: "Invoice number"
+  },
+  threshold: 0.7,
+  top_n: 10
+});
+return result.entities;
+```
+
+- Node signature: `extension.extract.entities({text, entities, threshold?, top_n?})`.
+- It returns `{entities: ExtractedEntity[]}`.
+
+**Python:**
+
+```python
+result = extension.extract.entities(
+    "Invoice INV-2041 from Northwind Traders. Total: $4,250.",
+    {
+        "vendor": "Name of the company",
+        "invoice_number": "Invoice number"
+    },
+    threshold=0.7,
+    top_n=10
+)
+return result["entities"]
+```
+
+- Python signature: `extension.extract.entities(text, entities, threshold=None, top_n=None)`.
+- It returns a dictionary containing `entities`.
+
+Each result entity has these fields:
+
+- `type`: the entity type name from the request.
+- `text`: the extracted text.
+- `confidence`: the extraction confidence.
+- `start` and `end`: offsets for the extracted text.
+- `context`: surrounding context for the extracted text.
+
+**Host validation and limits:**
+
+- `text` is trimmed by the host, must be non-empty after trimming, and can contain at most 100,000 characters.
+- Supply between 1 and 64 entity definitions. Each entity type name and description must be non-empty.
+- If supplied, `threshold` must be finite and in the range `[0, 1]`.
+- If supplied, `top_n` must be a positive integer no greater than 10,000.
 
 ## Structured decisions (Jev)
 
@@ -280,9 +331,9 @@ The global folders serve different purposes:
 - `extension-system` contains SDK source packages: `sdk-node`, `sdk-python`, and `contracts`. These are useful as build-time dependencies or source references.
 - `extensions-default` contains Mocu-shipped, browsable and installable extension folders. Inspect each extension’s `manifest.json` and source to verify its APIs and capabilities.
 - User-installed extensions are stored separately under global app data at `extensions/<sanitized id>`.
-- Node SDK: `extension-system/sdk-node/src/index.ts`, `extension.ts`, `llm.ts`, `summarize.ts`, `decision.ts`, `embedding.ts`, `agents.ts`, `speech.ts`, and `ui.ts`.
-- Python SDK: matching modules under `extension-system/sdk-python/mocu_extension_sdk`, including `summarize.py` and `speech.py`.
-- Contracts: `extension-system/contracts/src/{llm,summarize,decision,embedding,agents,speech,protocol}.ts`.
+- Node SDK modules include `extension-system/sdk-node/src/index.ts`, `extension.ts`, `llm.ts`, `summarize.ts`, `decision.ts`, `embedding.ts`, `agents.ts`, `speech.ts`, `extract.ts`, and `ui.ts`.
+- Python SDK modules include matching modules under `extension-system/sdk-python/mocu_extension_sdk`, including `summarize.py`, `speech.py`, and `extract.py`.
+- Contracts include `extension-system/contracts/src/{llm,summarize,decision,embedding,agents,speech,protocol}.ts`. The verified Extract contract is `extension-system/contracts/src/extract.ts`.
 
 The source checkout contains copies under `install-resources/extension-system` and `install-resources/extensions-default`. These locations are source-checkout paths, not a substitute for resolving the user’s global app-data root at runtime. For a portable extension, vendor required SDK packages locally and do not depend on any global resource folder after installation.
 
@@ -301,16 +352,18 @@ The import examples in this reference show SDK package names; they do not guaran
 
 - Do not treat permissions as a generic prompt or assume unverified permission strings.
 - The reviewed host implementation specifically checks `agents.invoke` before listing or running saved agents.
-- Other host APIs—including speech (STT/TTS)—are routed through `host-service` without that named permission check in the reviewed implementation. Do not invent permission strings or promise additional enforcement.
+- Entity extraction does not require a separate permission entry in the extension manifest in the reviewed host implementation. Speech (STT/TTS) also does not require an additional manifest permission.
+- Other host APIs are routed through `host-service`; do not invent permission strings or promise additional enforcement.
 - Handle user and API-key data carefully, validate inputs, and catch errors.
 - Never print protocol data to stdout.
 
 ## Verified implementation sources
 
-- Node SDK: `extension-system/sdk-node/src/index.ts`, `extension.ts`, `llm.ts`, `summarize.ts`, `decision.ts`, `embedding.ts`, `agents.ts`, `speech.ts`, and `ui.ts`.
-- Python SDK: matching modules under `extension-system/sdk-python/mocu_extension_sdk`, including `summarize.py` and `speech.py`.
+- Node SDK: `extension-system/sdk-node/src/index.ts`, `extension.ts`, `llm.ts`, `summarize.ts`, `decision.ts`, `embedding.ts`, `agents.ts`, `speech.ts`, `extract.ts`, and `ui.ts`.
+- Python SDK: matching modules under `extension-system/sdk-python/mocu_extension_sdk`, including `summarize.py`, `speech.py`, and `extract.py`.
 - Contracts: `extension-system/contracts/src/{llm,summarize,decision,embedding,agents,speech,protocol}.ts`.
+- Extract contract: `extension-system/contracts/src/extract.ts`. The host protocol method is `mocu.extract.entities`, and the host delegates entity extraction to its internal entity extraction tool.
 
 ## When to use this document
 
-Retrieve this reference when building or reviewing a Mocu extension that needs verified SDK capabilities in Node or Python, including `extension.summarize.text` for summarizing source text with optional instructions using the separately configured Mocu Settings Summarize model. Use it to check API identifiers, summary response fields, manifest requirements, input limits, host behavior, chat interaction, cancellation, or streaming progress; to verify public SDK availability and local vendoring requirements; or to locate shared global resource folders and distinguish global SDK source from Mocu-shipped and user-installed extensions.
+Retrieve this reference when building or reviewing a Mocu extension that needs verified Node or Python SDK capabilities, including host LLM calls, embeddings, structured decisions, saved agents, chat interaction, speech transcription or synthesis, summarization with the separately configured Summarize model, or typed entity extraction with the separately configured Extract model. Use it to check API identifiers, return fields, manifest requirements, validation limits, host behavior, cancellation, or streaming progress; to verify public SDK availability and local vendoring requirements; or to locate shared global resource folders and distinguish global SDK source from Mocu-shipped and user-installed extensions.

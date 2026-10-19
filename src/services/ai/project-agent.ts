@@ -109,6 +109,7 @@ import {
   perplexitySearchTool,
 } from "./tools/perplexity_search_tool";
 import { summarizeTextTool } from "./tools/summarize-text-tool";
+import { extractEntitiesTool } from "./tools/extract-entities-tool";
 
 import {
   textToSpeechTool,
@@ -842,6 +843,14 @@ const createProjectToolExecutor = (
         args as { text: string; instructions?: string },
         config,
       ),
+  });
+  toolExecutor.registerTool({
+    name: extractEntitiesTool.name,
+    description: extractEntitiesTool.description,
+    execute: async (args) => extractEntitiesTool.invoke(
+      args as { text: string; entities: Record<string, string>; threshold?: number; top_n?: number },
+      config,
+    ),
   });
   toolExecutor.registerTool({
     name:
@@ -2124,6 +2133,7 @@ export const callProjectAgent =
       ...agentManagementTools,
       readFileTool, writeFileTool, editFileTool, findFileTool,
       graphDigestTool.runnable, graphToolLogTool.runnable, specialistMemoryTool, readSpecialistHistoryTool,
+      extractEntitiesTool,
       ...docTools, ...notesTools, ...extensionTools.tools, ...mcpTools.tools, ...agentTools.tools,
     ]);
     const toolExecutor = createProjectToolExecutor(terminalTool, runnableConfig);
@@ -2163,6 +2173,7 @@ export const callProjectAgent =
       ...agentManagementTools.map((agentTool) => agentTool.name),
       readFileTool.name, writeFileTool.name, editFileTool.name, findFileTool.name,
       graphDigestTool.name, graphToolLogTool.name, specialistMemoryTool.name, readSpecialistHistoryTool.name,
+      extractEntitiesTool.name,
       ...docTools.map((item) => item.name), ...notesTools.map((item) => item.name),
       ...extensionTools.entries.map((item) => item.name), ...mcpTools.tools.map((item) => item.name),
       ...agentTools.entries.map((item) => item.name),
