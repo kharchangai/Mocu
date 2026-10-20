@@ -1,0 +1,48 @@
+.news-chat-fab {
+  position: fixed; z-index: 12; right: 22px; bottom: 22px; display: grid; width: 54px; height: 54px;
+  place-items: center; border: 0; border-radius: 50%; color: #fff; background: #bd4b35;
+  box-shadow: 0 7px 24px rgba(54,35,28,.25); cursor: pointer; transition: transform .15s, background .15s;
+}
+.news-chat-fab:hover { transform: translateY(-2px); background: #a83e2b; }
+.news-chat-fab:focus-visible,.news-chat-send:focus-visible,.news-chat-close:focus-visible { outline: 3px solid rgba(201,79,56,.3); outline-offset: 2px; }
+.news-chat-fab svg { width: 25px; height: 25px; }
+.news-chat-panel {
+  position: fixed; z-index: 13; right: 22px; bottom: 88px; display: flex; width: min(390px,calc(100vw - 32px));
+  max-height: min(570px,calc(100vh - 125px)); flex-direction: column; overflow: hidden; border: 1px solid #e7e3dc;
+  border-radius: 16px; color: #292a25; background: #fff; box-shadow: 0 14px 44px rgba(39,34,28,.2);
+}
+.news-chat-head { display: flex; min-height: 54px; align-items: center; justify-content: space-between; gap: 12px; padding: 0 15px; border-bottom: 1px solid #eeece7; background: #fffdfa; }
+.news-chat-head strong { font-size: 13px; font-weight: 700; }
+.news-chat-close { display: grid; width: 30px; height: 30px; place-items: center; border: 0; border-radius: 8px; color: #6b6b64; background: transparent; cursor: pointer; font-size: 20px; }
+.news-chat-close:hover { background: #f2f1ed; }
+.news-chat-messages { display: flex; min-height: 90px; flex: 1; flex-direction: column; gap: 12px; overflow: auto; padding: 15px; }
+.news-chat-empty { margin: 0; color: #77776e; font-size: 12px; line-height: 1.6; }
+.news-chat-message { max-width: 94%; padding: 10px 12px; border-radius: 12px; font-size: 12px; line-height: 1.65; overflow-wrap: anywhere; }
+.news-chat-message-user { align-self: flex-end; color: #fff; background: #bd4b35; white-space: pre-wrap; }
+.news-chat-message-assistant { align-self: flex-start; color: #353630; background: #f5f4f0; }
+.news-chat-message-error { color: #a33e32; background: #fff2ee; }
+.news-chat-message p { margin: 0 0 8px; }
+.news-chat-message p:last-child { margin-bottom: 0; }
+.news-chat-message h1,.news-chat-message h2,.news-chat-message h3 { margin: 8px 0 5px; font-size: 13px; line-height: 1.4; }
+.news-chat-message ul,.news-chat-message ol { margin: 5px 0; padding-left: 20px; }
+.news-chat-message li { margin: 3px 0; }
+.news-chat-message blockquote { margin: 6px 0; padding-left: 9px; border-left: 2px solid #c86a56; color: #66665e; }
+.news-chat-message pre { overflow: auto; margin: 6px 0; padding: 9px; border-radius: 7px; background: #e9e8e2; white-space: pre-wrap; }
+.news-chat-message code { padding: 1px 4px; border-radius: 4px; background: rgba(0,0,0,.07); font-family: ui-monospace,monospace; }
+.news-chat-message pre code { padding: 0; background: transparent; }
+ .news-chat-message a { color: #a83e2b; }
+.news-chat-table-wrap { max-width: 100%; margin: 8px 0; overflow-x: auto; border: 1px solid #e5e3dc; border-radius: 8px; background: #fff; }
+.news-chat-message table { width: 100%; min-width: max-content; border-collapse: collapse; font-size: 11px; line-height: 1.5; }
+.news-chat-message th,.news-chat-message td { padding: 7px 9px; border-right: 1px solid #e9e7e1; border-bottom: 1px solid #e9e7e1; text-align: left; vertical-align: top; }
+.news-chat-message th { color: #4d4e47; background: #f0efe9; font-weight: 700; white-space: nowrap; }
+.news-chat-message td { max-width: 220px; overflow-wrap: anywhere; }
+.news-chat-message tr:last-child td { border-bottom: 0; }
+.news-chat-message th:last-child,.news-chat-message td:last-child { border-right: 0; }
+.news-chat-form { display: flex; align-items: flex-end; gap: 8px; padding: 11px; border-top: 1px solid #eeece7; }
+.news-chat-input { min-width: 0; min-height: 42px; max-height: 120px; flex: 1; resize: vertical; padding: 11px 12px; border: 1px solid #e4e2dc; border-radius: 11px; outline: none; color: #292a25; background: #fff; font-size: 12px; line-height: 1.5; }
+.news-chat-input:focus { border-color: #cb7663; box-shadow: 0 0 0 3px rgba(201,79,56,.1); }
+.news-chat-send { display: grid; width: 42px; height: 42px; flex: 0 0 auto; place-items: center; border: 0; border-radius: 11px; color: #fff; background: #bd4b35; cursor: pointer; }
+.news-chat-send:hover:not(:disabled) { background: #a83e2b; }
+.news-chat-send:disabled { cursor: wait; opacity: .55; }
+.news-chat-send svg { width: 18px; height: 18px; }
+@media(max-width:600px) { .news-chat-fab { right: 14px; bottom: 14px; } .news-chat-panel { right: 10px; bottom: 78px; width: calc(100vw - 20px); max-height: calc(100vh - 100px); } }

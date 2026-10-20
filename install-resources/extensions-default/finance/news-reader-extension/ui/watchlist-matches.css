@@ -1,0 +1,9 @@
+.article-watchlist-tags { display:flex; flex-wrap:wrap; gap:5px; margin-top:8px; }
+.article-watchlist-tag { display:inline-flex; align-items:center; padding:3px 8px; border:1px solid #dfe6dc; border-radius:99px; color:#52634d; background:#f2f6ef; font:600 10px/1.4 Inter,"Segoe UI",system-ui,sans-serif; }
+.article-watchlist-tag.topic { border-color:#e7dfc9; color:#78673d; background:#faf7ed; }
+.reader-watchlist-overview { display:flex; flex-wrap:wrap; gap:6px; margin:0 0 20px; }
+.reader-paragraph { margin:0 0 19px; }
+.reader-paragraph > :last-child { margin-bottom:0; }
+.reader-paragraph-match { margin-bottom:23px; }
+.paragraph-match-label { display:block; margin:0 0 5px; color:#777a75; opacity:.72; font:600 10px/1.4 Inter,"Segoe UI",system-ui,sans-serif; }
+.paragraph-match-label + p { margin-top:0; }

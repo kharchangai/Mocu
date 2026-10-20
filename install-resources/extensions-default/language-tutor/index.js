@@ -57,6 +57,7 @@ function readLearnerProgress() {
       issue.cycleAttempts = Number.isInteger(issue.cycleAttempts) && issue.cycleAttempts >= 0 ? issue.cycleAttempts : 0;
       issue.totalAttempts = Number.isInteger(issue.totalAttempts) && issue.totalAttempts >= 0 ? issue.totalAttempts : 0;
       issue.correctStreak = Number.isInteger(issue.correctStreak) && issue.correctStreak >= 0 ? issue.correctStreak : 0;
+      issue.wrongStreak = Number.isInteger(issue.wrongStreak) && issue.wrongStreak >= 0 ? issue.wrongStreak : 0;
       issue.mastered = issue.mastered === true;
       issue.cooldownUntilConversation = Number.isInteger(issue.cooldownUntilConversation) ? issue.cooldownUntilConversation : 0;
       issue.reviewDueConversation = Number.isInteger(issue.reviewDueConversation) ? issue.reviewDueConversation : 0;
@@ -99,11 +100,12 @@ function choosePracticeTarget(progress, conversation) {
 }
 
 function learnerProgressView(progress, conversation = null) {
+  const activePracticeIssueId = conversation
+    ? (conversation.practiceIssueId || conversation.pendingPracticeIssueId || "")
+    : "";
   return {
     conversationSequence: progress.conversationSequence,
-    activePracticeIssueId: conversation && conversation.pendingPracticeIssueId
-      ? conversation.pendingPracticeIssueId
-      : "",
+    activePracticeIssueId,
     issues: Object.values(progress.issues).map((issue) => ({
       id: issue.id,
       rule: issue.rule,
@@ -115,6 +117,7 @@ function learnerProgressView(progress, conversation = null) {
       cycleAttempts: issue.cycleAttempts,
       totalAttempts: issue.totalAttempts,
       correctStreak: issue.correctStreak,
+      wrongStreak: issue.wrongStreak,
       cooldownUntilConversation: issue.cooldownUntilConversation,
       reviewDueConversation: issue.reviewDueConversation,
     })),
@@ -147,6 +150,7 @@ function saveGrammarIssue(progress, value) {
       // A newly observed genuine error reopens a previously learned item.
       existing.mastered = false;
       existing.correctStreak = 0;
+      existing.wrongStreak = 0;
       existing.cycleAttempts = 0;
       existing.reviewDueConversation = 0;
       existing.cooldownUntilConversation = 0;
@@ -161,6 +165,7 @@ function saveGrammarIssue(progress, value) {
       cycleAttempts: 0,
       totalAttempts: 0,
       correctStreak: 0,
+      wrongStreak: 0,
       mastered: false,
       cooldownUntilConversation: 0,
       reviewDueConversation: 0,
@@ -180,6 +185,7 @@ function applyPracticeResult(progress, result, conversation) {
   issue.totalAttempts += 1;
   issue.lastPracticedAt = new Date().toISOString();
   if (result.correct) {
+    issue.wrongStreak = 0;
     issue.correctStreak += 1;
     if (issue.mastered) {
       issue.lastReviewedConversationId = conversation.id;
@@ -196,20 +202,25 @@ function applyPracticeResult(progress, result, conversation) {
     return;
   }
 
-  issue.correctStreak = 0;
-  if (issue.mastered) {
-    issue.mastered = false;
-    issue.cycleAttempts = 0;
-    issue.reviewDueConversation = 0;
+  issue.wrongStreak += 1;
+  if (issue.wrongStreak >= 2) {
+    issue.correctStreak = 0;
+    issue.wrongStreak = 0;
+    if (issue.mastered) {
+      issue.mastered = false;
+      issue.cycleAttempts = 0;
+      issue.reviewDueConversation = 0;
+    }
   }
   issue.cycleAttempts += 1;
   if (issue.cycleAttempts >= 10) {
     // Pause this item through the next three new conversations, then resume review.
     issue.cooldownUntilConversation = progress.conversationSequence + 4;
     issue.cycleAttempts = 0;
-    issue.correctStreak = 0;
+    issue.wrongStreak = 0;
   }
 }
+
 function isSafeId(id) {
   return typeof id === "string" && /^[A-Za-z0-9_-]{1,64}$/.test(id);
 }
@@ -340,7 +351,7 @@ function buildAgentInput(history, userText, progress, conversation, target) {
     + "\n\n"
     + historyBlock
     + (conversation.mode === "practice"
-      ? "Keep this like a lively, natural conversation—not a worksheet. Vary the activity (role-play, a funny mini-scenario, a choice, spotting/fixing a mistake, a short story, or a quick challenge); do not repeatedly ask for fill-in-the-blank sentences. Give a simple, kind explanation when the learner makes a relevant mistake, then react to what they said and move the conversation forward. Offer a short exercise only now and then. When you clearly test practiceTarget, report the result and the exact issue ID. Return the same JSON format used for all tutor turns.\n\n"
+      ? "Keep this like a lively, natural conversation—not a worksheet. Vary the activity (role-play, a funny mini-scenario, a choice, spotting/fixing a mistake, a short story, or a quick challenge); do not repeatedly ask for fill-in-the-blank sentences. Give a simple, kind explanation when the learner makes a relevant mistake, then react to what they said and move the conversation forward. Offer a short exercise only now and then. When you clearly test practiceTarget, report the result and the exact issue ID. Do not include numeric progress counts or streaks in your reply; the app displays practice progress separately. Never claim a result unless the response was clearly tested. Return the same JSON format used for all tutor turns.\n\n"
       : "")
     + "New user message:\n"
     + userText;
@@ -444,6 +455,7 @@ const extension = createExtension({
         conversation = createConversation({ mode: requestedMode, topic: requestedTopic });
       }
       if (typeof conversation.pendingPracticeIssueId !== "string") conversation.pendingPracticeIssueId = "";
+      if (typeof conversation.practiceIssueId !== "string") conversation.practiceIssueId = "";
       if (requestedMode === "practice" && requestedTopic) {
         conversation.mode = "practice";
         conversation.topic = requestedTopic;
@@ -462,8 +474,12 @@ const extension = createExtension({
           conversation.pendingPracticeIssueId = selectedIssue.id;
         }
       }
+      if (conversation.mode === "practice" && !conversation.pendingPracticeIssueId) {
+        const savedIssue = progress.issues[conversation.practiceIssueId];
+        if (savedIssue && !savedIssue.mastered) conversation.pendingPracticeIssueId = savedIssue.id;
+      }
       const target = conversation.mode === "practice"
-        ? progress.issues[conversation.pendingPracticeIssueId] || null
+        ? progress.issues[conversation.pendingPracticeIssueId] || progress.issues[conversation.practiceIssueId] || null
         : choosePracticeTarget(progress, conversation);
       if (conversation.mode !== "practice") conversation.pendingPracticeIssueId = target ? target.id : "";
       const history = conversation.messages.slice(-MAX_HISTORY_TURNS);
@@ -497,7 +513,6 @@ const extension = createExtension({
         if (conversation.mode === "practice" && conversation.practiceIssueId) {
           const practiceIssue = progress.issues[conversation.practiceIssueId];
           if (practiceIssue && practiceIssue.mastered) {
-            conversation.practiceIssueId = "";
             conversation.pendingPracticeIssueId = "";
           }
         }
@@ -507,11 +522,16 @@ const extension = createExtension({
           target.lastReviewedConversationId = conversation.id;
         }
 
-        const nextId = typeof payload.nextPracticeIssueId === "string"
+        const nextId = typeof payload.nextPracticeIssueId === "string" && payload.nextPracticeIssueId
           ? payload.nextPracticeIssueId
-          : (detectedIssue && conversation.mode === "practice" ? detectedIssue.id : "");
+          : (detectedIssue && conversation.mode === "practice"
+            ? detectedIssue.id
+            : (conversation.mode === "practice" && target && issueIsEligible(target, progress, conversation) ? target.id : ""));
         const nextIssue = progress.issues[nextId];
         conversation.pendingPracticeIssueId = issueIsEligible(nextIssue, progress, conversation) ? nextId : "";
+        if (conversation.mode === "practice" && !conversation.practiceIssueId && detectedIssue) {
+          conversation.practiceIssueId = detectedIssue.id;
+        }
       } else {
         conversation.pendingPracticeIssueId = "";
       }

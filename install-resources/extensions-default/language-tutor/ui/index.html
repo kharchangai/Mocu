@@ -412,12 +412,29 @@
     .practice-setup p { color: var(--muted); font-size: 13px; line-height: 1.75; }
     .practice-options { display: flex; flex-wrap: wrap; gap: 9px; margin: 24px 0; }
     .practice-options button { min-height: 42px; }
-    .practice-options button.saved-issue { white-space: pre-line; text-align: start; line-height: 1.6; }
+    #saved-practice-options { display: grid; grid-template-columns: minmax(0, 1fr); gap: 10px; max-height: min(48vh, 460px); overflow-y: auto; align-content: start; margin: 14px 0 0; padding: 3px 10px 3px 2px; scrollbar-gutter: stable; }
+    #saved-practice-options .saved-issue { width: 100%; min-width: 0; min-height: 0; display: grid; justify-items: stretch; gap: 9px; padding: 13px 15px; border: 1px solid var(--line); border-radius: var(--r-lg); background: var(--surface); text-align: start; white-space: normal; box-shadow: var(--shadow-xs); }
+    #saved-practice-options .saved-issue:hover { border-color: var(--accent-line); background: var(--surface-2); box-shadow: var(--shadow-sm); }
+    .saved-issue-title { color: var(--ink); font-size: 12px; font-weight: 700; line-height: 1.5; overflow-wrap: anywhere; }
+    .saved-issue-examples { display: grid; gap: 4px; color: var(--muted); font-size: 10.5px; line-height: 1.55; }
+    .saved-issue-example { overflow-wrap: anywhere; }
+    .saved-issue-example b { color: var(--ink-2); font-weight: 650; }
+    .saved-issue-progress-meta { display: flex; justify-content: space-between; gap: 10px; color: var(--accent-ink); font-size: 10px; font-weight: 700; }
+    .saved-issue-progress-track { height: 5px; overflow: hidden; border-radius: 999px; background: var(--surface-3); }
+    .saved-issue-progress-fill { height: 100%; border-radius: inherit; background: var(--grad-accent); transition: width .25s ease; }
     .practice-custom { display: grid; gap: 8px; margin-top: 24px; color: var(--ink-2); font-size: 11px; font-weight: 650; }
     .practice-custom textarea { min-height: 90px; resize: vertical; padding: 12px; border: 1px solid var(--line); border-radius: var(--r-md); background: var(--surface-2); color: var(--ink); font: inherit; font-size: 13px; line-height: 1.6; }
     #begin-practice-btn { margin-top: 14px; color: white; border-color: transparent; background: var(--grad-accent); }
     .practice-setup .saved-heading { margin-top: 28px; color: var(--ink-2); font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: .5px; }
     .practice-mode .topic-controls { display: none; }
+    .practice-progress-panel { display: grid; gap: 9px; flex: 0 0 auto; margin: 12px 18px 0; padding: 13px 16px; border: 1px solid var(--accent-line); border-radius: var(--r-lg); background: var(--accent-soft); }
+    .practice-progress-heading { margin: 0; color: var(--accent-ink); font-size: 11px; font-weight: 700; }
+    .practice-progress-meta { display: flex; justify-content: space-between; align-items: baseline; gap: 12px; min-width: 0; }
+    .practice-progress-topic { overflow: hidden; color: var(--ink-2); font-size: 11px; font-weight: 600; text-overflow: ellipsis; white-space: nowrap; }
+    .practice-progress-count { flex: 0 0 auto; color: var(--accent-ink); font-size: 11px; font-weight: 750; }
+    .practice-progress-track { height: 8px; overflow: hidden; border-radius: 999px; background: var(--surface); }
+    .practice-progress-fill { width: 0; height: 100%; border-radius: inherit; background: var(--grad-accent); transition: width .3s ease; }
+    .practice-progress-note { margin: 0; color: var(--muted); font-size: 10px; line-height: 1.5; }
     @media (max-width: 560px) { .mode-nav { gap: 5px; } .mode-nav button { min-height: 34px; padding: 6px 9px; font-size: 10.5px; } .practice-setup { padding: 22px 16px; } }
   </style>
 </head>
@@ -471,7 +488,7 @@
         </div>
         <div id="active-topics-section">
           <p class="saved-heading">Active challenges to practise</p>
-          <div class="practice-options" id="saved-practice-options"><span class="conv-empty">Loading your active challenges…</span></div>
+          <div class="practice-options" id="saved-practice-options" aria-label="Active challenges"><span class="conv-empty">Loading your active challenges…</span></div>
         </div>
         <div id="learned-topics-section" class="hidden">
           <p class="saved-heading">Learned topics</p>
@@ -491,6 +508,17 @@
           <h2 id="conversation-section-title" class="section-title"><span class="live-dot" aria-hidden="true"></span>Your conversation</h2>
           <bdi id="conv-title" class="session-label" style="display:none"></bdi>
         </div>
+        <section class="practice-progress-panel hidden" id="practice-progress-panel" aria-label="Focused practice progress" aria-live="polite">
+          <p class="practice-progress-heading">Your progress toward learning this difficulty</p>
+          <div class="practice-progress-meta">
+            <span class="practice-progress-topic" id="practice-progress-topic"></span>
+            <span class="practice-progress-count" id="practice-progress-count">0 of 5</span>
+          </div>
+          <div class="practice-progress-track" id="practice-progress-track" role="progressbar" aria-label="Consecutive correct answers toward learning this difficulty" aria-valuemin="0" aria-valuemax="5" aria-valuenow="0">
+            <div class="practice-progress-fill" id="practice-progress-fill"></div>
+          </div>
+          <p class="practice-progress-note" id="practice-progress-note">Five consecutive correct answers will complete this skill.</p>
+        </section>
         <div class="session-content">
           <div id="welcome-state" class="welcome">
             <div><h2>Start speaking to begin</h2></div>
@@ -585,6 +613,12 @@
       const feedbackEmpty = document.querySelector(".feedback-empty");
       const learnedIssuesEl = document.getElementById("learned-issues");
       const learnedCountEl = document.getElementById("learned-count");
+      const practiceProgressPanel = document.getElementById("practice-progress-panel");
+      const practiceProgressTopic = document.getElementById("practice-progress-topic");
+      const practiceProgressCount = document.getElementById("practice-progress-count");
+      const practiceProgressTrack = document.getElementById("practice-progress-track");
+      const practiceProgressFill = document.getElementById("practice-progress-fill");
+      const practiceProgressNote = document.getElementById("practice-progress-note");
 
       let mediaRecorder = null;
       let audioChunks = [];
@@ -596,10 +630,38 @@
       let selectedPracticeTopic = "";
       let selectedPracticeIssueId = "";
       let showingLearnedTopics = false;
+      let latestLearnerProgress = null;
 
       function setStatus(message, isError = false) {
         statusEl.textContent = message;
         statusEl.classList.toggle("error", Boolean(isError));
+      }
+
+      function renderPracticeProgress(learnerProgress) {
+        if (learnerProgress && Array.isArray(learnerProgress.issues)) latestLearnerProgress = learnerProgress;
+        if (appMode !== "practice") {
+          practiceProgressPanel.classList.add("hidden");
+          return;
+        }
+        const progress = learnerProgress && Array.isArray(learnerProgress.issues)
+          ? learnerProgress
+          : latestLearnerProgress;
+        const activeId = selectedPracticeIssueId
+          || (progress && typeof progress.activePracticeIssueId === "string" ? progress.activePracticeIssueId : "");
+        const issues = progress && Array.isArray(progress.issues) ? progress.issues : [];
+        const issue = issues.find((item) => item && item.id === activeId);
+        const rawStreak = issue && Number.isFinite(Number(issue.correctStreak)) ? Number(issue.correctStreak) : 0;
+        const streak = Math.max(0, Math.min(5, rawStreak));
+        practiceProgressTopic.textContent = issue && (issue.rule || issue.id)
+          ? (issue.rule || issue.id)
+          : (selectedPracticeTopic || "Skill progress will appear here");
+        practiceProgressCount.textContent = streak + " of 5";
+        practiceProgressTrack.setAttribute("aria-valuenow", String(streak));
+        practiceProgressFill.style.width = (streak / 5 * 100) + "%";
+        practiceProgressNote.textContent = issue
+          ? "Five consecutive correct answers will complete this skill. Two mistakes in a row reset the count."
+          : "Your coach will track this difficulty as soon as a specific skill is identified.";
+        practiceProgressPanel.classList.toggle("hidden", !selectedPracticeTopic);
       }
 
       function updateGuideVisibility() {
@@ -682,6 +744,7 @@
         conversationSectionTitle.innerHTML = appMode === "practice"
           ? '<span class="live-dot" aria-hidden="true"></span>Focused practice'
           : '<span class="live-dot" aria-hidden="true"></span>Your conversation';
+        renderPracticeProgress(latestLearnerProgress);
         if (appMode === "practice") {
           refreshPracticeChallenges();
           refreshLearnedPracticeTopics();
@@ -691,6 +754,7 @@
         savedPracticeOptions.textContent = "";
         try {
           const result = await window.mocu.extension.execute("getLearningProgress", {});
+          renderPracticeProgress(result && result.learnerProgress);
           const issues = result && result.learnerProgress && Array.isArray(result.learnerProgress.issues)
             ? result.learnerProgress.issues
             : [];
@@ -702,18 +766,55 @@
             savedPracticeOptions.appendChild(empty);
             return;
           }
-          for (const issue of activeIssues.slice(0, 12)) {
+          for (const issue of activeIssues) {
             const button = document.createElement("button");
             button.type = "button";
             button.className = "saved-issue";
-            const issueLabel = issue.rule || issue.id;
-            const examples = [
-              issue.original ? "You said: " + issue.original : "",
-              issue.correction ? "Better: " + issue.correction : "",
-              "Progress: " + (issue.correctStreak || 0) + "/5 consecutive wins",
-            ].filter(Boolean);
-            button.textContent = [issueLabel, ...examples].join("\n");
             button.title = issue.explanation || issue.correction || issue.rule || issue.id;
+            const issueLabel = issue.rule || issue.id;
+            const title = document.createElement("span");
+            title.className = "saved-issue-title";
+            title.textContent = issueLabel;
+            const examples = document.createElement("span");
+            examples.className = "saved-issue-examples";
+            if (issue.original) {
+              const original = document.createElement("span");
+              original.className = "saved-issue-example";
+              const label = document.createElement("b");
+              label.textContent = "You said: ";
+              original.append(label, document.createTextNode(issue.original));
+              examples.appendChild(original);
+            }
+            if (issue.correction) {
+              const correction = document.createElement("span");
+              correction.className = "saved-issue-example";
+              const label = document.createElement("b");
+              label.textContent = "Better: ";
+              correction.append(label, document.createTextNode(issue.correction));
+              examples.appendChild(correction);
+            }
+            const streak = Math.max(0, Math.min(5, Number(issue.correctStreak) || 0));
+            const progressMeta = document.createElement("span");
+            progressMeta.className = "saved-issue-progress-meta";
+            const progressLabel = document.createElement("span");
+            progressLabel.textContent = "Progress";
+            const progressCount = document.createElement("span");
+            progressCount.textContent = streak + "/5 consecutive wins";
+            progressMeta.append(progressLabel, progressCount);
+            const progressTrack = document.createElement("span");
+            progressTrack.className = "saved-issue-progress-track";
+            progressTrack.setAttribute("role", "progressbar");
+            progressTrack.setAttribute("aria-label", "Challenge progress");
+            progressTrack.setAttribute("aria-valuemin", "0");
+            progressTrack.setAttribute("aria-valuemax", "5");
+            progressTrack.setAttribute("aria-valuenow", String(streak));
+            const progressFill = document.createElement("span");
+            progressFill.className = "saved-issue-progress-fill";
+            progressFill.style.display = "block";
+            progressFill.style.width = (streak / 5 * 100) + "%";
+            progressTrack.appendChild(progressFill);
+            button.append(title, examples, progressMeta, progressTrack);
+            button.setAttribute("aria-label", issueLabel + ", progress " + streak + " out of 5. Click to practise.");
             button.addEventListener("click", () => {
               const context = [
                 issueLabel,
@@ -722,6 +823,7 @@
                 issue.explanation ? "What to practise: " + issue.explanation : "",
               ].filter(Boolean).join("\n");
               selectPracticeTopic(context, issue.id);
+              beginFocusedPractice();
             });
             savedPracticeOptions.appendChild(button);
           }
@@ -770,6 +872,7 @@
         selectedPracticeTopic = typeof topic === "string" ? topic.trim().slice(0, 1000) : "";
         selectedPracticeIssueId = issueId;
         customPracticeTopic.value = selectedPracticeTopic;
+        renderPracticeProgress(latestLearnerProgress);
         practiceStatus.textContent = selectedPracticeTopic ? "Ready to practise: " + selectedPracticeTopic : "Choose a difficulty to begin.";
         practiceStatus.classList.remove("error");
       }
@@ -791,6 +894,7 @@
             mode: "practice", start: true, topic, practiceIssueId: selectedPracticeIssueId, text: "", conversationId: undefined,
           });
           conversationId = result && typeof result.conversationId === "string" ? result.conversationId : "";
+          renderPracticeProgress(result && result.learnerProgress);
           const conv = await window.mocu.extension.execute("getConversation", { id: conversationId });
           setConversation(conv.id, conv.title, conv.messages, conv.topic);
           switchMode("practice");
@@ -1037,6 +1141,7 @@
             topic: appMode === "practice" ? selectedPracticeTopic : topicInput.value.trim(),
           });
           if (tutorRes && typeof tutorRes.conversationId === "string") conversationId = tutorRes.conversationId;
+          renderPracticeProgress(tutorRes && tutorRes.learnerProgress);
           const parsed = parseTutorJson(tutorRes && typeof tutorRes.reply === "string" ? tutorRes.reply : "");
           grammarEl.textContent = parsed.grammarFeedback || "";
           grammarEl.dir = "auto";

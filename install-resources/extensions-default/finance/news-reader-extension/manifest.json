@@ -6,7 +6,7 @@
   "runtime": "node",
   "entry": "index.js",
   "showInSlashCommand": false,
-  "permissions": ["filesystem.read"],
+  "permissions": ["filesystem.read", "filesystem.write", "agents.invoke"],
   "commands": [
     {
       "id": "translate",
@@ -19,9 +19,19 @@
       "description": "Find companies, precious metals, countries, and currencies mentioned in the open news story."
     },
     {
+      "id": "ask-news-agent",
+      "title": "Ask the News Response Assistant",
+      "description": "Answer a question about the open story using the saved News Response Assistant agent."
+    },
+    {
       "id": "summarize",
       "title": "Summarize news story in English",
       "description": "Summarize the key points and important financial information from the open news story using Mocu's configured Summarize model."
+    },
+    {
+      "id": "match-topics",
+      "title": "Match saved news topics",
+      "description": "Find saved watchlist topics discussed in a news story and its paragraphs."
     }
   ],
   "app": {
