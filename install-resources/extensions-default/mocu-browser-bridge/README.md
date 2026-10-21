@@ -1,6 +1,6 @@
 # Mocu Browser Bridge
 
-Connects Mocu agents to Google Chrome through a local authenticated connection. It supports opening and navigating tabs, listing tabs, reading page text or HTML, discovering interactive controls, reading elements, clicking, filling fields, and running task-specific JavaScript in the page.
+Connects Mocu agents to Google Chrome through a local authenticated connection. It supports opening and navigating tabs, listing tabs, reading page text or HTML, discovering interactive controls, reading elements, clicking, filling fields, waiting for a page or action to finish, and running task-specific JavaScript in the page.
 
 ## Install
 
@@ -23,8 +23,9 @@ The Chrome manifest requests access to HTTP/HTTPS sites so the agent can browse 
 - `fillElement({tabId?, selector, value})` — fill an input, textarea, select, or contenteditable field.
 - `executeJavaScript({tabId?, code})` — run JavaScript in the page's main world and return JSON-compatible data.
 - `getStatus()`, `startBridge()`, `stopBridge()` — bridge lifecycle and status.
+- `wait({seconds})` — wait 1–900 seconds without sending repeated page-read requests; after waiting, inspect the page once.
 
-For reliable automation, list tabs, inspect the selected page and its controls, then use the returned selectors. After navigation or a dynamic action, read the page again before deciding what to do next. Prefer the narrowest read needed instead of requesting full HTML.
+For reliable automation, list tabs, inspect the selected page and its controls, then use the returned selectors. After navigation or a dynamic action, use `wait({seconds})` if the page needs time to settle, then read it once before deciding what to do next. Prefer the narrowest read needed instead of requesting full HTML.
 
 ## Security and limitations
 

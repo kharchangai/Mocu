@@ -19,7 +19,8 @@
     { "id": "executeJavaScript", "title": "Execute JavaScript in a page", "description": "Run task-specific JavaScript in a tab's main page context. Input: {code: string, tabId?: number}. Return a JSON-serializable value. JavaScript can change data or trigger real actions; use only as needed for the user's request.", "timeoutSeconds": 0 },
     { "id": "getStatus", "title": "Get browser bridge status", "description": "Check whether the local bridge is running and Chrome is connected. Input: {}.", "timeoutSeconds": 0 },
     { "id": "startBridge", "title": "Start browser bridge", "description": "Start the local Chrome bridge if it is stopped. Input: {}.", "timeoutSeconds": 0 },
-    { "id": "stopBridge", "title": "Stop browser bridge", "description": "Stop the local connection and disconnect Chrome. Input: {}.", "timeoutSeconds": 0 }
+    { "id": "stopBridge", "title": "Stop browser bridge", "description": "Stop the local connection and disconnect Chrome. Input: {}.", "timeoutSeconds": 0 },
+    { "id": "wait", "title": "Wait before continuing", "description": "Wait without reading or polling the browser. Input: {seconds: integer from 1 to 900}. Use after an action needs time to finish, then read the page once.", "timeoutSeconds": 0 }
   ],
   "app": { "entry": "ui/index.html", "title": "Mocu Browser Bridge" }
 }

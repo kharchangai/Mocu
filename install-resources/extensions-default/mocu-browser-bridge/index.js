@@ -179,6 +179,14 @@ async function browserAction(action, timeoutMs) {
   return askChrome(action, timeoutMs);
 }
 
+extension.registerCommand("wait", async (input) => {
+  const seconds = input?.seconds;
+  if (!Number.isInteger(seconds) || seconds < 1 || seconds > 900) {
+    throw new Error("Provide a whole-number wait duration from 1 to 900 seconds.");
+  }
+  await new Promise((resolve) => setTimeout(resolve, seconds * 1_000));
+  return { waitedSeconds: seconds };
+});
 extension.registerCommand("startBridge", async () => await startServer());
 extension.registerCommand("stopBridge", async () => stopServer());
 extension.registerCommand("getStatus", async () => ({
