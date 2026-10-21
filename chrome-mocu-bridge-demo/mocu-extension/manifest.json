@@ -1,0 +1,18 @@
+{
+  "id": "com.mocu.chrome-bridge-demo",
+  "name": "Chrome ↔ Mocu Bridge Demo",
+  "description": "A local paired bridge: send Chrome page text to a saved Mocu agent and control the active tab with limited actions.",
+  "version": "0.1.0",
+  "runtime": "node",
+  "entry": "index.js",
+  "permissions": ["agents.invoke"],
+  "commands": [
+    { "id": "startBridge", "title": "Start Chrome bridge", "timeoutSeconds": 30 },
+    { "id": "stopBridge", "title": "Stop Chrome bridge", "timeoutSeconds": 30 },
+    { "id": "listAgents", "title": "List saved agents" },
+    { "id": "selectAgent", "title": "Choose agent" },
+    { "id": "controlChrome", "title": "Read, click or fill in Chrome", "description": "Inspect the active Chrome page and its visible controls, then click a matching element or fill the requested field. First use readPage; use the exact CSS selector returned for the chosen element.", "timeoutSeconds": 60 },
+    { "id": "getStatus", "title": "Bridge status" }
+  ],
+  "app": { "entry": "ui/index.html", "title": "Chrome Bridge" }
+}

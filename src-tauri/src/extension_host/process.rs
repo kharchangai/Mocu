@@ -10,6 +10,7 @@ use serde_json::Value;
 use tauri::{AppHandle, Emitter};
 
 use super::{
+    diagnostics::ExtensionLogger,
     manager::PendingRpc,
     manifest::{ExtensionManifest, ExtensionRuntime},
 };
@@ -158,6 +159,7 @@ pub fn spawn_extension(
     root_path: PathBuf,
     manifest: ExtensionManifest,
     rpc: Arc<PendingRpc>,
+    logger: ExtensionLogger,
 ) -> Result<RunningExtension, String> {
     let mut command = build_command(&root_path, &manifest)?;
 
@@ -185,6 +187,7 @@ pub fn spawn_extension(
     let stdout_rpc = rpc.clone();
     let id_for_stdout = manifest.id.clone();
     let stdout_app_handle = app_handle.clone();
+    let stdout_logger = logger.clone();
     std::thread::spawn(move || {
         let reader = BufReader::new(stdout);
 
@@ -197,8 +200,13 @@ pub fn spawn_extension(
             }
 
             let Ok(message) = serde_json::from_str::<Value>(trimmed) else {
-                // Non-JSON line on stdout: extensions may log here in raw form.
-                eprintln!("[extension stdout] {trimmed}");
+                // Keep stdout reserved for JSON-RPC; record non-protocol output
+                // because it is a common cause of extension communication bugs.
+                stdout_logger.log(
+                    "warning",
+                    "non_json_stdout",
+                    serde_json::json!({ "line": preview(trimmed) }),
+                );
                 continue;
             };
 
@@ -217,10 +225,13 @@ pub fn spawn_extension(
             // Otherwise it is a response to one of the manager's own requests.
             resolve_response(&stdout_rpc, &message);
         }
+
+        stdout_logger.log("info", "stdout_closed", serde_json::json!({}));
     });
 
-    // stderr: surface diagnostics on this host's console.
+    // stderr is developer output; persist bounded lines for post-mortem troubleshooting.
     let id_for_stderr = manifest.id;
+    let stderr_logger = logger;
     std::thread::spawn(move || {
         let reader = BufReader::new(stderr);
 
@@ -228,15 +239,58 @@ pub fn spawn_extension(
             let Ok(line) = line else { break };
 
             if !line.trim().is_empty() {
-                eprintln!("[extension:{}] {}", id_for_stderr, line.trim_end());
+                let line = line.trim_end();
+                eprintln!("[extension:{}] {}", id_for_stderr, line);
+                stderr_logger.log(
+                    "warning",
+                    "stderr",
+                    serde_json::json!({ "line": preview(line) }),
+                );
             }
         }
-    });
 
+        stderr_logger.log("info", "stderr_closed", serde_json::json!({}));
+    });
     Ok(RunningExtension {
         child: Arc::new(Mutex::new(child)),
         stdin: Arc::new(Mutex::new(stdin)),
     })
+}
+
+/// Keep diagnostic text bounded and redact common secret assignments before persistence.
+fn preview(line: &str) -> String {
+    let mut sanitized = line.chars().take(4096).collect::<String>();
+    let lower = sanitized.to_lowercase();
+    for marker in [
+        "api_key",
+        "apikey",
+        "api-key",
+        "token",
+        "password",
+        "secret",
+        "authorization",
+    ] {
+        let mut search_from = 0;
+        while let Some(relative) = lower[search_from..].find(marker) {
+            let start = search_from + relative;
+            let after_marker = start + marker.len();
+            let tail = &sanitized[after_marker..];
+            let Some(delimiter_offset) = tail.find(['=', ':']) else {
+                search_from = after_marker;
+                continue;
+            };
+            let value_start = after_marker + delimiter_offset + 1;
+            let value_end = sanitized[value_start..]
+                .find(|character: char| {
+                    character.is_whitespace() || character == ',' || character == ';'
+                })
+                .map(|offset| value_start + offset)
+                .unwrap_or(sanitized.len());
+            sanitized.replace_range(value_start..value_end, "[REDACTED]");
+            search_from = value_start + "[REDACTED]".len();
+        }
+    }
+    sanitized
 }
 
 /// If `message` is a JSON-RPC response (`id` + `result`/`error`), hand it to

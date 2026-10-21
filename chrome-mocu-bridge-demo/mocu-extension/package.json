@@ -1,0 +1,11 @@
+{
+  "name": "mocu-chrome-bridge-demo",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Local Chrome bridge demo for Mocu",
+  "dependencies": {
+    "@mocu/extension-sdk": "file:./vendor/extension-sdk",
+    "ws": "^8.18.3"
+  }
+}

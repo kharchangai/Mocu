@@ -1,0 +1,29 @@
+<!doctype html>
+<html lang="fa" dir="rtl">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Mocu Bridge</title>
+  <style>
+    body{font:14px Tahoma,"Segoe UI",sans-serif;width:330px;margin:0;padding:16px;background:#f6f4f1;color:#272522}
+    h1{font-size:17px;margin:0 0 12px}p{line-height:1.7;color:#65615a;margin:8px 0}
+    input,button{box-sizing:border-box;width:100%;font:inherit;border-radius:8px;padding:10px;margin-top:8px}
+    input{border:1px solid #d5d0c8;background:white}button{border:0;background:#9d503a;color:white;font-weight:bold;cursor:pointer}
+    button.secondary{background:#596779}button:disabled{opacity:.5}pre{white-space:pre-wrap;overflow-wrap:anywhere;max-height:210px;overflow:auto;background:white;border:1px solid #e3dfd8;border-radius:8px;padding:10px;font:12px/1.7 Tahoma,sans-serif}
+    #status{font-weight:bold}small{color:#807b73}
+  </style>
+</head>
+<body>
+  <h1>پل Chrome ↔ Mocu</h1>
+  <p id="status">در حال بررسی اتصال…</p>
+  <label for="token">رمز pairing از App مکو</label>
+  <input id="token" type="password" autocomplete="off" placeholder="رمز را اینجا وارد کن">
+  <button id="pair">اتصال</button>
+  <button id="allow-site" class="secondary">اجازهٔ کنترل سایت فعلی</button>
+  <button id="send" class="secondary">ارسال صفحه به Agent</button>
+  <p><small>برای کنترل از Mocu، دسترسی هر سایت را جداگانه با دکمهٔ بالا تأیید کن.</small></p>
+  <p><small>صفحه فقط با زدن دکمه ارسال می‌شود. متن ارسالی حداکثر ۱۲٬۰۰۰ نویسه است.</small></p>
+  <pre id="result">هنوز پاسخی از Agent نرسیده است.</pre>
+  <script src="popup.js"></script>
+</body>
+</html>

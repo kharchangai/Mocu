@@ -11,6 +11,7 @@ use tauri::AppHandle;
 use uuid::Uuid;
 
 use super::{
+    diagnostics::ExtensionLogger,
     jobs::JobStore,
     manifest::ExtensionManifest,
     process::{spawn_extension, RunningExtension},
@@ -245,9 +246,26 @@ impl ExtensionManager {
                     .cloned()
                     .ok_or_else(|| format!("Extension '{id}' is not registered"))?;
 
-                let process =
-                    spawn_extension(app_handle, entry.path, entry.manifest, self.rpc.clone())?;
-
+                let logger = ExtensionLogger::new(&entry.manifest.id, entry.path.clone());
+                logger.log(
+                    "info",
+                    "process_starting",
+                    json!({ "runtime": entry.manifest.runtime, "entry": entry.manifest.entry }),
+                );
+                let process = match spawn_extension(
+                    app_handle.clone(),
+                    entry.path,
+                    entry.manifest,
+                    self.rpc.clone(),
+                    logger.clone(),
+                ) {
+                    Ok(process) => process,
+                    Err(error) => {
+                        logger.log("error", "process_start_failed", json!({ "error": error }));
+                        return Err(error);
+                    }
+                };
+                logger.log("info", "process_started", json!({}));
                 processes.insert(id.clone(), process);
             }
 
@@ -261,6 +279,12 @@ impl ExtensionManager {
         // Wait (without holding any manager lock) for the extension to answer.
         // The per-command manifest entry may override the default timeout
         // (timeoutSeconds) or opt out entirely (timeoutSeconds: 0).
+        let logger = ExtensionLogger::new(&id, path.clone());
+        logger.log(
+            "info",
+            "command_started",
+            json!({ "command": command, "jobId": job_id }),
+        );
         let outcome = match command_timeout(&manifest, &command) {
             Some(timeout) => match receiver.recv_timeout(timeout) {
                 Ok(result) => Ok(result),
@@ -276,7 +300,17 @@ impl ExtensionManager {
                 )),
             },
         };
-
+        match &outcome {
+            Ok(result) if result.get("error").is_some() || result["success"] == false => {
+                logger.log("error", "command_failed", json!({ "command": command, "error": result.get("error").or_else(|| result.get("output")) }));
+            }
+            Ok(_) => logger.log("info", "command_completed", json!({ "command": command })),
+            Err(error) => logger.log(
+                "error",
+                "command_failed",
+                json!({ "command": command, "error": error }),
+            ),
+        }
         /*
          * Persist the outcome so a reloaded webview can recover it. The
          * result value is stored raw; the frontend decides how to render it.

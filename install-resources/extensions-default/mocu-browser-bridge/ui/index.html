@@ -1,0 +1,42 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta name="color-scheme" content="light dark">
+  <title>Mocu Browser Bridge</title>
+  <style>
+    :root{font:14px/1.55 "Segoe UI",sans-serif;color:#282621;background:#f5f4f1;color-scheme:light dark}*{box-sizing:border-box}body{margin:0;padding:22px 15px}main{max-width:900px;margin:auto}.card{background:#fff;border:1px solid #e7e2da;border-radius:14px;padding:18px;margin-bottom:14px}.row{display:flex;gap:8px;flex-wrap:wrap;align-items:center}.row>*{flex:1}h1{font-size:22px;margin:0 0 8px}h2{font-size:17px;margin:0 0 10px}.muted,.hint{color:#716d64}.status{font-weight:700;color:#795e30}.status.ok{color:#287647}.status.error{color:#a83e35}button,input,select,textarea{font:inherit;border-radius:8px;padding:9px 11px;min-height:40px}button{border:0;background:#536477;color:white;font-weight:600;cursor:pointer}button.primary{background:#97513b}button.danger{background:#873d3b}button:disabled{opacity:.5}input,select,textarea{border:1px solid #d9d4cc;background:transparent;color:inherit;min-width:0}label{font-weight:600;display:block;margin:10px 0 5px}textarea{width:100%;min-height:80px}.grid{display:grid;grid-template-columns:1fr 1fr;gap:8px}.grid>*{min-width:0}.grid .wide{grid-column:1/-1}pre{white-space:pre-wrap;overflow-wrap:anywhere;max-height:440px;overflow:auto;margin:0;padding:13px;border-radius:9px;background:#f7f6f3;border:1px solid #e4e0d9;font:12px/1.6 Consolas,monospace}.inline{display:flex;gap:8px;align-items:end}.inline>div{flex:1}.hint{font-size:12px}@media(max-width:600px){.grid{grid-template-columns:1fr}.grid .wide{grid-column:auto}.row>*{flex-basis:100%}}@media(prefers-color-scheme:dark){:root{color:#f1eee9;background:#1b1a18}.card{background:#24221f;border-color:#3d3934}.muted,.hint{color:#b8b2a8}input,select,textarea,pre{background:#1b1a18;border-color:#3d3934}}
+  </style>
+</head>
+<body>
+<main>
+  <section class="card">
+    <h1>Mocu Browser Bridge</h1>
+    <p class="muted">Connects Mocu agents to Google Chrome on this computer. The local connection starts automatically when this app opens; the Chrome extension reconnects in the background.</p>
+    <p id="status" class="status">Starting local bridge…</p>
+    <div class="row"><button id="start" class="primary">Start / reconnect</button><button id="stop" class="danger">Stop bridge</button><button id="refresh">Refresh status</button></div>
+    <p class="hint">Install the companion Chrome extension from the <code>chrome-extension</code> subfolder using <b>chrome://extensions → Developer mode → Load unpacked</b>. No pairing code is needed. Chrome's site access is granted as part of installing the extension.</p>
+  </section>
+  <section class="card">
+    <h2>Browser controls</h2>
+    <label for="tabId">Tab ID (optional; leave blank to use the active tab)</label><input id="tabId" inputmode="numeric" placeholder="For example, 123">
+    <div class="grid">
+      <input id="url" class="wide" placeholder="https://www.google.com">
+      <button id="open" class="primary">Open new tab</button><button id="navigate">Navigate selected tab</button>
+      <button id="tabs">List tabs</button><button id="read">Read page text</button>
+      <button id="elements">List interactive elements</button><button id="full">Read page + HTML + controls</button>
+      <input id="selector" class="wide" placeholder="CSS selector, e.g. input[name='q']">
+      <input id="value" class="wide" placeholder="Text to enter into the selected field">
+      <button id="fill">Fill field</button><button id="click">Click element</button>
+      <select id="readMode"><option value="summary">Read element summary</option><option value="text">Read element text</option><option value="value">Read element value</option><option value="html">Read element HTML</option></select><button id="readElement">Read selected element</button>
+      <textarea id="code" class="wide" placeholder="Task-specific JavaScript, e.g. [...document.querySelectorAll('h2')].map(e => e.innerText)"></textarea>
+      <button id="execute" class="wide">Run JavaScript in page</button>
+    </div>
+    <p class="hint">Browser actions affect real websites. JavaScript executes in the page's main context and can change data, submit forms, or trigger other actions. Chrome internal pages and the Web Store cannot be controlled.</p>
+  </section>
+  <section class="card"><h2>Latest result</h2><pre id="output">No browser action yet.</pre></section>
+</main>
+<script src="./vendor/mocu-ui.js"></script><script src="app.js"></script>
+</body>
+</html>

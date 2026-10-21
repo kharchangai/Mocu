@@ -1,3 +1,4 @@
+pub mod diagnostics;
 pub mod jobs;
 pub mod manager;
 pub mod manifest;
@@ -8,6 +9,7 @@ use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use tauri::{AppHandle, Manager, State};
 
+use diagnostics::LOG_FILE_NAME;
 use manager::{ExtensionManager, JsonRpcErrorObject};
 use manifest::{ExtensionApp, ExtensionManifest};
 /// Execute an extension command. The extension is registered, spawned on
@@ -157,11 +159,55 @@ pub fn extension_list_apps(app: AppHandle) -> Result<Vec<ExtensionAppListing>, S
     Ok(apps)
 }
 
+/// Show the diagnostic log file for an installed extension in the OS file manager.
 #[tauri::command]
-pub fn extension_app_url(
-    app: AppHandle,
-    input: ExtensionAppUrlInput,
-) -> Result<String, String> {
+pub fn extension_open_log(app: AppHandle, extension_id: String) -> Result<String, String> {
+    use tauri_plugin_opener::OpenerExt;
+
+    let extension_id = extension_id.trim();
+    if extension_id.is_empty()
+        || !extension_id.chars().all(|character| {
+            character.is_ascii_alphanumeric() || matches!(character, '.' | '_' | '-')
+        })
+    {
+        return Err("Invalid extension ID.".to_string());
+    }
+
+    let app_data = app
+        .path()
+        .app_data_dir()
+        .map_err(|error| error.to_string())?;
+    let extensions_root = app_data
+        .join("extensions")
+        .canonicalize()
+        .map_err(|error| format!("Could not resolve installed extensions directory: {error}"))?;
+    let root = extensions_root
+        .join(extension_id)
+        .canonicalize()
+        .map_err(|error| format!("Extension is not installed: {error}"))?;
+    if !root.starts_with(&extensions_root) || !root.is_dir() {
+        return Err("Extension path is outside the installed extensions directory.".to_string());
+    }
+
+    let log_path = root.join(LOG_FILE_NAME);
+    if !log_path.exists() {
+        std::fs::write(&log_path, b"")
+            .map_err(|error| format!("Could not create extension log file: {error}"))?;
+    }
+    let metadata = std::fs::symlink_metadata(&log_path).map_err(|error| error.to_string())?;
+    if metadata.file_type().is_symlink() || !metadata.is_file() {
+        return Err("Extension diagnostic log must be a regular file.".to_string());
+    }
+
+    app.opener()
+        .open_path(log_path.to_string_lossy().as_ref(), None::<&str>)
+        .map_err(|error| format!("Could not open extension diagnostic log: {error}"))?;
+
+    Ok(log_path.to_string_lossy().into_owned())
+}
+
+#[tauri::command]
+pub fn extension_app_url(app: AppHandle, input: ExtensionAppUrlInput) -> Result<String, String> {
     let app_data = app
         .path()
         .app_data_dir()
@@ -248,7 +294,9 @@ mod write_target_tests {
     use std::path::PathBuf;
 
     fn sandbox_root() -> PathBuf {
-        let root = std::env::temp_dir().canonicalize().expect("temp dir should exist");
+        let root = std::env::temp_dir()
+            .canonicalize()
+            .expect("temp dir should exist");
         let unique = format!(
             "mocu-fs-test-{}-{}",
             std::process::id(),
@@ -268,9 +316,15 @@ mod write_target_tests {
         std::fs::create_dir_all(root.join("nested")).expect("nested folder should exist");
         std::fs::write(root.join("existing.txt"), "old").expect("existing file should exist");
 
-        assert_eq!(resolve_write_target(&root, "new-file.txt").unwrap(), root.join("new-file.txt"));
+        assert_eq!(
+            resolve_write_target(&root, "new-file.txt").unwrap(),
+            root.join("new-file.txt")
+        );
         // A path that already exists resolves to exactly that file, not a copy.
-        assert_eq!(resolve_write_target(&root, "existing.txt").unwrap(), root.join("existing.txt"));
+        assert_eq!(
+            resolve_write_target(&root, "existing.txt").unwrap(),
+            root.join("existing.txt")
+        );
         assert_eq!(
             resolve_write_target(&root, "nested\\new-file.txt").unwrap(),
             root.join("nested").join("new-file.txt")
@@ -485,7 +539,8 @@ fn resolve_write_target(root: &Path, relative_path: &str) -> Result<PathBuf, Str
             .any(|component| !matches!(component, Component::Normal(_)))
     {
         return Err(
-            "The requested path must be a relative file path inside the approved folder.".to_string(),
+            "The requested path must be a relative file path inside the approved folder."
+                .to_string(),
         );
     }
     let (parent_relative, file_name) = match normalized.rfind('/') {
@@ -494,7 +549,8 @@ fn resolve_write_target(root: &Path, relative_path: &str) -> Result<PathBuf, Str
     };
     if file_name.is_empty() || file_name == "." || file_name == ".." {
         return Err(
-            "The requested path must be a relative file path inside the approved folder.".to_string(),
+            "The requested path must be a relative file path inside the approved folder."
+                .to_string(),
         );
     }
     let parent = resolve_inside_root(root, parent_relative)?;

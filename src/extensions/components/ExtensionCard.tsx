@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { invoke } from "@tauri-apps/api/core";
 import { LoaderCircle } from "lucide-react";
 
 import type {
@@ -126,6 +127,16 @@ export function ExtensionCard({
     Promise.resolve(onUninstall(manifest.id)).catch((reason) => {
       setError(reason instanceof Error ? reason.message : String(reason));
     });
+  };
+
+  const handleOpenLog = async (): Promise<void> => {
+    setError(null);
+    try {
+      const path = await invoke<string>("extension_open_log", { extensionId: manifest.id });
+      setError(`Diagnostic log opened: ${path}`);
+    } catch (reason) {
+      setError(reason instanceof Error ? reason.message : String(reason));
+    }
   };
 
   const handleSaveConfig = async (): Promise<void> => {
@@ -293,6 +304,13 @@ export function ExtensionCard({
             {updateBusy ? <><LoaderCircle size={14} /> Updating…</> : `Update to ${updateVersion ?? "new version"}`}
           </button>
         )}
+        <button
+          type="button"
+          className="extensions-button"
+          onClick={() => void handleOpenLog()}
+        >
+          View diagnostics
+        </button>
         <button
           type="button"
           className="extensions-button is-danger"

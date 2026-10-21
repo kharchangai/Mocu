@@ -11,6 +11,7 @@ from .extract import ExtractApi
 from .speech import SpeechApi
 from .protocol import JsonRpcProtocol
 from .types import CommandHandler
+from .ui import ExtensionUiApi
 
 
 class MocuExtension:

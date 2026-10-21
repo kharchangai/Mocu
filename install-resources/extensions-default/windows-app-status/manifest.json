@@ -1,0 +1,25 @@
+{
+  "id": "com.mocu.windows-app-status",
+  "name": "Windows App Status",
+  "description": "Checks application status, controls windows, and captures screenshots of a selected application window only on Windows.",
+  "version": "0.3.0",
+  "runtime": "python",
+  "entry": "index.py",
+  "commands": [
+    {
+      "id": "check_app_open",
+      "title": "Check whether an app is open",
+      "description": "Input a program name, for example Chrome or Notepad. Returns whether a matching process is running, plus its process name, PID, and visible window titles. Accepts a string or an object with a name, program, or app field."
+    },
+    {
+      "id": "control_app",
+      "title": "Control an application window",
+      "description": "Open, minimize, maximize, or gracefully close a Windows app. For open, accept a friendly display name (for example Google Chrome), executable name, or path; resolve friendly names through Start Menu shortcuts and registered app metadata. Input: {\"action\":\"open\",\"name\":\"Google Chrome\"}. Other actions target the best-matching visible window."
+    },
+    {
+      "id": "screenshot_app",
+      "title": "Capture an application window screenshot",
+      "description": "Save a PNG screenshot of only the requested visible Windows application window, never the desktop or other apps. Input a program name as a string or {\"name\":\"Notepad\"}; optional outputPath sets the PNG path. By default saves under Pictures\\Windows App Status."
+    }
+  ]
+}

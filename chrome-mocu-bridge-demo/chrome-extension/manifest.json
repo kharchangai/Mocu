@@ -1,0 +1,12 @@
+{
+  "manifest_version": 3,
+  "name": "Mocu Chrome Bridge Demo",
+  "version": "0.1.0",
+  "description": "Send the active page to a saved Mocu agent over a paired local connection.",
+  "permissions": ["activeTab", "scripting", "storage"],
+  "host_permissions": ["http://127.0.0.1/*"],
+  "optional_host_permissions": ["http://*/*", "https://*/*"],
+  "content_security_policy": { "extension_pages": "script-src 'self'; object-src 'self'; connect-src 'self' ws://127.0.0.1:38741;" },
+  "background": { "service_worker": "service-worker.js", "type": "module" },
+  "action": { "default_popup": "popup.html", "default_title": "Mocu Bridge" }
+}

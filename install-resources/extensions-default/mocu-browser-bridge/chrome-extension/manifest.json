@@ -1,0 +1,14 @@
+{
+  "manifest_version": 3,
+  "name": "Mocu Browser Bridge",
+  "version": "1.0.0",
+  "description": "Connect Google Chrome to Mocu for agent-driven browsing and page interaction.",
+  "key": "MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEA7qeHNhVU0gmjHw2xWVDiTREMXVxRLUqLYuvBortIJ/m9RvKrufG0b0zk43XAkXNWn3Wh5B8tZJUi72mk33GcpdpINtfscebVMdXdl9sibnJ7OgLec0C3b9bGNlQRyWgv+w5zZy+P7JHNpml5MvrjfTqYtzJhJWxhe+kfpWpKPB86f6zwbmjNrez7kTB3YpgNZJ68WjirN1bEET6rPiMIzqpzsP8U5tgaL5xRLw+xbCdqebwVbsg9HgO+LLvGezx6DuoX+uE8B1aKJ10VILLWbDsUsbdnfm8KCfw/0gXunf6qvWGg7Oa9A2JLBR5/jtKQHfhXclKnCbErO8yPmBIsTQIDAQAB",
+  "permissions": ["tabs", "scripting", "storage", "alarms"],
+  "host_permissions": ["http://127.0.0.1/*", "http://*/*", "https://*/*"],
+  "content_security_policy": {
+    "extension_pages": "script-src 'self'; object-src 'self'; connect-src 'self' ws://127.0.0.1:38742;"
+  },
+  "background": { "service_worker": "service-worker.js" },
+  "action": { "default_popup": "popup.html", "default_title": "Mocu Browser Bridge" }
+}

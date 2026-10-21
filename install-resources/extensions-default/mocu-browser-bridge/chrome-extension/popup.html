@@ -1,0 +1,22 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Mocu Browser Bridge</title>
+  <style>
+    body{font:14px/1.5 "Segoe UI",sans-serif;width:320px;margin:0;padding:16px;background:#f6f5f2;color:#292722}
+    h1{font-size:17px;margin:0 0 10px}.status{font-weight:700;margin:8px 0;color:#795e30}.status.connected{color:#287647}.status.error{color:#a83e35}
+    p{color:#69655d;margin:8px 0}button{width:100%;padding:10px;border:0;border-radius:8px;background:#536477;color:white;font:inherit;font-weight:600;cursor:pointer;margin-top:8px}
+    small{font-size:12px;color:#777269}
+  </style>
+</head>
+<body>
+  <h1>Mocu Browser Bridge</h1>
+  <div id="status" class="status">Checking connection…</div>
+  <p id="detail">The extension reconnects to Mocu automatically.</p>
+  <button id="reconnect">Reconnect</button>
+  <p><small>Chrome grants this extension access to HTTP and HTTPS websites during installation so Mocu can use the sites you request. Chrome internal pages and the Web Store are unavailable.</small></p>
+  <script src="popup.js"></script>
+</body>
+</html>

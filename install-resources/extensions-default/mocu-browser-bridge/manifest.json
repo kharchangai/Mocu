@@ -1,0 +1,25 @@
+{
+  "id": "com.mocu.browser-bridge",
+  "name": "Mocu Browser Bridge",
+  "description": "Lets Mocu agents inspect and control Google Chrome through a local browser extension connection.",
+  "version": "1.0.0",
+  "runtime": "node",
+  "entry": "index.js",
+  "showInSlashCommand": true,
+  "permissions": [],
+  "commands": [
+    { "id": "openTab", "title": "Open a Chrome tab", "description": "Open a new Google Chrome tab. Input: {url?: string, active?: boolean}. Omit url to open Google. URLs must use HTTP or HTTPS.", "timeoutSeconds": 0 },
+    { "id": "navigateTab", "title": "Navigate a Chrome tab", "description": "Navigate an existing tab. Input: {url: string, tabId?: number}. Omit tabId to use the active tab. Only HTTP/HTTPS URLs are supported.", "timeoutSeconds": 0 },
+    { "id": "listTabs", "title": "List Chrome tabs", "description": "List open Chrome tabs. Input: {}. Returns tabId, title, URL, active state, and windowId for each tab.", "timeoutSeconds": 0 },
+    { "id": "readPage", "title": "Read a Chrome page", "description": "Read the selected or active tab. Input: {tabId?: number, includeHtml?: boolean, includeElements?: boolean}. Returns title, URL, visible text (up to 60,000 characters), and optionally bounded HTML and controls.", "timeoutSeconds": 0 },
+    { "id": "listInteractiveElements", "title": "List interactive page elements", "description": "Find visible links, buttons, inputs, selects, and controls. Input: {tabId?: number, limit?: number}. Returns CSS selectors and labels. Use this before clicking or filling a page element.", "timeoutSeconds": 0 },
+    { "id": "readElement", "title": "Read a page element", "description": "Read one element selected by CSS. Input: {selector: string, tabId?: number, index?: number, mode?: 'summary'|'text'|'value'|'html'|'attribute', attribute?: string}. Returns only the requested element data.", "timeoutSeconds": 0 },
+    { "id": "clickElement", "title": "Click a page element", "description": "Click an element selected by CSS. Input: {selector: string, tabId?: number, index?: number}. First inspect the page and use an element selector. Clicking can trigger real site actions or submit a form.", "timeoutSeconds": 0 },
+    { "id": "fillElement", "title": "Fill a page field", "description": "Fill an input, textarea, select, or contenteditable field. Input: {selector: string, value: string, tabId?: number}. Choose the selector from listInteractiveElements or readPage.", "timeoutSeconds": 0 },
+    { "id": "executeJavaScript", "title": "Execute JavaScript in a page", "description": "Run task-specific JavaScript in a tab's main page context. Input: {code: string, tabId?: number}. Return a JSON-serializable value. JavaScript can change data or trigger real actions; use only as needed for the user's request.", "timeoutSeconds": 0 },
+    { "id": "getStatus", "title": "Get browser bridge status", "description": "Check whether the local bridge is running and Chrome is connected. Input: {}.", "timeoutSeconds": 0 },
+    { "id": "startBridge", "title": "Start browser bridge", "description": "Start the local Chrome bridge if it is stopped. Input: {}.", "timeoutSeconds": 0 },
+    { "id": "stopBridge", "title": "Stop browser bridge", "description": "Stop the local connection and disconnect Chrome. Input: {}.", "timeoutSeconds": 0 }
+  ],
+  "app": { "entry": "ui/index.html", "title": "Mocu Browser Bridge" }
+}

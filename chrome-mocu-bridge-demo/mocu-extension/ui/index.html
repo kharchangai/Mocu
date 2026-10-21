@@ -1,0 +1,64 @@
+<!doctype html>
+<html lang="fa" dir="rtl">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta name="color-scheme" content="light dark">
+  <title>Chrome ↔ Mocu Bridge</title>
+  <style>
+    :root{font-family:Tahoma,"Segoe UI",sans-serif;color:#282621;background:#f5f4f1;color-scheme:light dark}
+    *{box-sizing:border-box}body{margin:0;padding:24px 16px}main{max-width:820px;margin:auto}
+    .card{background:#fff;border:1px solid #e7e2da;border-radius:16px;padding:22px;margin-bottom:16px;box-shadow:0 8px 28px #17120a0a}
+    h1{font-size:22px;margin:0 0 9px}h2{font-size:17px;margin:0 0 14px}.intro,.hint{color:#777168;line-height:1.8;font-size:13px}
+    .row{display:flex;gap:9px;flex-wrap:wrap;align-items:center}.row>*{flex:1}.status{font-size:13px;font-weight:700;margin:12px 0;color:#776c54}.status.ok{color:#34734a}.status.error{color:#b13e35}
+    button,select,input{font:inherit;min-height:42px;border-radius:9px;padding:9px 12px}button{border:0;background:#9b503b;color:white;font-weight:bold;cursor:pointer}button.secondary{background:#536477}button.danger{background:#873d3b}button:disabled{opacity:.45;cursor:not-allowed}
+    select,input{min-width:0;border:1px solid #d9d4cc;background:#fff;color:inherit}label{font-weight:bold;font-size:13px;display:block;margin:14px 0 6px}.token{font-family:Consolas,monospace;direction:ltr;text-align:left;overflow-wrap:anywhere;background:#f6f4f0;border-radius:9px;padding:12px;font-size:12px;user-select:all}
+    .actions{display:grid;grid-template-columns:1fr 1fr;gap:9px}.actions input{grid-column:1/-1;width:100%}pre{white-space:pre-wrap;overflow-wrap:anywhere;max-height:360px;overflow:auto;border:1px solid #e6e1d9;background:#faf9f7;border-radius:10px;padding:14px;font:13px/1.8 Tahoma,sans-serif;margin:0}
+    @media(max-width:560px){.actions{grid-template-columns:1fr}.actions input{grid-column:auto}.row{align-items:stretch}}
+    @media(prefers-color-scheme:dark){:root{color:#f1eee9;background:#1b1a18}.card{background:#24221f;border-color:#3d3934;box-shadow:none}.intro,.hint{color:#b8b2a8}select,input{background:#1b1a18;border-color:#3d3934}.token,pre{background:#1b1a18;border-color:#3d3934}}
+  </style>
+</head>
+<body>
+  <main>
+    <section class="card">
+      <h1>پل Chrome ↔ Mocu</h1>
+      <p class="intro">این نمونه بین افزونهٔ Chrome و مکو یک اتصال محلی می‌سازد. بعد از اتصال، Chrome می‌تواند صفحه را برای Agent انتخاب‌شده بفرستد و این App می‌تواند فرمان‌های محدود به مرورگر بدهد.</p>
+      <p id="status" class="status">در حال بررسی…</p>
+      <div class="row">
+        <button id="start">شروع پل</button>
+        <button id="stop" class="danger">توقف پل</button>
+        <button id="refresh" class="secondary">تازه‌سازی وضعیت</button>
+      </div>
+      <label for="pairToken">رمز pairing (در پنجرهٔ افزونهٔ Chrome واردش کن)</label>
+      <div class="row"><code id="pairToken" class="token">پس از شروع پل ساخته می‌شود.</code><button id="copy" class="secondary">کپی رمز</button></div>
+      <p class="hint">رمز فقط برای اتصال محلی فعلی است. آن را منتشر یا برای دیگران ارسال نکن.</p>
+    </section>
+
+    <section class="card">
+      <h2>انتخاب Agent</h2>
+      <div class="row"><select id="agents"><option value="">ابتدا فهرست را بارگذاری کن…</option></select><button id="loadAgents" class="secondary">بارگذاری Agentها</button><button id="choose">انتخاب</button></div>
+      <p class="hint">Agent باید از قبل در صفحهٔ Agents مکو ساخته شده باشد. محتوای صفحه به عنوان دادهٔ غیرقابل‌اعتماد برایش فرستاده می‌شود.</p>
+    </section>
+
+    <section class="card">
+      <h2>فرمان به Chrome</h2>
+      <label for="selector">CSS selector (برای کلیک/پرکردن)</label>
+      <input id="selector" type="text" placeholder="مثلاً #search یا input[name='q']">
+      <div class="actions">
+        <button data-action="readPage" class="secondary">خواندن صفحهٔ فعال</button>
+        <button data-action="click">کلیک روی عنصر</button>
+        <input id="value" type="text" placeholder="متنی که برای پرکردن فیلد می‌فرستی">
+        <button data-action="fill">پرکردن فیلد</button>
+      </div>
+      <p class="hint">کلیک واقعاً روی صفحه اثر می‌گذارد. ابتدا فقط روی سایت و عنصر آزمایشی کار کن. اجرای JavaScript دلخواه در این نمونه ممکن نیست.</p>
+    </section>
+
+    <section class="card">
+      <h2>نتیجهٔ آخرین Agent یا فرمان مرورگر</h2>
+      <pre id="output">هنوز نتیجه‌ای نداریم.</pre>
+    </section>
+  </main>
+  <script src="./vendor/mocu-ui.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>

@@ -142,6 +142,7 @@ pub fn run() {
             check_system_runtimes,
             commands::desktop::capture_desktop,
             extension_host::extension_execute,
+            extension_host::extension_open_log,
             extension_host::extension_list_apps,
             extension_host::extension_app_url,
             extension_host::extension_fs_has_grant,
