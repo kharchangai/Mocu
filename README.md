@@ -14,50 +14,46 @@
 
 > **Mocu wasn't built to replace you. It was built to amplify what you can do.**
 
-Your ideas, judgment, and goals stay at the center. Mocu brings personal AI agents, tools, knowledge, and memory together so you can move your work forward with greater productivity—not hand over your role in it.
+Mocu is a desktop AI workspace where you build a team of personal agents around the way **you** already work. Teach them your methods, give them your tools and current knowledge, then work with them in one place—from a quick task to a project that runs for months.
 
-Build an AI team around the way **you** work. Teach it your methods. Give it the tools and up-to-date knowledge it needs. Then work with it in one desktop workspace, from a quick task to a long-running project.
+- **No programming required.** Describe what you need in plain language; Mocu helps you create the agent, the skill, or the tool.
+- **Your judgment stays in charge.** Ideas, decisions, and goals remain yours. The agents do the lifting, not the deciding.
+- **Nothing resets between sessions.** Projects, memory, notes, and schedules keep your context alive.
 
 **[Download for Windows](https://github.com/kharchangai/Mocu/releases) · [Build from source](#build-from-source) · [Report a bug](https://github.com/kharchangai/Mocu/issues)**
 
-> **Alpha release:** Mocu is under active development. Bugs, unfinished features, and breaking changes are possible. Back up important work and review AI-generated output and actions before relying on them.
+<!-- Marketing note: a 10–20s screen recording (Focus → agent creating a doc → schedule) placed here converts better than any copy. Add it as public/demo.gif and uncomment:
+<p align="center"><img src="public/demo.gif" alt="Mocu in action" width="100%" /></p>
+-->
 
 ---
 
-## New in Mocu 0.2.0: Build apps inside Mocu
+## The difference, in one paragraph
 
-Mocu Apps let you create custom apps with their own user interfaces and open them right inside Mocu. Describe what you want to build, and Mocu can help create an app tailored to your workflow—so you can get a useful interface without having to write the code yourself.
+A general assistant starts every conversation knowing nothing about your job. It doesn't know your editorial rules, your product's latest changes, or how your team reviews work—so you re-explain all of it, every time. Mocu is built the other way around: **your methods live in skills, your facts live in docs, your specialists live in agents, and your history lives in project memory.** The more you use it, the less you repeat yourself.
 
-Apps can connect to Mocu through extensions and, with the permissions you approve, use supported Mocu capabilities such as invoking your saved agents or working with selected files. Turn the tasks you do every day into tools you can open and use right where you work, with an interface designed around your needs.
+## Build a team—not a longer prompt
 
-AI-assisted app creation may still produce code that needs review and testing. Access to Mocu features and files is controlled by extension permissions.
-
----
-
-## Your own AI team—without learning to program
-
-A generic assistant doesn't know how you want every job done. With Mocu, you can create **personal specialist agents** for your work simply by describing what you need in natural language.
+With Mocu, you create **personal specialist agents** for your work simply by describing what you need.
 
 > “Create a research agent that uses my reference documents, a writing agent that follows my style, and a reviewer that checks the result. Let the writing agent delegate research and review to the other two.”
 
-Each agent can have its own instructions, tools, skills, extensions, model, and sub-agents. Start with one useful specialist, then connect agents into more sophisticated systems as your needs grow—without writing their definitions by hand.
+Each agent can have its own instructions, tools, skills, extensions, model, and sub-agents. Start with one useful specialist, then connect agents into more sophisticated systems as your needs grow—without writing a single definition by hand.
 
-- **Make them yours:** define their role, working style, and the tools they may use.
-- **Build reusable systems:** combine specialists and let an agent delegate to other agents.
-- **Use them when you need them:** select a saved agent with `/agent` or ask Mocu to delegate a task in plain language.
-- **Refine them over time:** ask Mocu to update an agent as your workflow changes.
+- **Make them yours:** define each agent's role, working style, and the tools it may use.
+- **Build reusable systems:** combine specialists and let one agent delegate to another.
+- **Use them on demand:** select a saved agent with `/agent`, or just ask Mocu to delegate in plain language.
+- **Refine them over time:** ask Mocu to update an agent whenever your workflow changes.
 
-These are your reusable assistants, built around your responsibilities—not a one-size-fits-all AI persona. Agents run when invoked; scheduled runs let you automate specific work at times you choose.
+These are reusable assistants built around your responsibilities—not a one-size-fits-all AI persona. Agents run when you invoke them, and scheduled runs let you automate specific work at the times you choose.
 
 ## Extend Mocu around your needs
 
-Your workflow shouldn't stop where an app's built-in features end. **Extensions add new tools and integrations**, so Mocu can grow with the work you want to do.
+Your workflow shouldn't stop where an app's built-in features end. **Extensions add new tools and integrations**, so Mocu grows with the work you want to do.
 
-Install bundled extensions from the Extensions page, or add an extension from a folder or ZIP. Select the extensions you want to use with `/extension`, and their tools become available for that request. Installation alone does not activate them in chat.
+Install bundled extensions from the Extensions page, or add one from a folder or ZIP. Select what you need with `/extension` and those tools become available for that request. (Installation alone doesn't activate an extension in chat.)
 
-**You don't have to write the code yourself.** Describe the capability you want and ask Mocu to help build a custom extension, including its code and packaging. This is an AI-assisted development workflow: generated extensions still need testing, and integrations may require API keys, permissions, or external services. It is not a guarantee that every integration will work in one click.
-
-Under the hood, extensions run as Node.js or Python programs. Developers can also build them directly using the included SDKs, and MCP support offers another way to connect external tools.
+**You don't have to write the code yourself.** Describe the capability you want and ask Mocu to build a custom extension—code and packaging included. Under the hood, extensions run as Node.js or Python programs, so developers can also build them directly with the included SDKs, and MCP support connects external tools another way.
 
 ### Agents + skills + extensions = your own intelligent workflow
 
@@ -67,73 +63,87 @@ Under the hood, extensions run as Node.js or Python programs. Developers can als
 | **Skills** | How the work should be done: reusable instructions and methods. |
 | **Extensions** | What the system can do: new tools and integrations. |
 
-Together, they let you build complex AI workflows without needing to be a programmer yourself. The complexity can live in the system you build—not in the instructions you repeat every day.
+Together, they let you build complex AI workflows without being a programmer. The complexity lives in the system you build—not in the instructions you repeat every day.
 
-For example, a content workflow could combine a research agent, a writer, and a reviewer; a skill for your editorial process; and an extension for your publishing tools. Your documents provide the current product facts, while your notes keep personal priorities in view.
+A content workflow, for example, could combine a research agent, a writer, and a reviewer; a skill for your editorial process; and an extension for your publishing tools. Your docs supply the current product facts, and your notes keep personal priorities in view.
 
-## Give your agents current knowledge—not just model training
+## New in 0.2.0: build small apps for the work you repeat
 
-Models don't automatically know your latest product changes, internal processes, or project conventions. **Mocu Docs** lets you supply that knowledge and keep it up to date.
+Mocu Apps let you create custom apps with their own interfaces and open them right inside Mocu. Describe the interface you want for a recurring job—and get a purpose-built panel instead of another chat thread.
 
-Save reference material, procedures, product information, or guidance as searchable knowledge documents. Mocu finds relevant document references for the current request, then reads the full documents when it needs their details.
+Apps connect to Mocu through extensions and, with the permissions you approve, can use supported capabilities such as invoking your saved agents or working with selected files. Access to Mocu features and files is always governed by extension permissions.
 
-- **Keep knowledge current:** update documents as your work changes.
-- **Give agents context:** provide the rules, facts, and methods they need to understand the task.
-- **Avoid pasting the same background repeatedly:** make useful knowledge available across conversations.
-- **Start without a separate RAG stack:** use Mocu's built-in knowledge workflow instead of assembling an external retrieval system yourself.
+## Give your agents current knowledge—not just training data
 
-This is still a retrieval-based system: it combines keyword and semantic search, with optional Jev reranking, and reads document bodies on demand. It doesn't retrain the model or automatically refresh information you haven't updated.
+Models don't know your latest product changes, internal processes, or project conventions. **Mocu Docs** lets you supply that knowledge and keep it current.
+
+Save reference material, procedures, product information, or guidance as searchable knowledge documents. Mocu finds the relevant references for your request, then reads the full documents when it needs the details.
+
+- **Keep knowledge current:** update a document and every future conversation benefits.
+- **Give agents context:** supply the rules, facts, and methods they need to do the task properly.
+- **Stop pasting the same background:** useful knowledge becomes available across conversations.
+- **Skip the RAG stack:** use Mocu's built-in knowledge workflow instead of assembling an external retrieval system.
+
+Mocu retrieves from the documents you write—it doesn't retrain the model and won't invent knowledge you never added.
 
 ## Notes that bring your intentions back into the conversation
 
-Not everything needs a full document. **Notes** are for the important things you want to keep close: preferences, decisions, plans, and things you don't want to forget.
+Not everything needs a full document. **Notes** are for the things you want kept close: preferences, decisions, plans, and what you don't want to forget.
 
 > “Remember this: before publishing a release announcement, I want to update the screenshots and check the download link.”
 
-Notes are saved **exactly as you write them**. When a conversation touches a related topic, Mocu can retrieve and use relevant notes to account for what you wanted to do—or remind you of it while helping with the task.
+Notes are saved **exactly as you write them**. When a conversation touches a related topic, Mocu can retrieve and use the relevant notes—or remind you of them while helping with the task.
 
-Use **Docs** for structured reference knowledge. Use **Notes** for your personal context and intentions. For a reminder at a specific time, use **Schedule**.
+Use **Docs** for structured reference knowledge, **Notes** for personal context and intentions, and **Schedule** when you want a reminder at a specific time.
 
 ## Plan your day—and schedule your agents
 
-Mocu's scheduling system supports both everyday reminders and **automatic runs of your saved agents**.
+Mocu's scheduling system covers everyday reminders and **automatic runs of your saved agents**.
 
 - Set a reminder for a meeting, deadline, or task.
 - Schedule a specialist agent to run with an instruction at a chosen date and time.
 - Repeat reminders or agent runs daily, weekly, or monthly.
 - Manage schedules and inspect past triggers from the Schedule page.
 
-Want a morning briefing? Create an agent for it, then schedule it with the input and exact time you choose. Want help remembering a commitment? Set a reminder instead.
+Want a morning briefing written in your style? Create the agent once, then schedule it with the input and time you choose. Want to keep a commitment? Set a reminder instead.
 
-**Mocu must be open for schedules to run at their scheduled time.** On startup it catches up recently missed items; recurring schedules advance to their next future occurrence rather than replaying every missed run.
+**Mocu must be open for schedules to run at their scheduled time.** On startup it catches up recently missed items, and recurring schedules advance to their next future occurrence rather than replaying every missed run.
 
 ## Built for work that lasts longer than one conversation
 
-Long projects shouldn't mean starting from zero every time you return. **Mocu Projects** connect a workspace to a folder on your computer and give it its own chat history and project memory.
+Long projects shouldn't mean starting from zero every time you come back. **Mocu Projects** connect a workspace to a folder on your computer and give it its own chat history and project memory.
 
-Mocu saves project conversations and retrieves relevant past work when you continue. Global personal memory adds context about you across sessions, while project-scoped memory keeps ongoing work tied to the right workspace.
+Mocu saves project conversations and pulls in the relevant past work when you continue. Global personal memory carries context about you across sessions; project-scoped memory keeps ongoing work tied to the right workspace.
 
-Completed Focus sections and Step-by-Step steps leave **compact memory handoffs**. Later work can use those summaries—and retrieve specific details when needed—instead of carrying the entire transcript into every model call.
+Completed Focus sections and Step-by-Step steps leave **compact memory handoffs**. Later work builds on those summaries—and digs into specifics only when needed—instead of dragging whole transcripts into every model call.
 
-The goal is continuity across long-running, multi-session projects, with less repeated explanation and more manageable context. Memory helps preserve progress; it does not promise perfect recall or remove model context limits.
+The result is continuity across multi-session projects: fewer repeated explanations, more manageable context. Memory preserves progress; it doesn't promise perfect recall or remove model context limits.
 
 ## Focus or go step by step—in the same project chat
 
-Big tasks don't always need the same working style. Mocu gives you two ways to work through them without juggling separate chats.
+Big tasks don't always need the same working style. Mocu gives you two ways through them without juggling separate chats.
 
 ### Focus: stay with one goal
 
-Start with `/focus <goal>` in a project chat. Work in flexible sections that you control, adding sections as the work develops. Say **“next section”** to move on or **“end Focus”** to finish.
+Start with `/focus <goal>` in a project chat. Work in flexible sections you control, adding new ones as the work develops. Say **“next section”** to move on or **“end Focus”** to finish.
 
 Choose Focus when you know the goal but want room to explore and decide the next section along the way.
 
 ### Step-by-Step: turn a task into a manageable plan
 
-Start with `/step <task>` in a project chat. Mocu proposes a plan of small steps. Review it, then work through the steps one at a time, with visible progress and saved handoffs.
+Start with `/step <task>` in a project chat. Mocu proposes a plan of small steps. Review it, then work through them one at a time, with visible progress and saved handoffs.
 
 Choose Step-by-Step when you want a clear plan before you begin and a structured path through the work.
 
-**Both modes work only in project chats.** Each completed section or step is saved to project memory so the next part can build on what you've already done.
+**Both modes work only in project chats.** Each completed section or step is saved to project memory, so the next part builds on what you've already done.
+
+## Who it's for
+
+- **Developers and technical founders** — agents with real tools, MCP connections, and extensions in Node.js or Python; a blueprint you can inspect and extend.
+- **Creators and marketers** — a research → write → review pipeline that follows your style guide, wired to your publishing tools, with campaign context that survives the whole project.
+- **Solo operators and small teams** — morning briefings, scheduled reports, and reminders that don't depend on anyone remembering to run them.
+
+If you want an assistant you can shape—not just chat with—Mocu is built for you.
 
 ---
 
@@ -143,17 +153,27 @@ Choose Step-by-Step when you want a clear plan before you begin and a structured
 
 **[Get the Windows installer from GitHub Releases →](https://github.com/kharchangai/Mocu/releases)**
 
-Prebuilt installers are currently available **only for Windows**. A **macOS installer is coming soon**. In the meantime, you can clone the repository and build Mocu yourself on macOS or Linux using the instructions below. Platform-specific build or runtime issues may still occur in this alpha.
+Prebuilt installers are available **for Windows** today; a **macOS installer is coming soon**. Until then you can build Mocu from source on macOS or Linux with the instructions below.
 
 ### Set up your workspace
 
-1. Open **Settings** and configure an OpenAI-compatible AI provider: API key, base URL, and model names. Mocu is model-agnostic; you choose the provider and models.
+1. Open **Settings** and connect an OpenAI-compatible provider: API key, base URL, and model names. Mocu is model-agnostic—the provider and models are your choice.
 2. Describe your first personal agent and ask Mocu to create it.
-3. Add a useful knowledge document and a note about how you want to work.
-4. Install and select any extensions you need. Node.js is required for Node extensions; Python is required for Python extensions.
+3. Add a knowledge document and a note about how you like to work.
+4. Install and select any extensions you need.
 5. Open a **Project** for ongoing work, then try `/focus` or `/step`.
 
-An API key is required for AI features, and provider usage may incur charges. Web search additionally requires a Perplexity API key configured in Settings.
+Node.js is required for Node extensions and Python for Python extensions. An API key is required for AI features and provider usage may be billed; web search additionally needs a Perplexity API key.
+
+## Alpha notes
+
+Mocu is an early alpha, and it's honest about that. Before you rely on it:
+
+- **Expect change.** Bugs, unfinished features, and breaking changes are possible between releases.
+- **Review output.** Check AI-generated content, code, and tool actions before using them. Generated extensions and apps need their own testing.
+- **Back up important files** before running workflows that modify them, and use extensions you trust.
+- **Plan for requirements.** Provider charges, API keys, and required runtimes (Node.js, Python) apply per feature; installation alone never grants an extension access in chat.
+- **Schedules need the app open,** and platform-specific build or runtime issues can still occur on macOS and Linux.
 
 ## Build from source
 
@@ -258,7 +278,7 @@ Python extension dependencies must be installed separately according to each ext
 
 ## Help shape the alpha
 
-Mocu is still an **alpha**, not a finished or production-stable product. Your feedback helps turn the idea into a better everyday workspace.
+Mocu is still an **alpha**, not a finished or production-stable product. Your feedback is what turns the idea into a better everyday workspace.
 
 **[Report bugs and share feedback on GitHub Issues →](https://github.com/kharchangai/Mocu/issues)**
 
@@ -268,8 +288,6 @@ A useful bug report includes:
 - What you expected and what actually happened.
 - Steps to reproduce the issue.
 - Relevant logs or screenshots, with API keys and personal information removed.
-
-Review generated code and tool actions, use trusted extensions, and back up important files before testing workflows that modify them.
 
 ## Learn more
 
