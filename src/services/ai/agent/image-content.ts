@@ -37,6 +37,11 @@ const getImageBlocks = (message?: BaseMessage): ImageHumanContent =>
     ? message.content.filter((block) => block.type === 'image_url') as ImageHumanContent
     : [];
 
+export const getImageInputReferences = (message?: BaseMessage) =>
+  getImageBlocks(message).flatMap((block) => block.type === 'image_url'
+    ? [{ type: 'image_url' as const, image_url: { url: block.image_url.url } }]
+    : []);
+
 export const hasImageInput = (message?: BaseMessage): boolean =>
   getImageBlocks(message).length > 0;
 

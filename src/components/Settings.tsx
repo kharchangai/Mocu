@@ -5,7 +5,7 @@ import { relaunch } from "@tauri-apps/plugin-process";
 import {
   OPENROUTER_GATEWAY_URL, OPENROUTER_DEFAULT_LLM_MODEL,
   OPENROUTER_CHEAP_DEFAULT_MODEL, OPENROUTER_MEDIUM_DEFAULT_MODEL, OPENROUTER_EXPENSIVE_DEFAULT_MODEL,
-  OPENROUTER_SUMMARIZE_DEFAULT_MODEL, OPENROUTER_EXTRACT_DEFAULT_MODEL,
+  OPENROUTER_SUMMARIZE_DEFAULT_MODEL, OPENROUTER_EXTRACT_DEFAULT_MODEL, OPENROUTER_IMAGE_DEFAULT_MODEL,
   OPENROUTER_STT_DEFAULT_MODEL, OPENROUTER_TTS_DEFAULT_MODEL, OPENROUTER_TTS_DEFAULT_VOICE,
   OPENROUTER_VISION_DEFAULT_MODEL, OPENROUTER_EMBEDDING_DEFAULT_MODEL, OPENROUTER_PERPLEXITY_DEFAULT_MODEL,
   OPENROUTER_DECISION_DEFAULT_ENDPOINT, OPENROUTER_DECISION_DEFAULT_MODEL,
@@ -40,6 +40,7 @@ export const Settings: React.FC<SettingsProps> = ({
   const [expensiveModel, setExpensiveModel] = useState(OPENROUTER_EXPENSIVE_DEFAULT_MODEL);
   const [summarizeModel, setSummarizeModel] = useState(OPENROUTER_SUMMARIZE_DEFAULT_MODEL);
   const [extractModel, setExtractModel] = useState(OPENROUTER_EXTRACT_DEFAULT_MODEL);
+  const [imageModel, setImageModel] = useState(OPENROUTER_IMAGE_DEFAULT_MODEL);
 
   // Speech settings
   const [sttModel, setSttModel] = useState(OPENROUTER_STT_DEFAULT_MODEL);
@@ -129,6 +130,7 @@ export const Settings: React.FC<SettingsProps> = ({
         setExpensiveModel(settings.expensiveModel);
         setSummarizeModel(settings.summarizeModel);
         setExtractModel(settings.extractModel);
+        setImageModel(settings.imageModel);
         setSttModel(settings.sttModel);
         setTtsModel(settings.ttsModel);
         setTtsVoice(settings.ttsVoice);
@@ -229,6 +231,7 @@ export const Settings: React.FC<SettingsProps> = ({
         visionApiKey: dedicatedKeys.vision,
         visionBaseUrl: gatewayBaseUrl,
         visionModel,
+        imageModel,
 
         perplexityApiKey: dedicatedKeys.perplexity,
         perplexityBaseUrl: gatewayBaseUrl,
@@ -444,7 +447,7 @@ export const Settings: React.FC<SettingsProps> = ({
           <div className="settings-card settings-model-summary">
             <p className="settings-card-description">Preconfigured models — change any model below if needed. A custom gateway must support the selected models and APIs.</p>
             <div className="settings-model-list">
-              {[ ["Main chat", llmModel], ["Cheap", cheapModel], ["Medium", mediumModel], ["Expensive", expensiveModel], ["Summarize", summarizeModel], ["Extract", extractModel], ["STT", sttModel], ["TTS", ttsModel], ["Vision", visionModel], ["Embedding", embeddingModel], ["Perplexity", perplexityModel], ["Decision", decisionModel] ].map(([name, model]) => <div className="settings-model-row" key={name}><span className="settings-model-tier">{name}</span><span className="settings-model-id">{model}</span></div>)}
+              {[ ["Main chat", llmModel], ["Cheap", cheapModel], ["Medium", mediumModel], ["Expensive", expensiveModel], ["Summarize", summarizeModel], ["Extract", extractModel], ["STT", sttModel], ["TTS", ttsModel], ["Vision", visionModel], ["Image generation", imageModel], ["Embedding", embeddingModel], ["Perplexity", perplexityModel], ["Decision", decisionModel] ].map(([name, model]) => <div className="settings-model-row" key={name}><span className="settings-model-tier">{name}</span><span className="settings-model-id">{model}</span></div>)}
             </div>
           </div>
         </section>
@@ -499,6 +502,9 @@ export const Settings: React.FC<SettingsProps> = ({
 
         {/* ---------- Vision ---------- */}
         <section className="settings-section"><h5 className="settings-section-label">Vision Model</h5><div className="settings-card"><p className="settings-card-description">Uses the shared gateway URL and API key configured above.</p><div className="settings-field"><label className="settings-label">Model</label><input value={visionModel} disabled={isSaving} onChange={(event)=>setVisionModel(event.target.value)} className="settings-input"/></div></div></section>
+
+        {/* ---------- Image generation ---------- */}
+        <section className="settings-section"><h5 className="settings-section-label">Image Generation</h5><div className="settings-card"><p className="settings-card-description">Uses the shared gateway URL and API key configured above to generate and save images.</p><div className="settings-field"><label className="settings-label">Image Generation Model</label><input value={imageModel} disabled={isSaving} onChange={(event) => setImageModel(event.target.value)} className="settings-input" placeholder="qwen/qwen-image-2.1-turbo" /></div></div></section>
 
         {/* ---------- Perplexity ---------- */}
         <section className="settings-section"><h5 className="settings-section-label">Perplexity (Research Engine)</h5><div className="settings-card"><p className="settings-card-description">Uses the shared gateway URL and API key configured above.</p><div className="settings-grid-2"><div className="settings-field"><label className="settings-label">Model</label><input value={perplexityModel} disabled={isSaving} onChange={(event)=>setPerplexityModel(event.target.value)} className="settings-input"/></div><div className="settings-field"><label className="settings-label">Search Depth</label><input type="number" min="1" max="10" value={searchDepth} disabled={isSaving} onChange={(event)=>setSearchDepth(Number(event.target.value)||3)} className="settings-input"/></div></div></div></section>

@@ -1,4 +1,5 @@
 import { tool, type StructuredToolInterface } from '@langchain/core/tools';
+import type { BaseMessage } from '@langchain/core/messages';
 import type { RunnableConfig } from '@langchain/core/runnables';
 import { z } from 'zod';
 
@@ -31,6 +32,7 @@ export async function loadAgentTools(
   selectedAgentNames: string[] = [],
   projectPath = '',
   config: RunnableConfig = {},
+  sourceMessage?: BaseMessage,
 ): Promise<AgentToolSet> {
   const requestedNames = uniqueStrings(selectedAgentNames);
 
@@ -78,6 +80,7 @@ export async function loadAgentTools(
         userMessage: request,
         projectPath,
         config: childAgentConfig,
+        sourceMessage,
       });
     };
 
@@ -159,7 +162,7 @@ function buildAgentToolsPrompt(entries: AgentToolEntry[]): string {
     'SELECTED SPECIALIST AGENT TOOLS',
     'The user activated these specialist agents for this conversation. They are available to you as tools — do NOT call them automatically for every request.',
     'Call a specialist tool only when the current request clearly matches that agent\'s purpose and would genuinely benefit from it; otherwise answer directly yourself.',
-    'When you do call a specialist, give it a complete, self-contained request in the request argument. The specialist runs to completion and returns its result to you.',
+    'When you do call a specialist, give it a complete, self-contained request in the request argument. Any images attached to the current user message are forwarded to the specialist alongside that request; explicitly mention image-related context when useful.',
     'Do not claim the specialist completed work unless its tool result confirms it.',
     ...entries.map((entry) => `- ${entry.name}: ${entry.description}`),
   ].join('\n');

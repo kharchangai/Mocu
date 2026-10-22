@@ -18,7 +18,7 @@ import {
   isAbortError,
   throwIfAborted,
 } from "./agent/abort";
-import { assertImageModelSupport, buildHumanMessageFromRequest, getImageRequestText, hasImageInput } from './agent/image-content';
+import { assertImageModelSupport, buildHumanMessageFromRequest, getImageInputReferences, getImageRequestText, hasImageInput } from './agent/image-content';
 import { isFileToolError } from "./agent/file-tool-recovery";
 import {
   dispatchAgentActivity,
@@ -109,6 +109,7 @@ import {
   perplexitySearchTool,
 } from "./tools/perplexity_search_tool";
 import { summarizeTextTool } from "./tools/summarize-text-tool";
+import { generateImageTool } from "./tools/generate-image-tool";
 import { extractEntitiesTool } from "./tools/extract-entities-tool";
 
 import {
@@ -779,9 +780,26 @@ const buildProjectAgentSystemPrompt = (
 const createProjectToolExecutor = (
   terminalTool: TerminalTool,
   config: RunnableConfig,
+  currentUserMessage?: BaseMessage,
 ): ToolExecutor => {
   const toolExecutor =
     new ToolExecutor();
+
+  toolExecutor.registerTool({
+    name: generateImageTool.name,
+    description: generateImageTool.description,
+    execute: async (args) => {
+      const toolArgs = args as Record<string, unknown>;
+      const attachedReferences = getImageInputReferences(currentUserMessage);
+      const inputReferences = Array.isArray(toolArgs.input_references) && toolArgs.input_references.length
+        ? toolArgs.input_references
+        : attachedReferences;
+      return generateImageTool.invoke({
+        ...toolArgs,
+        ...(inputReferences.length ? { input_references: inputReferences } : {}),
+      } as never, config);
+    },
+  });
 
   toolExecutor.registerTool({
     name:
@@ -2041,6 +2059,7 @@ export const callProjectAgent =
       selectedAgentNames,
       normalizedProjectPath,
       runnableConfig,
+      currentUserMessage,
     );
 
     if (agentTools.missingAgents.length > 0) {
@@ -2128,7 +2147,7 @@ export const callProjectAgent =
     const graphToolLogTool = createGraphToolLogTool(normalizedProjectPath);
     const specialistMemoryTool = createFindSpecialistProjectMemoryTool(normalizedProjectPath);
     const llmWithTools = llm.bindTools([
-      askUserTool, scheduleTool, desktopVisionTool, terminalTool, perplexitySearchTool, summarizeTextTool,
+      askUserTool, scheduleTool, desktopVisionTool, generateImageTool, terminalTool, perplexitySearchTool, summarizeTextTool,
       textToSpeechTool, speechControlTool, skillLoaderTool, createAgentTool,
       ...agentManagementTools,
       readFileTool, writeFileTool, editFileTool, findFileTool,
@@ -2136,7 +2155,7 @@ export const callProjectAgent =
       extractEntitiesTool,
       ...docTools, ...notesTools, ...extensionTools.tools, ...mcpTools.tools, ...agentTools.tools,
     ]);
-    const toolExecutor = createProjectToolExecutor(terminalTool, runnableConfig);
+    const toolExecutor = createProjectToolExecutor(terminalTool, runnableConfig, currentUserMessage);
     toolExecutor.registerTool({
       name: askUserTool.name,
       description: askUserTool.description,
@@ -2168,7 +2187,7 @@ export const callProjectAgent =
     agentTools.registerAll(toolExecutor);
 
     const availableToolNames = [
-      askUserTool.name, "terminal_executor", "schedule_action", "desktop_vision_action", "text_to_speech",
+      generateImageTool.name, askUserTool.name, "terminal_executor", "schedule_action", "desktop_vision_action", "text_to_speech",
       "speech_control", perplexitySearchTool.name, skillLoaderTool.name, createAgentTool.name,
       ...agentManagementTools.map((agentTool) => agentTool.name),
       readFileTool.name, writeFileTool.name, editFileTool.name, findFileTool.name,

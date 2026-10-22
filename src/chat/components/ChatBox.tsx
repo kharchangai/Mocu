@@ -5,6 +5,7 @@ import {
   useMemo,
   useRef,
   useState,
+  useSyncExternalStore,
   type UIEvent,
 } from 'react';
 import { Virtuoso, type VirtuosoHandle } from 'react-virtuoso';
@@ -116,6 +117,9 @@ import {
 } from '../services/shortTermMemory';
 
 import type { ChatMessage } from '../types/chat';
+import { getGeneratedImages, subscribeGeneratedImages, takeGeneratedImages } from '../services/generatedImages';
+import { GeneratedImageMessage } from './GeneratedImageMessage';
+import { ImageGenerationProgress } from './ImageGenerationProgress';
 
 import type { SelectedSkill } from './skillTypes';
 import type { SelectedExtension } from './extensionTypes';
@@ -684,6 +688,7 @@ type ChatBoxProps = {
     role: 'user' | 'assistant',
     content: string,
     attachments?: ChatMessage['attachments'],
+    generatedImages?: ChatMessage['generatedImages'],
   ) => ChatMessage;
   onReplaceMessage: (
     chatId: string,
@@ -932,6 +937,11 @@ export function ChatBox({
    * response. Parallel conversations never share activities.
    */
   const toolActivity = useToolActivity(chatId);
+  const generatedImages = useSyncExternalStore(
+    subscribeGeneratedImages,
+    () => getGeneratedImages(chatId),
+    () => [],
+  );
   const [stepWorkflowLogEntries, setStepWorkflowLogEntries] =
     useState<WorkflowLogEntry[]>([]);
 
@@ -1379,6 +1389,7 @@ export function ChatBox({
      * untouched.
      */
     toolActivity.beginRequest(requestChatId);
+    takeGeneratedImages(requestChatId);
 
     /*
      * Use the messages belonging to the selected chat directly. The ref may
@@ -1579,10 +1590,13 @@ export function ChatBox({
         lastAssistantMessage,
       ];
 
+      const completedImages = takeGeneratedImages(requestChatId);
       const assistantMessage = onAppendMessage(
         requestChatId,
         'assistant',
         response,
+        undefined,
+        completedImages,
       );
       markMessageAsPartOfThread(assistantMessage.id, requestThreadKey);
 
@@ -1651,10 +1665,13 @@ export function ChatBox({
           : error instanceof StepExecutorModelError
             ? `The step-by-step model request failed after ${error.attempts} attempts: ${error.originalError instanceof Error ? error.originalError.message : String(error.originalError)}`
             : 'Sorry, I encountered an error while processing that request.';
+      const failedImages = takeGeneratedImages(requestChatId);
       const errorMessage = onAppendMessage(
         requestChatId,
         'assistant',
         failureContent,
+        undefined,
+        failedImages,
       );
       markMessageAsPartOfThread(errorMessage.id, requestThreadKey);
 
@@ -1672,6 +1689,7 @@ export function ChatBox({
        * spinners stop, the entries stay until the next request.
        */
       finishToolActivities(requestChatId);
+      takeGeneratedImages(requestChatId);
       setLiveSectionThreadKey(null);
 
       /*
@@ -2439,6 +2457,8 @@ export function ChatBox({
                       {showLiveSectionActivity && message.id === liveRequestUserMessageId ? (
                         <>
                           <ToolActivityFeed activities={toolActivity.pendingActivities} />
+                          <ImageGenerationProgress active={toolActivity.pendingActivities.some((activity) => activity.tool === 'generate_image' && activity.status === 'running')} />
+                          <GeneratedImageMessage images={generatedImages} />
                           {toolActivity.liveAnswer ? (
                             <AssistantMessage content={toolActivity.liveAnswer} streaming />
                           ) : (
@@ -2460,15 +2480,18 @@ export function ChatBox({
                             ).length}
                         />
                       ) : (
-                        <AssistantMessage
-                          content={message.content}
-                          footer={messageIndex === lastAssistantIndex ? memoryFooter : undefined}
-                          failureDetails={getProjectAgentFailureDetails(message.content)}
-                          workflowToolCallFailure={parseStepToolCallFailureMessage(message.content)}
-                          onRegenerate={message.content.includes(PROJECT_AGENT_PARTIAL_PROGRESS_MARKER)
-                            ? () => retryFromAssistantMessage(messageIndex)
-                            : undefined}
-                        />
+                        <>
+                          <AssistantMessage
+                            content={message.content}
+                            footer={messageIndex === lastAssistantIndex ? memoryFooter : undefined}
+                            failureDetails={getProjectAgentFailureDetails(message.content)}
+                            workflowToolCallFailure={parseStepToolCallFailureMessage(message.content)}
+                            onRegenerate={message.content.includes(PROJECT_AGENT_PARTIAL_PROGRESS_MARKER)
+                              ? () => retryFromAssistantMessage(messageIndex)
+                              : undefined}
+                          />
+                          <GeneratedImageMessage images={message.generatedImages ?? []} />
+                        </>
                       )}
                     </>
                   )}

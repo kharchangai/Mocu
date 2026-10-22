@@ -30,6 +30,7 @@ const expectedModels = {
   decisionModel: "~typesafe/jev-latest",
   summarizeModel: "scaledown/summarize",
   extractModel: "scaledown/extract",
+  imageModel: "qwen/qwen-image-2.1-turbo",
   searchDepth: 3,
 };
 const urlFields = ["gatewayBaseUrl", "cheapBaseUrl", "mediumBaseUrl", "expensiveBaseUrl", "visionBaseUrl", "embeddingBaseUrl", "perplexityBaseUrl"] as const;

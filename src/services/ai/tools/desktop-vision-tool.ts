@@ -7,15 +7,28 @@ import { ChatOpenAI } from "@langchain/openai";
 import { readSettings } from "../../../store";
 import { isAbortError } from "../agent/abort";
 
+type DesktopCapture = {
+  imageDataUrl: string;
+  screenshotWidth: number;
+  screenshotHeight: number;
+  monitor: {
+    x: number;
+    y: number;
+    width: number;
+    height: number;
+    reportedWidth: number;
+    reportedHeight: number;
+    scaleFactor: number;
+    isPrimary: boolean;
+  };
+};
+
 export const desktopVisionTool = tool(
   async ({ userRequest }, config: RunnableConfig) => {
     const signal = config?.signal;
 
     try {
-      console.log("[Vision Tool] Loading settings from store...");
       const settings = await readSettings();
-
-      // All model capabilities use the shared gateway URL and API key by default.
       const apiKey = settings.visionApiKey || settings.apiKey;
       const baseURL = settings.visionBaseUrl || settings.mediumBaseUrl;
       const modelName = settings.visionModel || settings.mediumModel;
@@ -23,79 +36,57 @@ export const desktopVisionTool = tool(
         return "Error: No API Key configured. Please set your API Key in the settings menu.";
       }
 
-      console.log("[Vision Tool] Triggering Rust capture_desktop command...");
-      const base64Image: string = await invoke("capture_desktop");
-      
-      if (!base64Image) {
-        return "Failed to capture the desktop screenshot.";
+      const capture = await invoke<DesktopCapture>("capture_desktop");
+      if (!capture?.imageDataUrl || !capture.screenshotWidth || !capture.screenshotHeight) {
+        return "Failed to capture the desktop screenshot or its dimensions.";
       }
 
-      console.log(`[Vision Tool] Screenshot captured successfully. Initializing Vision LLM (${modelName})...`);
-
-      // Initialize ChatOpenAI using the dynamic settings retrieved from the store
       const visionLlm = new ChatOpenAI({
         model: modelName,
-        apiKey: apiKey,
-        configuration: {
-          baseURL: baseURL || undefined // Uses default OpenAI base URL if empty
-        },
+        apiKey,
+        configuration: { baseURL: baseURL || undefined },
       });
+      const monitor = capture.monitor;
+      const coordinateGuide = monitor
+        ? `Capture metadata (authoritative): screenshot pixel size ${capture.screenshotWidth}x${capture.screenshotHeight}; monitor virtual-desktop origin (${monitor.x},${monitor.y}), desktop-coordinate size ${monitor.width}x${monitor.height}; display-reported size ${monitor.reportedWidth}x${monitor.reportedHeight}; display scale factor ${monitor.scaleFactor}; primary monitor=${monitor.isPrimary}. The image is the entire primary monitor, not a cropped application window. Map screenshot pixels (sx, sy) to desktop mouse pixels with x = monitor.x + round(sx * monitor.width / ${capture.screenshotWidth}), y = monitor.y + round(sy * monitor.height / ${capture.screenshotHeight}). Coordinates are zero-based; keep coordinates within the monitor bounds. Return desktop coordinates, not screenshot-relative coordinates, for mouse interaction.`
+        : `Screenshot pixel size ${capture.screenshotWidth}x${capture.screenshotHeight}. Monitor origin and bounds are unavailable, so report screenshot-relative coordinates only and clearly mark desktop coordinates unavailable.`;
 
-      console.log("[Vision Tool] Sending multimodal request to the vision model...");
+      const response = await visionLlm.invoke(
+        [
+          new HumanMessage({
+            content: [
+              {
+                type: "text",
+                text: `You are looking at the user's screen. Analyze the supplied full-monitor screenshot and answer the request in English.\n\n${coordinateGuide}\n\nUser request: ${userRequest}\n\nIf asked to locate a visible element, identify it by its visible label/appearance and provide its center point. Clearly label screenshot-relative pixels and desktop mouse pixels separately. Never guess if the target is missing, obscured, ambiguous, or too small; say so. If requested, return a concise JSON object with target, screenshot coordinates, desktop coordinates, monitor bounds, screenshot size, and status. Do not claim to click or move the mouse; this tool only captures and analyzes.`,
+              },
+              {
+                type: "image_url",
+                image_url: { url: capture.imageDataUrl },
+              },
+            ],
+          }),
+        ],
+        { signal },
+      );
 
-      // Ensure the base64 string has the correct data URI format for standard APIs
-      const formattedImageUrl = base64Image.startsWith("data:image") 
-        ? base64Image 
-        : `data:image/png;base64,${base64Image}`;
-
-      const response = await visionLlm.invoke([
-        new HumanMessage({
-          content: [
-            {
-              type: "text",
-              text: `You are looking at the user's screen. Analyze this image to answer the user's request.
-              
-              User Request: "${userRequest}"
-
-              Provide a clear, direct, and helpful answer based on what you see.`
-            },
-            {
-              type: "image_url",
-              image_url: {
-                url: formattedImageUrl
-              }
-            }
-          ]
-        })
-      ], { signal });
-
-      console.log("[Vision Tool] Analysis complete.");
-      
-      const resultText = typeof response.content === 'string' 
-        ? response.content 
-        : Array.isArray(response.content) 
-          ? response.content.map(item => (typeof item === 'string' ? item : (item as any).text || '')).join(' ')
+      return typeof response.content === "string"
+        ? response.content
+        : Array.isArray(response.content)
+          ? response.content.map((item) => (typeof item === "string" ? item : (item as any).text || "")).join(" ")
           : JSON.stringify(response.content);
-
-      console.log("[Vision Tool] Extracted text analysis:", resultText);
-      
-      return resultText;
-
     } catch (error) {
-      // A cancelled run must surface as an abort, not as a tool error.
       if (isAbortError(error) || signal?.aborted) {
         throw error;
       }
-
       console.error("[Vision Tool Error]:", error);
-      return "An error occurred while capturing or analyzing your desktop screen.";
+      return `Error capturing or analyzing the desktop screenshot: ${error instanceof Error ? error.message : String(error)}`;
     }
   },
   {
     name: "desktop_vision_action",
-    description: "Use this tool ONLY when the user asks you to look at their screen, analyze their desktop, debug code visible on screen, or explain UI elements.",
+    description: "Captures and analyzes the full primary monitor screenshot. For coordinates, it provides screenshot pixel dimensions and monitor desktop-coordinate bounds so screenshot points can be mapped to desktop mouse pixels. This tool does not move or click the mouse.",
     schema: z.object({
-      userRequest: z.string().describe("The specific question, error message, or instruction the user has about their current screen."),
+      userRequest: z.string().describe("The target element or screen question, plus whether to return coordinates or perform a mouse action afterward."),
     }),
-  }
+  },
 );

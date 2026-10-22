@@ -8,7 +8,7 @@ vi.mock('../model-catalog', async (importOriginal) => ({
 import { listGatewayModels } from '../model-catalog';
 import {
   assertImageModelSupport, buildHumanMessageFromRequest,
-  buildHumanMessageWithImages, getImageRequestText, hasImageInput,
+  buildHumanMessageWithImages, getImageInputReferences, getImageRequestText, hasImageInput,
 } from './image-content';
 
 const attachments = Array.from({ length: 3 }, (_, index) => ({
@@ -46,6 +46,15 @@ describe('multimodal user messages', () => {
       ...(message.content as unknown[]).slice(1),
     ]);
     expect(message.content).not.toEqual(rebuilt.content);
+  });
+  it('converts attached user images to image-generation input references', () => {
+    const message = buildHumanMessageWithImages('Use these as references', attachments);
+    expect(getImageInputReferences(message)).toEqual(attachments.map((image) => ({
+      type: 'image_url', image_url: { url: image.dataUrl },
+    })));
+  });
+  it('returns no image-generation references for text-only messages', () => {
+    expect(getImageInputReferences(new HumanMessage('text'))).toEqual([]);
   });
   it('rejects image requests for non-vision models', async () => {
     await expect(assertImageModelSupport('gpt-3.5-turbo', buildHumanMessageWithImages('hi', attachments)))

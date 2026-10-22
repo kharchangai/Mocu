@@ -1,33 +1,30 @@
 # Windows App Status — Mocu Extension
 
-Checks whether an application is running on Windows, can control its windows, and can save a screenshot of only a selected application's window. Screenshot capture uses the Windows API and Python standard library; no third-party Python packages are required.
+Windows app status, accessible UI inspection, application screenshots, and desktop-wide mouse/keyboard input.
 
 ## Commands
 
-### `check_app_open`
+- `check_app_open`: checks for a process/window by app name.
+- `control_app`: opens, minimizes, maximizes, or gracefully closes an app window.
+- `screenshot_app`: captures only one app window as PNG and returns its path and dimensions. It is not a monitor capture; on success it minimizes that window. Use Mocu's `desktop_vision_action` for a full-primary-monitor screenshot.
+- `inspect_app_ui`: uses Windows UI Automation to report visible accessible controls, labels, control types, enabled/clickable/typeable/focusable state, physical bounds, and suggested center coordinates. Custom controls the app does not expose may be absent. Input: `{"name":"Google Chrome","maxElements":1000}`.
+- `desktop_input`: performs Windows desktop mouse/keyboard actions. Use physical virtual-desktop pixel coordinates, which may include negative origins for monitors located left/above the primary display. A `click` should include both `x` and `y`, e.g. `{"action":"click","button":"left","x":500,"y":300}`. Other actions include `move`, `scroll`, `press_key`, `hotkey`, and `type_text`.
 
-- **Input:** A program name as a string, such as `Chrome` or `Notepad`, or an object with a `name`, `program`, or `app` field.
-- **Output:** Whether a matching process is running, matching process names and PIDs, and matching visible window titles.
+## Accurate screen coordinates
 
-### `control_app`
+`desktop_vision_action` captures the full primary monitor and sends that image to Mocu's configured vision model. The model receives the exact screenshot pixel dimensions and the primary monitor's desktop-coordinate origin and dimensions. To map a screenshot pixel `(sx, sy)` to desktop mouse coordinates, use:
 
-- **Input:** An object with `action` and application name. The name can be provided as `name`, `program`, or `app`.
-- **Supported actions:** `open`, `minimize`, `maximize`, `close`.
-- **Examples:** `{"action":"open","name":"Google Chrome"}`, `{"action":"open","name":"notepad.exe"}`, `{"action":"minimize","name":"Chrome"}`, `{"action":"maximize","name":"Notepad"}`, `{"action":"close","name":"Chrome"}`.
-- **Behavior:** `open` accepts an executable/path or a friendly app name. For friendly names, it looks for matching Start Menu shortcuts and registered Windows app display names before asking the Windows Shell to open the original name. For example, `{"action":"open","name":"Google Chrome"}` can launch Chrome even when its executable is `chrome.exe`. The other actions target the best-matching visible window (preferring an exact executable-name match). `close` sends a graceful close request; it does not forcibly terminate the process. If multiple windows match, only the selected window is controlled.
+```text
+x = monitorOriginX + round(sx * monitorWidth / screenshotWidth)
+y = monitorOriginY + round(sy * monitorHeight / screenshotHeight)
+```
 
-### `screenshot_app`
+The Rust capture command selects the primary display explicitly and returns the image's actual pixel dimensions, virtual-desktop origin, display-reported dimensions and scale factor. `desktop_input` sets its calling thread to per-monitor physical-DPI awareness before reading mouse bounds and sending coordinates, so DPI virtualization does not mix logical coordinates with physical pixels.
 
-- **Input:** A program name as a string, such as `Chrome` or `Notepad`, or an object with a `name`, `program`, or `app` field. An optional `outputPath`/`path` can specify a PNG destination.
-- **Output:** A PNG path, the full current window dimensions in physical pixels, the selected window details, and confirmation that the window was minimized after capture. By default saves to `Pictures\\Windows App Status`.
-- **Privacy and window state:** Captures only the selected top-level application window using `PrintWindow`; it does not capture the desktop or other applications. If the window is minimized, it is temporarily restored before capture. After a successful capture the app window is minimized; on capture failure its previous minimized state is restored. Capture can vary for protected or GPU-rendered app content.
-
-Example: `{"name":"Notepad"}` or `{"name":"Chrome","outputPath":"C:\\Users\\me\\Pictures\\chrome.png"}`.
-
-The search is case-insensitive and matches executable names or visible window titles. This extension controls Windows desktop applications only. On non-Windows systems, commands report that they are unsupported.
+The image is one full monitor, not the entire multi-monitor desktop. Mouse bounds are desktop-wide. The vision tool only analyzes and reports coordinates; the extension's `desktop_input` must perform any requested click. Windows can block input to elevated apps, and the intended window should have focus.
 
 ## Install
 
-In Mocu, open **Extensions** and install this extension from its folder. Select or enable it for a chat, then ask Mocu to check or control an application.
+Install this extension in Mocu's Extensions page. Select it for a chat or enable it on an agent. To use image-based coordinates, the Mocu vision model must also be configured. UI Automation requires Windows PowerShell and app accessibility support.
 
-The Python SDK is bundled in `vendor/mocu_extension_sdk`, so the extension does not depend on an SDK installed elsewhere.
+The Python SDK is bundled under `vendor/mocu_extension_sdk`; no third-party Python packages are required.

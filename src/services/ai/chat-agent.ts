@@ -17,7 +17,7 @@ import {
   isAbortError,
   throwIfAborted,
 } from "./agent/abort";
-import { assertImageModelSupport, buildHumanMessageFromRequest, getImageRequestText, hasImageInput } from './agent/image-content';
+import { assertImageModelSupport, buildHumanMessageFromRequest, getImageInputReferences, getImageRequestText, hasImageInput } from './agent/image-content';
 import { isFileToolError } from "./agent/file-tool-recovery";
 import {
   dispatchAgentActivity,
@@ -109,6 +109,7 @@ import {
   perplexitySearchTool,
 } from "./tools/perplexity_search_tool";
 import { summarizeTextTool } from "./tools/summarize-text-tool";
+import { generateImageTool } from "./tools/generate-image-tool";
 import { extractEntitiesTool } from "./tools/extract-entities-tool";
 
 import {
@@ -693,9 +694,26 @@ const getCurrentDateTime =
 const createToolExecutor = (
   terminalTool: TerminalTool,
   config: RunnableConfig,
+  currentUserMessage?: BaseMessage,
 ): ToolExecutor => {
   const toolExecutor =
     new ToolExecutor();
+
+  toolExecutor.registerTool({
+    name: generateImageTool.name,
+    description: generateImageTool.description,
+    execute: async (args) => {
+      const toolArgs = args as Record<string, unknown>;
+      const attachedReferences = getImageInputReferences(currentUserMessage);
+      const inputReferences = Array.isArray(toolArgs.input_references) && toolArgs.input_references.length
+        ? toolArgs.input_references
+        : attachedReferences;
+      return generateImageTool.invoke({
+        ...toolArgs,
+        ...(inputReferences.length ? { input_references: inputReferences } : {}),
+      } as never, config);
+    },
+  });
 
   toolExecutor.registerTool({
     name:
@@ -1521,6 +1539,7 @@ export const callChatAgent =
       selectedAgentNames,
       "",
       runnableConfig,
+      currentUserMessage,
     );
 
     if (agentTools.missingAgents.length > 0) {
@@ -1722,6 +1741,7 @@ export const callChatAgent =
     const graphToolLogTool = createGraphToolLogTool();
     const llmWithTools = llm.bindTools([
       askUserTool,
+      generateImageTool,
       scheduleTool,
       desktopVisionTool,
       terminalTool,
@@ -1751,7 +1771,7 @@ export const callChatAgent =
      * bindTools() only gives the schema to the model. ToolExecutor is
      * responsible for actually invoking the requested tool.
      */
-    const toolExecutor = createToolExecutor(terminalTool, runnableConfig);
+    const toolExecutor = createToolExecutor(terminalTool, runnableConfig, currentUserMessage);
     toolExecutor.registerTool({
       name: askUserTool.name,
       description: askUserTool.description,
@@ -1762,7 +1782,6 @@ export const callChatAgent =
     extensionTools.registerAll(
       toolExecutor,
     );
-
     mcpTools.registerAll(
       toolExecutor,
     );

@@ -29,6 +29,7 @@ const EXPLICIT_TOOL_MENTIONS: Record<AgentToolName, RegExp> = {
   extract_entities: /\b(?:extract(?:s|ed|ing|ion)?|named entities|entity extraction)\b|استخراج|موجودیت/iu,
   load_skill: /\bskills?\b|مهارت/iu,
   schedule_action: /\b(?:schedule|reminder|calendar|alarm)\b|یادآور|زمان‌بندی/iu,
+  desktop_vision_action: /\b(?:desktop\s+vision|screen(?:shot)?|monitor|visible\s+(?:screen|ui|interface)|screen\s+element|coordinate(?:s)?)\b|صفحه\s*نمایش|نمایشگر|اسکرین\s*شات|مختصات/iu,
 };
 
 function isExplicitlyRequested(name: AgentToolName, request: string): boolean {

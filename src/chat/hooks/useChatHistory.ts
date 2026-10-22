@@ -53,6 +53,7 @@ function createMessage(
   role: ChatRole,
   content: string,
   attachments: ChatMessage['attachments'] = [],
+  generatedImages: ChatMessage['generatedImages'] = [],
 ): ChatMessage {
   return {
     id: createId('message'),
@@ -60,6 +61,7 @@ function createMessage(
     content: content.trim(),
     createdAt: new Date().toISOString(),
     ...(attachments.length ? { attachments } : {}),
+    ...(generatedImages.length ? { generatedImages } : {}),
   };
 }
 
@@ -225,14 +227,15 @@ export function useChatHistory() {
       role: ChatRole,
       content: string,
       attachments: ChatMessage['attachments'] = [],
+      generatedImages: ChatMessage['generatedImages'] = [],
     ): ChatMessage => {
       const normalizedContent = content.trim();
 
-      if (!normalizedContent && attachments.length === 0) {
+      if (!normalizedContent && attachments.length === 0 && generatedImages.length === 0) {
         throw new Error('The message cannot be empty.');
       }
 
-      const message = createMessage(role, normalizedContent, attachments);
+      const message = createMessage(role, normalizedContent, attachments, generatedImages);
       const updatedAt = new Date().toISOString();
       /*
        * Resolve the target conversation from the latest chats state
@@ -533,7 +536,8 @@ export function useChatHistory() {
       role: ChatRole,
       content: string,
       attachments?: ChatMessage['attachments'],
-    ): ChatMessage => addMessage(chatId, role, content, attachments),
+      generatedImages?: ChatMessage['generatedImages'],
+    ): ChatMessage => addMessage(chatId, role, content, attachments, generatedImages),
     [addMessage],
   );
 

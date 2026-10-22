@@ -95,6 +95,14 @@ describe("agent-tool-selector", () => {
       "notes",
     ]);
   });
+  it("selects full-monitor vision for a screen-coordinate agent even if Jev scores it low", async () => {
+    getJevDecision.mockResolvedValue({
+      answers: Object.fromEntries(AGENT_TOOL_CATALOG.map(({ name }) => [name, { noul: 0.01 }])),
+    });
+
+    const selected = await selectAgentTools("Create an agent that looks at the monitor and identifies visible controls and coordinates.");
+    expect(selected.map(({ name }) => name)).toContain("desktop_vision_action");
+  });
 
   it("uses explicitly named tools if Jev is unavailable", async () => {
     getJevDecision.mockRejectedValue(new Error("Decision API unavailable"));

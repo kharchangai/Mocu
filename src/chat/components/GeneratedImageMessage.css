@@ -1,0 +1,47 @@
+.generated-image-message {
+  display: flex;
+  width: min(100%, 680px);
+  margin: 10px auto 0;
+  flex-wrap: wrap;
+  gap: 12px;
+}
+.generated-image-card {
+  position: relative;
+  width: min(100%, 540px);
+  overflow: hidden;
+  border: 1px solid #e8e8e6;
+  border-radius: 14px;
+  background: #f7f7f6;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.05);
+}
+.generated-image-card img {
+  display: block;
+  width: 100%;
+  max-height: 620px;
+  object-fit: contain;
+}
+.generated-image-loading {
+  display: grid;
+  min-height: 180px;
+  place-items: center;
+  padding: 18px;
+  color: #777;
+  font-size: 13px;
+}
+.generated-image-open {
+  position: absolute;
+  top: 10px;
+  right: 10px;
+  display: grid;
+  width: 36px;
+  height: 36px;
+  place-items: center;
+  border: 1px solid rgba(255, 255, 255, 0.7);
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.9);
+  color: #292825;
+  cursor: pointer;
+  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.14);
+}
+.generated-image-open:hover { background: #fff; }
+.generated-image-open:focus-visible { outline: 3px solid rgba(37, 99, 235, 0.3); }

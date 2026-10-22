@@ -50,5 +50,3 @@ export const normalizeExtensionOutput = (
     "[The remaining extension output was truncated.]",
   ].join("\n");
 };
-
-

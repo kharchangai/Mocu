@@ -20,6 +20,7 @@ export const OPENROUTER_PERPLEXITY_DEFAULT_MODEL = "sonar";
 export const OPENROUTER_DECISION_DEFAULT_MODEL = "~typesafe/jev-latest";
 export const OPENROUTER_SUMMARIZE_DEFAULT_MODEL = "scaledown/summarize";
 export const OPENROUTER_EXTRACT_DEFAULT_MODEL = "scaledown/extract";
+export const OPENROUTER_IMAGE_DEFAULT_MODEL = "qwen/qwen-image-2.1-turbo";
 
 /** Decisions uses the gateway's API root, without the chat /v1 suffix. */
 export function getDecisionEndpointForGateway(baseUrl: string): string {
@@ -47,6 +48,7 @@ export type AppSettings = {
 
   summarizeModel: string;
   extractModel: string;
+  imageModel: string;
 
   // Speech settings
   sttModel: string;
@@ -183,6 +185,7 @@ export async function readSettings(): Promise<AppSettings> {
     visionApiKey: ((await store.get<string>("MOCU_VISION_API_KEY")) || "").trim() || apiKey,
     visionBaseUrl: legacyBaseUrl || savedVisionBaseUrl || gatewayBaseUrl,
     visionModel: modelOrDefault(await store.get<string>("MOCU_VISION_MODEL"), OPENROUTER_VISION_DEFAULT_MODEL),
+    imageModel: modelOrDefault(await store.get<string>("MOCU_IMAGE_MODEL"), OPENROUTER_IMAGE_DEFAULT_MODEL),
     perplexityApiKey: ((await store.get<string>("MOCU_PERPLEXITY_API_KEY")) || "").trim() || apiKey,
     perplexityBaseUrl: legacyBaseUrl || savedPerplexityBaseUrl || gatewayBaseUrl,
     perplexityModel: modelOrDefault(await store.get<string>("MOCU_PERPLEXITY_MODEL"), OPENROUTER_PERPLEXITY_DEFAULT_MODEL),
@@ -238,6 +241,7 @@ export async function saveSettings(settings: AppSettings): Promise<void> {
   );
   await store.set("MOCU_SUMMARIZE_MODEL", modelOrDefault(settings.summarizeModel, OPENROUTER_SUMMARIZE_DEFAULT_MODEL));
   await store.set("MOCU_EXTRACT_MODEL", modelOrDefault(settings.extractModel, OPENROUTER_EXTRACT_DEFAULT_MODEL));
+  await store.set("MOCU_IMAGE_MODEL", modelOrDefault(settings.imageModel, OPENROUTER_IMAGE_DEFAULT_MODEL));
   // Speech settings
   await store.set("MOCU_STT_MODEL", modelOrDefault(settings.sttModel, OPENROUTER_STT_DEFAULT_MODEL));
   await store.set("MOCU_TTS_MODEL", modelOrDefault(settings.ttsModel, OPENROUTER_TTS_DEFAULT_MODEL));

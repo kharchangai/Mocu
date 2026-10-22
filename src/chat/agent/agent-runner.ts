@@ -7,12 +7,12 @@ import {
 import {
   AIMessage,
   BaseMessage,
-  HumanMessage,
   SystemMessage,
   ToolMessage,
 } from '@langchain/core/messages';
 import { tool, type StructuredToolInterface } from '@langchain/core/tools';
 import type { RunnableConfig } from '@langchain/core/runnables';
+import { assertImageModelSupport, buildHumanMessageFromRequest } from '../../services/ai/agent/image-content';
 import { z } from 'zod';
 
 import { getAsyncLLM, getAsyncLLMByModel } from '../../services/ai/llm';
@@ -42,8 +42,9 @@ import { summarizeTextTool } from '../../services/ai/tools/summarize-text-tool';
 import { skillLoaderTool } from '../../services/ai/tools/skill_loader_tool';
 import { extractEntitiesTool } from '../../services/ai/tools/extract-entities-tool';
 import { AGENT_TOOL_CATALOG, type AgentToolName } from './agent-tool-catalog';
-import { resolveSelectedSkills } from '../components/skills/selected-skill-loader';
+import { desktopVisionTool } from '../../services/ai/tools/desktop-vision-tool';
 import { loadExtensionAgentTools } from '../../extensions/services/extension-agent-tools';
+import { resolveSelectedSkills } from '../components/skills/selected-skill-loader';
 import { scanInstalledExtensions } from '../../extensions/services/extension-scanner';
 import {
   scheduleTool,
@@ -68,6 +69,7 @@ type AgentRunInput = {
   userMessage: string;
   projectPath: string;
   config?: RunnableConfig;
+  sourceMessage?: BaseMessage;
 };
 
 type AgentState = {
@@ -100,7 +102,7 @@ export async function runAgent(input: AgentRunInput): Promise<string> {
     .compile();
 
   const result = await graph.invoke(
-    { messages: [new HumanMessage(userMessage)] },
+    { messages: [buildHumanMessageFromRequest(userMessage, input.sourceMessage)] },
     input.config,
   );
 
@@ -180,7 +182,7 @@ async function runAgentNode(
     ...selectedNoteTools,
     ...(includeTool('perplexity_search') ? [perplexitySearchTool] : []),
     ...(includeTool('load_skill') ? [skillLoaderTool] : []),
-    summarizeTextTool,
+    ...(includeTool('desktop_vision_action') ? [desktopVisionTool] : []),
     ...(includeTool('extract_entities') ? [extractEntitiesTool] : []),
     ...(includeTool('schedule_action') ? [scheduleTool] : []),
     ...extensionTools.tools,
@@ -232,6 +234,13 @@ async function runAgentNode(
       execute: (args) => scheduleTool.invoke(args as ScheduleActionInput, runnableConfig),
     });
   }
+  if (includeTool('desktop_vision_action')) {
+    executor.registerTool({
+      name: desktopVisionTool.name,
+      description: desktopVisionTool.description,
+      execute: (args) => desktopVisionTool.invoke(args as { userRequest: string }, runnableConfig),
+    });
+  }
   registerStructuredTools(
     executor,
     [...selectedFilesystemTools, ...selectedDocumentTools, ...selectedNoteTools],
@@ -253,9 +262,11 @@ async function runAgentNode(
     ? await getAsyncLLMByModel(input.agent.llm)
     : await getAsyncLLM('expensive');
   const llmWithTools = llm.bindTools(bindableTools);
+  const currentUserMessage = buildHumanMessageFromRequest(input.userMessage.trim(), input.sourceMessage);
+  await assertImageModelSupport(llm.model, currentUserMessage);
   let messages: BaseMessage[] = [
     new SystemMessage([systemPrompt, selectedFilesystemTools.length ? FILE_TOOLS_SYSTEM_PROMPT : ''].filter(Boolean).join('\n\n')),
-    new HumanMessage(input.userMessage.trim()),
+    currentUserMessage,
   ];
   const initialModelTrace = createAgentModelTrace(getChatIdFromConfig(runnableConfig));
   let response = await streamChatModelWithTrace({
@@ -352,8 +363,9 @@ async function runAgentNode(
       model: finalLlm,
       messages: [
         new SystemMessage(systemPrompt),
-        new HumanMessage(
+        buildHumanMessageFromRequest(
           `${input.userMessage.trim()}\n\nTOOL RESULTS\n${toolResults.join('\n\n')}\n\nGive the final answer for the user.`,
+          input.sourceMessage,
         ),
       ],
       config: runnableConfig,
@@ -509,6 +521,7 @@ async function createChildAgentTools(
             : input.userMessage,
         projectPath: input.projectPath,
         config,
+        sourceMessage: input.sourceMessage,
       });
 
     executors.set(toolName, run);

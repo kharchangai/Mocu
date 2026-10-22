@@ -49,6 +49,11 @@ export const AGENT_TOOL_CATALOG = [
     description:
       "Create, list, update, or delete reminders, schedules, and scheduled agent runs.",
   },
+  {
+    name: "desktop_vision_action",
+    description:
+      "Capture and analyze the user's full primary monitor to identify visible interface elements and exact coordinates.",
+  },
 ] as const;
 
 export type AgentToolName = (typeof AGENT_TOOL_CATALOG)[number]["name"];

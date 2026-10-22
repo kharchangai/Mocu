@@ -132,6 +132,7 @@
 
     "shell:default",
     "opener:default",
+    "opener:allow-reveal-item-in-dir",
     {
       "identifier": "shell:allow-execute",
       "allow": [
