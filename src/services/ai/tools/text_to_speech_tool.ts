@@ -1,8 +1,12 @@
+import { appDataDir, join } from "@tauri-apps/api/path";
+import { mkdir, readFile, writeFile } from "@tauri-apps/plugin-fs";
+import type { RunnableConfig } from "@langchain/core/runnables";
 import { tool } from "@langchain/core/tools";
 import { z } from "zod";
 
 import { generateSpeech } from "../../aiService";
 import { readSettings } from "../../../store";
+import { getChatIdFromConfig } from "../../../chat/services/toolActivity";
 
 /**
  * Text-to-Speech tools for the Mocu agent.
@@ -16,13 +20,45 @@ import { readSettings } from "../../../store";
  * - text_to_speech : generate speech with the configured TTS model and play it
  * - speech_control : stop current playback or show the configured speech setup
  */
-
 const MAX_CHUNK_LENGTH = 2_000;
 const PLAYBACK_TIMEOUT_MS = 300_000;
-
 export type SpeechChunkOptions = {
   maxLength?: number;
 };
+
+export type GeneratedSpeechResult = {
+  id: string;
+  name: string;
+  mimeType: string;
+  path: string;
+  text: string;
+};
+
+const getAudioExtension = (mimeType: string): string => {
+  if (mimeType.includes("ogg")) return "ogg";
+  if (mimeType.includes("wav")) return "wav";
+  if (mimeType.includes("aac")) return "aac";
+  if (mimeType.includes("flac")) return "flac";
+  return "mp3";
+};
+
+const saveSpeech = async (blob: Blob, text: string): Promise<GeneratedSpeechResult> => {
+  const id = typeof crypto !== "undefined" && crypto.randomUUID
+    ? crypto.randomUUID()
+    : `${Date.now()}-${Math.random().toString(36).slice(2)}`;
+  const extension = getAudioExtension(blob.type);
+  const name = `mocu-audio-${id.slice(0, 8)}.${extension}`;
+  const folder = await join(await appDataDir(), "generated-audio");
+  await mkdir(folder, { recursive: true });
+  const path = await join(folder, name);
+  await writeFile(path, new Uint8Array(await blob.arrayBuffer()));
+  return { id, name, mimeType: blob.type || "audio/mpeg", path, text };
+};
+
+function encodeAudioReference(audio: GeneratedSpeechResult): string {
+  const label = audio.text.replace(/[\[\]]/g, "").replace(/\s+/g, " ").trim();
+  return `[${label || "Play generated audio"}](mocu-generated-audio:${audio.id})`;
+}
 
 /**
  * Splits text into speakable chunks so very long texts are sent to the
@@ -178,65 +214,63 @@ export type SpeakTextInput = {
 const speakText = async (
   input: SpeakTextInput,
   signal?: AbortSignal,
+  config?: RunnableConfig,
 ): Promise<string> => {
   const chunks = splitIntoSpeechChunks(input.text);
+  if (chunks.length === 0) return "Error: text_to_speech requires a non-empty text to speak.";
 
-  if (chunks.length === 0) {
-    return "Error: text_to_speech requires a non-empty text to speak.";
+  if (input.interrupt ?? true) stopCurrentPlayback();
+  const generated: GeneratedSpeechResult[] = [];
+  for (const chunk of chunks) {
+    const blob = await generateSpeech(chunk, signal);
+    const audio = await saveSpeech(blob, chunk);
+    generated.push(audio);
+    if (typeof window !== "undefined") {
+      window.dispatchEvent(new CustomEvent("mocu_generated_audio", {
+        detail: { ...audio, chatId: getChatIdFromConfig(config) },
+      }));
+    }
   }
 
-  const shouldWait = input.wait ?? true;
-  const shouldInterrupt = input.interrupt ?? true;
-
-  if (shouldInterrupt) {
-    stopCurrentPlayback();
-  }
-
-  const spokenLength = input.text.trim().length;
-  const summary = `Spoke ${spokenLength} characters using the TTS model configured in Settings.`;
-
-  const run = async (): Promise<void> => {
-    for (const chunk of chunks) {
-      /*
-       * Same pipeline as the Mocu avatar: generateSpeech() reads the
-       * TTS model, voice, base URL, and API key from Settings.
-       */
-      const speechBlob = await generateSpeech(chunk, signal);
-      await playSpeechBlob(speechBlob);
+  const playAll = async (): Promise<void> => {
+    for (const audio of generated) {
+      const bytes = await readFile(audio.path);
+      await playSpeechBlob(new Blob([new Uint8Array(bytes)], { type: audio.mimeType }));
     }
   };
-
-  if (!shouldWait) {
-    void run().catch((error: unknown) => {
-      console.warn("[TTS] Background speech failed:", error);
-    });
-
-    return `Speech started in the background without waiting. ${summary}`;
+  if (input.wait ?? true) {
+    try {
+      await playAll();
+    } catch (error: unknown) {
+      const message = error instanceof Error ? error.message : String(error);
+      return JSON.stringify({ error: message, audios: generated, display_markdown: generated.map(encodeAudioReference).join(" ") });
+    }
+  } else {
+    void playAll().catch((error: unknown) => console.warn("[TTS] Background playback failed:", error));
   }
 
-  try {
-    await run();
-    return summary;
-  } catch (error: unknown) {
-    const message = error instanceof Error ? error.message : String(error);
-    return `Error: ${message}`;
-  }
+  return JSON.stringify({
+    summary: `Generated ${generated.length} audio clip${generated.length === 1 ? "" : "s"} for ${input.text.trim().length} characters.`,
+    audios: generated,
+    display_markdown: generated.map(encodeAudioReference).join(" "),
+    message: "Speech audio was generated and saved. To render a small replay button beside a word or phrase, add a Markdown link with the matching mocu-generated-audio ID from audios. Use the desired word or phrase as the link label (the ID must remain unchanged). Each clip has its own ID and text; place each clip's link beside the word or phrase it pronounces. Omit audio links when replay controls are not useful.",
+  });
 };
 
 /**
  * text_to_speech: speaks text with the TTS model chosen in Settings.
  */
 export const textToSpeechTool = tool(
-  async (input: SpeakTextInput) => {
+  async (input: SpeakTextInput, config: RunnableConfig) => {
     console.log(`[TTS Tool] Speaking text (${input.text.trim().length} chars).`);
-    return speakText(input);
+    return speakText(input, config?.signal, config);
   },
   {
     name: "text_to_speech",
     description:
-      "Speaks text out loud using the TTS model and voice the user configured in Settings " +
-      "(the same voice as the Mocu avatar). Use it whenever the user asks you to say something, " +
-      "speak, talk, or read text aloud.",
+      "Generate speech with the TTS model and voice configured in Settings. Each clip is saved and returned with an audio ID. " +
+      "Use a Markdown link with href mocu-generated-audio:<ID> and the matching audios.text as the link label beside the word or phrase in your final answer. " +
+      "For multiple clips, use each matching ID beside its own pronunciation; omit links when not useful. Generated speech is also played once by default.",
     schema: z.object({
       text: z.string().min(1).describe("The text to speak out loud."),
       wait: z

@@ -54,6 +54,7 @@ function createMessage(
   content: string,
   attachments: ChatMessage['attachments'] = [],
   generatedImages: ChatMessage['generatedImages'] = [],
+  generatedAudio: ChatMessage['generatedAudio'] = [],
 ): ChatMessage {
   return {
     id: createId('message'),
@@ -62,6 +63,7 @@ function createMessage(
     createdAt: new Date().toISOString(),
     ...(attachments.length ? { attachments } : {}),
     ...(generatedImages.length ? { generatedImages } : {}),
+    ...(generatedAudio.length ? { generatedAudio } : {}),
   };
 }
 
@@ -228,14 +230,15 @@ export function useChatHistory() {
       content: string,
       attachments: ChatMessage['attachments'] = [],
       generatedImages: ChatMessage['generatedImages'] = [],
+      generatedAudio: ChatMessage['generatedAudio'] = [],
     ): ChatMessage => {
       const normalizedContent = content.trim();
 
-      if (!normalizedContent && attachments.length === 0 && generatedImages.length === 0) {
+      if (!normalizedContent && attachments.length === 0 && generatedImages.length === 0 && generatedAudio.length === 0) {
         throw new Error('The message cannot be empty.');
       }
 
-      const message = createMessage(role, normalizedContent, attachments, generatedImages);
+      const message = createMessage(role, normalizedContent, attachments, generatedImages, generatedAudio);
       const updatedAt = new Date().toISOString();
       /*
        * Resolve the target conversation from the latest chats state
@@ -537,7 +540,8 @@ export function useChatHistory() {
       content: string,
       attachments?: ChatMessage['attachments'],
       generatedImages?: ChatMessage['generatedImages'],
-    ): ChatMessage => addMessage(chatId, role, content, attachments, generatedImages),
+      generatedAudio?: ChatMessage['generatedAudio'],
+    ): ChatMessage => addMessage(chatId, role, content, attachments, generatedImages, generatedAudio),
     [addMessage],
   );
 

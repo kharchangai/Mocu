@@ -19,6 +19,7 @@ import { memo } from "react";
 
 import { MarkdownRenderer } from "./MarkdownRenderer";
 import type { GeneratedChatImage } from "../../types/generatedImage";
+import type { GeneratedChatAudio } from "../../types/generatedAudio";
 
 /*
  * Rough size cap for one chunk. Only the last chunk (the growing tail)
@@ -155,12 +156,14 @@ export const buildChunks = (
 const MarkdownChunk = memo(function MarkdownChunk({
   text,
   generatedImages,
+  generatedAudio,
 }: {
   text: string;
   generatedImages: GeneratedChatImage[];
+  generatedAudio: GeneratedChatAudio[];
 }) {
   return (
-    <MarkdownRenderer content={text} direction="auto" generatedImages={generatedImages} />
+    <MarkdownRenderer content={text} direction="auto" generatedImages={generatedImages} generatedAudio={generatedAudio} />
   );
 });
 
@@ -172,16 +175,19 @@ const CodeChunk = memo(function CodeChunk({
   language,
   body,
   generatedImages,
+  generatedAudio,
 }: {
   language: string;
   body: string;
   generatedImages: GeneratedChatImage[];
+  generatedAudio: GeneratedChatAudio[];
 }) {
   return (
     <MarkdownRenderer
       content={`\`\`\`${language}\n${body}\n\`\`\``}
       direction="auto"
       generatedImages={generatedImages}
+      generatedAudio={generatedAudio}
     />
   );
 });
@@ -189,12 +195,14 @@ const CodeChunk = memo(function CodeChunk({
 export type StreamingMarkdownProps = {
   content: string;
   generatedImages?: GeneratedChatImage[];
+  generatedAudio?: GeneratedChatAudio[];
 };
 
 export const StreamingMarkdown = memo(
   function StreamingMarkdown({
     content,
     generatedImages = [],
+    generatedAudio = [],
   }: StreamingMarkdownProps) {
     if (!content || !content.trim()) {
       return null;
@@ -211,12 +219,14 @@ export const StreamingMarkdown = memo(
               language={chunk.language}
               body={chunk.text}
               generatedImages={generatedImages}
+              generatedAudio={generatedAudio}
             />
           ) : (
             <MarkdownChunk
               key={index}
               text={chunk.text}
               generatedImages={generatedImages}
+              generatedAudio={generatedAudio}
             />
           ),
         )}

@@ -17,7 +17,8 @@
 import { memo, useState } from 'react';
 
 import type { AgentToolActivity } from '../services/toolActivity';
-
+import { GeneratedAudioPlayer } from './GeneratedAudioPlayer';
+import type { GeneratedChatAudio } from '../types/generatedAudio';
 import './ToolActivityFeed.css';
 
 /*
@@ -203,14 +204,36 @@ const TraceToolImpl = ({
   const inputText = describeToolInput(
     activity.args ?? {},
   );
-
   const resultText = activity.result?.trim() ?? '';
   const streamLog = activity.streamLog?.trim() ?? '';
+  let generatedAudios: GeneratedChatAudio[] = [];
+  let displayResult = resultText;
+  if (activity.tool === 'text_to_speech' && resultText) {
+    try {
+      const parsed: unknown = JSON.parse(resultText);
+      if (parsed && typeof parsed === 'object') {
+        if ('summary' in parsed && typeof parsed.summary === 'string') {
+          displayResult = parsed.summary;
+        }
+        if ('audios' in parsed && Array.isArray(parsed.audios)) {
+          generatedAudios = parsed.audios.filter((item): item is GeneratedChatAudio =>
+            Boolean(item && typeof item === 'object' &&
+              'id' in item && typeof item.id === 'string' &&
+              'name' in item && typeof item.name === 'string' &&
+              'mimeType' in item && typeof item.mimeType === 'string' &&
+              'path' in item && typeof item.path === 'string' &&
+              'text' in item && typeof item.text === 'string'),
+          );
+        }
+      }
+    } catch {
+      // Existing and non-TTS tool logs remain plain text.
+    }
+  }
 
   const outputText =
-    [streamLog, resultText].filter(Boolean).join('\n\n') ||
+    [streamLog, displayResult].filter(Boolean).join('\n\n') ||
     (isRunning ? '…' : 'No output.');
-
   const preview = inputText
     ? truncate(inputText.replace(/\s+/g, ' '), 80)
     : '';
@@ -276,6 +299,16 @@ const TraceToolImpl = ({
           <pre className="trace-tool__pre trace-tool__pre--output">
             {outputText}
           </pre>
+          {generatedAudios.length > 0 ? (
+            <div className="trace-tool__audio-results" aria-label="Generated speech audio">
+              {generatedAudios.map((audio) => (
+                <span className="trace-tool__audio-item" key={audio.id}>
+                  <span>{audio.text}</span>
+                  <GeneratedAudioPlayer audio={audio} />
+                </span>
+              ))}
+            </div>
+          ) : null}
         </div>
       ) : null}
     </div>

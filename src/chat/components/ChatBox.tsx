@@ -118,6 +118,7 @@ import {
 
 import type { ChatMessage } from '../types/chat';
 import { getGeneratedImages, subscribeGeneratedImages, takeGeneratedImages } from '../services/generatedImages';
+import { getGeneratedAudio, subscribeGeneratedAudio, takeGeneratedAudio } from '../services/generatedAudio';
 import { ImageGenerationProgress } from './ImageGenerationProgress';
 
 import type { SelectedSkill } from './skillTypes';
@@ -688,6 +689,7 @@ type ChatBoxProps = {
     content: string,
     attachments?: ChatMessage['attachments'],
     generatedImages?: ChatMessage['generatedImages'],
+    generatedAudio?: ChatMessage['generatedAudio'],
   ) => ChatMessage;
   onReplaceMessage: (
     chatId: string,
@@ -939,6 +941,11 @@ export function ChatBox({
   const generatedImages = useSyncExternalStore(
     subscribeGeneratedImages,
     () => getGeneratedImages(chatId),
+    () => [],
+  );
+  const generatedAudio = useSyncExternalStore(
+    subscribeGeneratedAudio,
+    () => getGeneratedAudio(chatId),
     () => [],
   );
   const [stepWorkflowLogEntries, setStepWorkflowLogEntries] =
@@ -1389,6 +1396,7 @@ export function ChatBox({
      */
     toolActivity.beginRequest(requestChatId);
     takeGeneratedImages(requestChatId);
+    takeGeneratedAudio(requestChatId);
 
     /*
      * Use the messages belonging to the selected chat directly. The ref may
@@ -1590,12 +1598,14 @@ export function ChatBox({
       ];
 
       const completedImages = takeGeneratedImages(requestChatId);
+      const completedAudio = takeGeneratedAudio(requestChatId);
       const assistantMessage = onAppendMessage(
         requestChatId,
         'assistant',
         response,
         undefined,
         completedImages,
+        completedAudio,
       );
       markMessageAsPartOfThread(assistantMessage.id, requestThreadKey);
 
@@ -1689,6 +1699,7 @@ export function ChatBox({
        */
       finishToolActivities(requestChatId);
       takeGeneratedImages(requestChatId);
+      takeGeneratedAudio(requestChatId);
       setLiveSectionThreadKey(null);
 
       /*
@@ -2458,7 +2469,7 @@ export function ChatBox({
                           <ToolActivityFeed activities={toolActivity.pendingActivities} />
                           <ImageGenerationProgress active={toolActivity.pendingActivities.some((activity) => activity.tool === 'generate_image' && activity.status === 'running')} />
                           {toolActivity.liveAnswer ? (
-                            <AssistantMessage content={toolActivity.liveAnswer} streaming generatedImages={generatedImages} />
+                            <AssistantMessage content={toolActivity.liveAnswer} streaming generatedImages={generatedImages} generatedAudio={generatedAudio} />
                           ) : (
                             <ChatStatusBubble agentName={agentName} isLoading />
                           )}
@@ -2482,6 +2493,7 @@ export function ChatBox({
                           <AssistantMessage
                             content={message.content}
                             generatedImages={message.generatedImages}
+                            generatedAudio={message.generatedAudio}
                             footer={messageIndex === lastAssistantIndex ? memoryFooter : undefined}
                             failureDetails={getProjectAgentFailureDetails(message.content)}
                             workflowToolCallFailure={parseStepToolCallFailureMessage(message.content)}

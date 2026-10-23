@@ -1,3 +1,16 @@
+.trace-tool__audio-results {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.trace-tool__audio-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  color: #666;
+  font-size: 11px;
+}
 /* src/chat/components/ToolActivityFeed.css */
 
 /* =========================================================

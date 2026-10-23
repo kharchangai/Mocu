@@ -13,6 +13,8 @@ import remarkGfm from "remark-gfm";
 import rehypeHighlight from "rehype-highlight";
 import { defaultUrlTransform } from "react-markdown";
 import type { GeneratedChatImage } from "../../types/generatedImage";
+import type { GeneratedChatAudio } from "../../types/generatedAudio";
+import { GeneratedAudioPlayer } from "../GeneratedAudioPlayer";
 import { GeneratedImageCard } from "../GeneratedImageMessage";
 
 import { getTextDirection } from "../textDirection";
@@ -28,6 +30,7 @@ export type MarkdownRendererProps = {
   className?: string;
   direction?: MarkdownDirection;
   generatedImages?: GeneratedChatImage[];
+  generatedAudio?: GeneratedChatAudio[];
 };
 
 type CodeElementProps = {
@@ -285,6 +288,7 @@ function MarkdownRendererImpl({
   className = "",
   direction = "auto",
   generatedImages = [],
+  generatedAudio = [],
 }: MarkdownRendererProps) {
   if (!content || !content.trim()) {
     return null;
@@ -318,7 +322,7 @@ function MarkdownRendererImpl({
             },
           ],
         ]}
-        urlTransform={(url) => url.startsWith("mocu-generated-image:") ? url : defaultUrlTransform(url)}
+        urlTransform={(url) => url.startsWith("mocu-generated-image:") || url.startsWith("mocu-generated-audio:") ? url : defaultUrlTransform(url)}
         components={{
           pre: CodeBlock,
 
@@ -333,20 +337,21 @@ function MarkdownRendererImpl({
             </div>
           ),
 
-          a: ({
-            children,
-            href,
-            ...props
-          }) => (
-            <a
-              {...props}
-              href={href}
-              target="_blank"
-              rel="noopener noreferrer"
-            >
-              {children}
-            </a>
-          ),
+          a: ({ children, href, ...props }) => {
+            const audioId = href?.startsWith("mocu-generated-audio:")
+              ? href.slice("mocu-generated-audio:".length)
+              : "";
+            const audio = audioId ? generatedAudio.find((item) => item.id === audioId) : undefined;
+            if (audio) {
+              return (
+                <span className="generated-audio-inline">
+                  <span>{children}</span>
+                  <GeneratedAudioPlayer audio={audio} />
+                </span>
+              );
+            }
+            return <a {...props} href={href} target="_blank" rel="noopener noreferrer">{children}</a>;
+          },
 
           img: ({
             src,

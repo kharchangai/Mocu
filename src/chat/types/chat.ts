@@ -1,5 +1,6 @@
 import type { ChatImageAttachment } from './imageAttachment';
 import type { GeneratedChatImage } from './generatedImage';
+import type { GeneratedChatAudio } from './generatedAudio';
 
 export type ChatRole = 'user' | 'assistant' | 'system';
 
@@ -10,8 +11,8 @@ export type ChatMessage = {
   createdAt: string;
   attachments?: ChatImageAttachment[];
   generatedImages?: GeneratedChatImage[];
+  generatedAudio?: GeneratedChatAudio[];
 };
-
 export type ChatConversation = {
   id: string;
   title: string;
