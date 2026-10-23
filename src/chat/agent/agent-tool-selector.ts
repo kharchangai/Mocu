@@ -19,6 +19,11 @@ export type AgentToolSelection = {
   relevance: number;
 };
 
+function ensureSkillFinder(selections: AgentToolSelection[]): AgentToolSelection[] {
+  if (selections.some(({ name }) => name === "find_relevant_skills")) return selections;
+  return [...selections, { name: "find_relevant_skills", relevance: 1 }];
+}
+
 const EXPLICIT_TOOL_MENTIONS: Record<AgentToolName, RegExp> = {
   terminal_executor: /\b(?:terminal|shell|command[- ]line)\b|ترمینال|خط\s*فرمان/iu,
   filesystem: /\b(?:file\s*system|filesystem|files?)\b|فایل[\s‌_-]*سیستم|سیستم[\s‌_-]*فایل|فایل(?:‌|\s)*(?:ها|های)/iu,
@@ -28,6 +33,7 @@ const EXPLICIT_TOOL_MENTIONS: Record<AgentToolName, RegExp> = {
   summarize_text: /\b(?:summari[sz](?:e|es|ed|ing|ation)?|summar(?:y|ies))\b|خلاصه|جمع‌بندی|جمع بندی/iu,
   extract_entities: /\b(?:extract(?:s|ed|ing|ion)?|named entities|entity extraction)\b|استخراج|موجودیت/iu,
   load_skill: /\bskills?\b|مهارت/iu,
+  find_relevant_skills: /\bskills?\b|مهارت/iu,
   schedule_action: /\b(?:schedule|reminder|calendar|alarm)\b|یادآور|زمان‌بندی/iu,
   desktop_vision_action: /\b(?:desktop\s+vision|screen(?:shot)?|monitor|visible\s+(?:screen|ui|interface)|screen\s+element|coordinate(?:s)?)\b|صفحه\s*نمایش|نمایشگر|اسکرین\s*شات|مختصات/iu,
 };
@@ -120,24 +126,28 @@ export async function selectAgentTools(
       "[Agent Tool Selector] Jev unavailable; using explicitly requested tools.",
       error,
     );
-    return AGENT_TOOL_CATALOG
-      .filter((candidate) => explicitlyRequested.has(candidate.name))
-      .map(({ name }) => ({ name, relevance: 1 }));
+    return ensureSkillFinder(
+      AGENT_TOOL_CATALOG
+        .filter((candidate) => explicitlyRequested.has(candidate.name))
+        .map(({ name }) => ({ name, relevance: 1 })),
+    );
   }
 
-  return AGENT_TOOL_CATALOG
-    .map((candidate) => {
-      const relevance = probabilityOfToolRelevance(
-        response?.answers?.[candidate.name],
-      );
-      return {
-        name: candidate.name,
-        relevance: explicitlyRequested.has(candidate.name)
-          ? Math.max(relevance, 1)
-          : relevance,
-      };
-    })
-    .filter((selection) =>
-      explicitlyRequested.has(selection.name) || selection.relevance >= threshold,
-    );
+  return ensureSkillFinder(
+    AGENT_TOOL_CATALOG
+      .map((candidate) => {
+        const relevance = probabilityOfToolRelevance(
+          response?.answers?.[candidate.name],
+        );
+        return {
+          name: candidate.name,
+          relevance: explicitlyRequested.has(candidate.name)
+            ? Math.max(relevance, 1)
+            : relevance,
+        };
+      })
+      .filter((selection) =>
+        explicitlyRequested.has(selection.name) || selection.relevance >= threshold,
+      ),
+  );
 }

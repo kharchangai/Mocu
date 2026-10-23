@@ -45,6 +45,11 @@ export const AGENT_TOOL_CATALOG = [
       "Load the full instructions of a selected skill by its exact name.",
   },
   {
+    name: "find_relevant_skills",
+    description:
+      "Find installed skills relevant to a user request by asking Mocu's Decision model to match the request against skill names and descriptions; returns matching names and descriptions.",
+  },
+  {
     name: "schedule_action",
     description:
       "Create, list, update, or delete reminders, schedules, and scheduled agent runs.",

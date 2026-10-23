@@ -46,7 +46,10 @@ describe("agent-tool-selector", () => {
         perplexity_search: expect.objectContaining({ type: "noul" }),
       }),
     }));
-    expect(selected).toEqual([{ name: "terminal_executor", relevance: 0.94 }]);
+    expect(selected).toEqual([
+      { name: "terminal_executor", relevance: 0.94 },
+      { name: "find_relevant_skills", relevance: 1 },
+    ]);
   });
 
   it("selects the summarization tool when summary work is explicitly requested", async () => {
@@ -93,6 +96,7 @@ describe("agent-tool-selector", () => {
       "filesystem",
       "documents",
       "notes",
+      "find_relevant_skills",
     ]);
   });
   it("selects full-monitor vision for a screen-coordinate agent even if Jev scores it low", async () => {
@@ -112,6 +116,7 @@ describe("agent-tool-selector", () => {
     expect(selected.map(({ name }) => name)).toEqual([
       "terminal_executor",
       "filesystem",
+      "find_relevant_skills",
     ]);
   });
 
@@ -120,6 +125,14 @@ describe("agent-tool-selector", () => {
     expect(probabilityOfToolRelevance({ probabilities: { true: 0.72 } })).toBe(0.72);
     expect(probabilityOfToolRelevance({ value: true })).toBe(1);
     expect(probabilityOfToolRelevance(undefined)).toBe(0);
+  });
+
+  it("includes the skill finder by default for every new agent", async () => {
+    getJevDecision.mockResolvedValue({ answers: {} });
+
+    const selected = await selectAgentTools("Create a simple helper agent.");
+
+    expect(selected).toEqual([{ name: "find_relevant_skills", relevance: 1 }]);
   });
 
   it("rejects an empty request and forwards the cancellation signal", async () => {

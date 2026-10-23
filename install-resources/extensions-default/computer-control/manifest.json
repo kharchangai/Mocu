@@ -1,0 +1,38 @@
+{
+    "id": "com.mocu.windows-app-status",
+    "name": "Computer Control",
+    "description": "Controls Windows applications and the desktop using app discovery, window management, screenshots, and mouse/keyboard input. For accurate visual target coordinates, use find_screen_coordinates, which delegates to the saved Screen Coordinate Finder agent and Mocu's full-monitor vision workflow; screenshot_app is window-only and must not be used to derive desktop coordinates.",
+    "version": "0.5.1",
+    "runtime": "python",
+    "entry": "index.py",
+    "permissions": [
+        "agents.invoke"
+    ],
+    "commands": [
+        {
+            "id": "find_screen_coordinates",
+            "title": "Find screen coordinates with Screen Coordinate Finder",
+            "description": "Delegate screen-element location to the saved Screen Coordinate Finder agent, which uses Mocu's full-primary-monitor desktop_vision_action screenshot and exact monitor bounds. Input: {\"target\":\"Search box\",\"action\":\"click\"}; omit action for coordinates only. You may instead pass {\"request\":\"...\"} as a complete task. Do not use screenshot_app to locate screen elements; its window image is unsuitable for desktop coordinates. The agent returns English JSON and can perform a requested mouse action through Computer Control."
+        },
+        {
+            "id": "check_app_open",
+            "title": "Check whether an app is open",
+            "description": "Input a program name such as Chrome or Notepad. Returns matching processes, PIDs, and visible window titles. Accepts a string or {\"name\":\"Chrome\"}."
+        },
+        {
+            "id": "control_app",
+            "title": "Control an application window",
+            "description": "Open, minimize, maximize, or gracefully close a Windows app. Example: {\"action\":\"open\",\"name\":\"Google Chrome\"}."
+        },
+        {
+            "id": "screenshot_app",
+            "title": "Capture an application window screenshot",
+            "description": "Capture only the named app window as PNG and save it. It does not provide reliable desktop coordinates. Use find_screen_coordinates to locate screen elements via the full-monitor vision agent, not this window screenshot."
+        },
+        {
+            "id": "desktop_input",
+            "title": "Control desktop mouse and keyboard",
+            "description": "Move/click/scroll the Windows desktop mouse or send keyboard input. Coordinates x/y must be physical virtual-desktop screen pixels (including negative monitor origins); use the exact coordinate origin and dimensions from the full-monitor screenshot metadata. Examples: {\"action\":\"move\",\"x\":500,\"y\":300}, {\"action\":\"click\",\"button\":\"left\",\"x\":500,\"y\":300}, {\"action\":\"scroll\",\"delta\":-240,\"x\":500,\"y\":300}, {\"action\":\"type_text\",\"text\":\"Hello\"}. For a click, include x and y. Supports move, click, scroll, press_key, hotkey, and type_text."
+        }
+    ]
+}

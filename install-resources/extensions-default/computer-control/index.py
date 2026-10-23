@@ -1,11 +1,8 @@
 from __future__ import annotations
 
 import ctypes
-import json
 import os
 import random
-import shutil
-import subprocess
 import sys
 import time
 import unicodedata
@@ -19,6 +16,71 @@ if _VENDOR_DIR not in sys.path:
 from mocu_extension_sdk import create_extension
 
 extension = create_extension()
+
+_SCREEN_COORDINATE_AGENT_NAME = "Screen Coordinate Finder"
+
+
+def _find_screen_coordinate_agent() -> dict[str, str]:
+    agents = extension.agents.list()
+    matches = [
+        agent for agent in agents
+        if isinstance(agent, dict)
+        and isinstance(agent.get("id"), str)
+        and agent.get("name", "").strip().casefold() == _SCREEN_COORDINATE_AGENT_NAME.casefold()
+    ]
+    if len(matches) != 1:
+        if not matches:
+            raise RuntimeError(
+                "The saved 'Screen Coordinate Finder' agent was not found. "
+                "Create or enable that agent in Mocu before requesting screen coordinates."
+            )
+        raise RuntimeError("Multiple saved agents named 'Screen Coordinate Finder' were found; use a unique agent name.")
+    return matches[0]
+
+
+@extension.command("find_screen_coordinates")
+def find_screen_coordinates(input: Any, context: dict[str, Any], config: dict[str, Any]) -> dict[str, Any]:
+    """Delegate screen-element localization to Mocu's full-monitor vision agent."""
+    if isinstance(input, str):
+        request = input.strip()
+    elif isinstance(input, dict):
+        supplied_request = input.get("request")
+        if isinstance(supplied_request, str) and supplied_request.strip():
+            request = supplied_request.strip()
+        else:
+            target = input.get("target") or input.get("element") or input.get("item")
+            action = input.get("action")
+            if not isinstance(target, str) or not target.strip():
+                raise ValueError("Provide a screen target, e.g. {\"target\":\"Search box\"}, or a complete {\"request\":\"...\"}.")
+            if action is not None and (not isinstance(action, str) or not action.strip()):
+                raise ValueError("action must be a non-empty string when provided.")
+            request = f"Locate the visible screen element: {target.strip()}."
+            if action:
+                request += f" Requested action: {action.strip()}. Perform it only if the target is clearly identified; otherwise return coordinates without guessing."
+            else:
+                request += " Return its coordinates only; do not click or otherwise interact."
+    else:
+        raise ValueError("Provide a target string or an object with target/action or request fields.")
+
+    if not request:
+        raise ValueError("The coordinate-finding request cannot be empty.")
+
+    agent = _find_screen_coordinate_agent()
+    result = extension.agents.run(
+        agent["id"],
+        request,
+        timeout=300.0,
+    )
+    response = result.get("text")
+    if not isinstance(response, str) or not response.strip():
+        raise RuntimeError("Screen Coordinate Finder returned an empty response.")
+    return {
+        "success": True,
+        "agent": result.get("name", _SCREEN_COORDINATE_AGENT_NAME),
+        "agentId": result.get("agentId", agent["id"]),
+        "response": response.strip(),
+        "message": "Screen Coordinate Finder used Mocu's primary-monitor vision workflow. See the agent response for coordinates and action status.",
+    }
 
 
 class PROCESSENTRY32W(ctypes.Structure):
@@ -93,47 +155,8 @@ def _enumerate_visible_windows() -> list[dict[str, Any]]:
 def _find_matching_window_targets(query: str) -> list[dict[str, Any]]:
     processes={p["pid"]:p for p in _find_matching_processes(query)}
     targets=[{**w,"processName":processes[w["pid"]]["processName"]} for w in _enumerate_visible_windows() if w["pid"] in processes]
-    targets.sort(key=lambda x:(_normalize(os.path.splitext(x["processName"])[0])!=query,_normalize(x["title"])!=query,len(x["title"])))
+    targets.sort(key=lambda x:(_normalize(x["title"])!=query,_normalize(x["title"])=="program manager",_normalize(os.path.splitext(x["processName"])[0])!=query,len(x["title"])))
     return targets
-
-
-_UIA_INSPECT_SCRIPT = r"""
-$ErrorActionPreference = 'Stop'
-[Console]::OutputEncoding = New-Object System.Text.UTF8Encoding($false)
-try {
- Add-Type -AssemblyName UIAutomationClient; Add-Type -AssemblyName UIAutomationTypes
- $payload=[Console]::In.ReadToEnd()|ConvertFrom-Json
- $root=[System.Windows.Automation.AutomationElement]::FromHandle([IntPtr]([long]$payload.hwnd))
- if($null -eq $root){throw 'Windows UI Automation could not access the selected window.'}
- $window=$root.Current;$rootRect=$window.BoundingRectangle
- $desc=$root.FindAll([System.Windows.Automation.TreeScope]::Descendants,[System.Windows.Automation.Automation]::ControlViewCondition)
- $items=New-Object 'System.Collections.Generic.List[object]';$truncated=$false
- foreach($element in $desc){try{
-  $c=$element.Current;if($c.IsOffscreen){continue};$r=$c.BoundingRectangle;if($r.IsEmpty -or $r.Width -le 0 -or $r.Height -le 0){continue}
-  $name=[string]$c.Name;$aid=[string]$c.AutomationId;$click=$false
-  foreach($p in @([System.Windows.Automation.InvokePattern]::Pattern,[System.Windows.Automation.SelectionItemPattern]::Pattern,[System.Windows.Automation.TogglePattern]::Pattern,[System.Windows.Automation.ExpandCollapsePattern]::Pattern)){try{$null=$element.GetCurrentPattern($p);$click=$true;break}catch{}}
-  $type=$false;try{$v=$element.GetCurrentPattern([System.Windows.Automation.ValuePattern]::Pattern);$type=-not $v.Current.IsReadOnly}catch{}
-  if([string]::IsNullOrWhiteSpace($name) -and [string]::IsNullOrWhiteSpace($aid) -and -not $click -and -not $type -and -not $c.IsKeyboardFocusable){continue}
-  if($items.Count -ge [int]$payload.maxElements){$truncated=$true;break}
-  $items.Add([ordered]@{id=$items.Count+1;name=$name;automationId=$aid;controlType=[string]$c.ControlType.ProgrammaticName;className=[string]$c.ClassName;enabled=[bool]$c.IsEnabled;keyboardFocusable=[bool]$c.IsKeyboardFocusable;clickable=$click;typeable=$type;bounds=[ordered]@{x=[int][Math]::Round($r.Left);y=[int][Math]::Round($r.Top);width=[int][Math]::Round($r.Width);height=[int][Math]::Round($r.Height);centerX=[int][Math]::Round($r.Left+$r.Width/2);centerY=[int][Math]::Round($r.Top+$r.Height/2)}})
- }catch{}}
- $result=[ordered]@{window=[ordered]@{title=[string]$window.Name;processId=[int]$window.ProcessId;bounds=[ordered]@{x=[int][Math]::Round($rootRect.Left);y=[int][Math]::Round($rootRect.Top);width=[int][Math]::Round($rootRect.Width);height=[int][Math]::Round($rootRect.Height)}};elements=@($items.ToArray());elementCount=$items.Count;truncated=$truncated;coordinateSystem='physical virtual-desktop screen pixels; bounds center is a suggested mouse target'}
- [Console]::Out.WriteLine((ConvertTo-Json -InputObject $result -Depth 8 -Compress))
-}catch{[Console]::Error.WriteLine($_.Exception.Message);exit 1}
-"""
-
-
-def _inspect_window_accessibility(hwnd: int,max_elements: int)->dict[str,Any]:
-    powershell=shutil.which("powershell.exe") or shutil.which("powershell")
-    if not powershell:raise RuntimeError("Windows PowerShell is required for UI Automation inspection.")
-    try:result=subprocess.run([powershell,"-NoLogo","-NoProfile","-NonInteractive","-ExecutionPolicy","Bypass","-Command",_UIA_INSPECT_SCRIPT],input=json.dumps({"hwnd":hwnd,"maxElements":max_elements}),capture_output=True,text=True,encoding="utf-8",errors="replace",timeout=30,creationflags=getattr(subprocess,"CREATE_NO_WINDOW",0),check=False)
-    except subprocess.TimeoutExpired as exc:raise RuntimeError("Windows UI Automation timed out while inspecting this application.") from exc
-    if result.returncode:raise RuntimeError(f"Windows UI Automation failed: {(result.stderr.strip() or result.stdout.strip())[:1200]}")
-    try:data=json.loads(result.stdout)
-    except json.JSONDecodeError as exc:raise RuntimeError("Windows UI Automation returned invalid JSON.") from exc
-    if not isinstance(data,dict) or not isinstance(data.get("elements"),list):raise RuntimeError("Windows UI Automation returned an unexpected result.")
-    return data
-
 
 class _MOUSEINPUT(ctypes.Structure):_fields_=[("dx",wintypes.LONG),("dy",wintypes.LONG),("mouseData",wintypes.DWORD),("dwFlags",wintypes.DWORD),("time",wintypes.DWORD),("dwExtraInfo",ctypes.c_size_t)]
 class _KEYBDINPUT(ctypes.Structure):_fields_=[("wVk",wintypes.WORD),("wScan",wintypes.WORD),("dwFlags",wintypes.DWORD),("time",wintypes.DWORD),("dwExtraInfo",ctypes.c_size_t)]
@@ -323,7 +346,7 @@ def _capture_window_png(hwnd_value:int,path:str)->tuple[int,int]:
 
 def _screenshot_path(requested:Any)->str:
     pictures=os.path.join(os.path.expanduser("~"),"Pictures")
-    if requested is None or requested=="":folder=os.path.join(pictures,"Windows App Status");path=os.path.join(folder,f"screenshot_{time.strftime('%Y%m%d_%H%M%S')}_{time.time_ns()%1_000_000_000:09d}.png")
+    if requested is None or requested=="":folder=os.path.join(pictures,"Computer Control");path=os.path.join(folder,f"screenshot_{time.strftime('%Y%m%d_%H%M%S')}_{time.time_ns()%1_000_000_000:09d}.png")
     elif isinstance(requested,str) and requested.strip():
         path=os.path.expandvars(os.path.expanduser(requested.strip()))
         if not os.path.isabs(path):path=os.path.join(pictures,path)
@@ -412,7 +435,7 @@ def control_app(input:Any,context:dict[str,Any],config:dict[str,Any])->dict[str,
 
 @extension.command("screenshot_app")
 def screenshot_app(input:Any,context:dict[str,Any],config:dict[str,Any])->dict[str,Any]:
-    """Capture a selected application window (not the desktop), then minimize it."""
+    """Capture a selected application window (not the desktop) without minimizing it."""
     if isinstance(input,str):app,path=input,None
     elif isinstance(input,dict):app=input.get("name")or input.get("program")or input.get("app");path=input.get("outputPath")or input.get("path")
     else:app=path=None
@@ -430,33 +453,9 @@ def screenshot_app(input:Any,context:dict[str,Any],config:dict[str,Any])->dict[s
         while user.IsIconic(hwnd)and time.monotonic()<deadline:time.sleep(.05)
         if user.IsIconic(hwnd):raise OSError("Could not restore the selected window for capture.")
         time.sleep(.25)
-    captured=False;minimized=False
-    try:width,height=_capture_window_png(target["hwnd"],destination);captured=True
-    finally:
-        if captured or was_minimized:
-            user.ShowWindowAsync(hwnd,6);deadline=time.monotonic()+3
-            while not user.IsIconic(hwnd)and time.monotonic()<deadline:time.sleep(.05)
-            minimized=bool(user.IsIconic(hwnd))
-        if captured and not minimized:raise OSError("Screenshot saved, but Windows could not minimize the window.")
-    return{"supported":True,"success":True,"query":app,"screenshotPath":destination,"imageFormat":"PNG","width":width,"height":height,"windowMinimized":minimized,"capturedWindow":{"processName":target["processName"],"pid":target["pid"],"title":target["title"]},"message":f"Saved a full-size screenshot of only {target['title']!r}; minimized the app window. No desktop or other windows were captured."}
+    width,height=_capture_window_png(target["hwnd"],destination)
+    return{"supported":True,"success":True,"query":app,"screenshotPath":destination,"imageFormat":"PNG","width":width,"height":height,"windowMinimized":False,"capturedWindow":{"processName":target["processName"],"pid":target["pid"],"title":target["title"]},"message":f"Saved a full-size screenshot of only {target['title']!r}; left the app window open. No desktop or other windows were captured."}
 
-@extension.command("inspect_app_ui")
-def inspect_app_ui(input:Any,context:dict[str,Any],config:dict[str,Any])->dict[str,Any]:
-    """List visible accessible controls in a Windows app with physical screen bounds."""
-    if isinstance(input,str):app,max_elements=input,1000
-    elif isinstance(input,dict):app=input.get("name")or input.get("program")or input.get("app");max_elements=input.get("maxElements",1000)
-    else:app,max_elements=None,1000
-    if not isinstance(app,str)or not app.strip():raise ValueError("Provide an application name.")
-    if isinstance(max_elements,bool)or not isinstance(max_elements,int)or not 1<=max_elements<=2000:raise ValueError("maxElements must be an integer from 1 to 2000.")
-    app=app.strip()
-    if sys.platform!="win32":return{"supported":False,"success":False,"query":app,"message":"UI Automation inspection is supported on Windows only."}
-    query=_normalize(app)
-    if not query:raise ValueError("Application name must contain searchable characters.")
-    targets=_find_matching_window_targets(query)
-    if not targets:return{"supported":True,"success":False,"query":app,"elements":[],"message":f"No visible application window matching {app!r} was found."}
-    target=targets[0];result=_inspect_window_accessibility(target["hwnd"],max_elements)
-    result.update({"supported":True,"success":True,"query":app,"selectedWindow":{"processName":target["processName"],"pid":target["pid"],"title":target["title"]},"message":f"Found {result['elementCount']} visible accessible UI element(s) in {target['title']!r}."+(" Results truncated; increase maxElements (up to 2000)."if result["truncated"]else"")})
-    return result
 
 @extension.command("check_app_open")
 def check_app_open(input:Any,context:dict[str,Any],config:dict[str,Any])->dict[str,Any]:

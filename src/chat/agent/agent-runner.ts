@@ -41,6 +41,7 @@ import { perplexitySearchTool } from '../../services/ai/tools/perplexity_search_
 import { summarizeTextTool } from '../../services/ai/tools/summarize-text-tool';
 import { skillLoaderTool } from '../../services/ai/tools/skill_loader_tool';
 import { extractEntitiesTool } from '../../services/ai/tools/extract-entities-tool';
+import { findRelevantSkillsTool } from '../../services/ai/tools/find-relevant-skills-tool';
 import { AGENT_TOOL_CATALOG, type AgentToolName } from './agent-tool-catalog';
 import { desktopVisionTool } from '../../services/ai/tools/desktop-vision-tool';
 import { loadExtensionAgentTools } from '../../extensions/services/extension-agent-tools';
@@ -182,6 +183,7 @@ async function runAgentNode(
     ...selectedNoteTools,
     ...(includeTool('perplexity_search') ? [perplexitySearchTool] : []),
     ...(includeTool('load_skill') ? [skillLoaderTool] : []),
+    ...(includeTool('find_relevant_skills') ? [findRelevantSkillsTool] : []),
     ...(includeTool('desktop_vision_action') ? [desktopVisionTool] : []),
     ...(includeTool('extract_entities') ? [extractEntitiesTool] : []),
     ...(includeTool('schedule_action') ? [scheduleTool] : []),
@@ -225,6 +227,16 @@ async function runAgentNode(
       name: 'load_skill',
       description: skillLoaderTool.description,
       execute: (args) => skillLoaderTool.invoke(args as { skillName: string }, runnableConfig),
+    });
+  }
+  if (includeTool('find_relevant_skills')) {
+    executor.registerTool({
+      name: findRelevantSkillsTool.name,
+      description: findRelevantSkillsTool.description,
+      execute: (args) => findRelevantSkillsTool.invoke(
+        args as { userRequest: string },
+        runnableConfig,
+      ),
     });
   }
   if (includeTool('schedule_action')) {
