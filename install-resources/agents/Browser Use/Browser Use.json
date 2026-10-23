@@ -20,5 +20,5 @@
     "Windows App Status",
     "Mocu Browser Bridge"
   ],
-  "llm": null
+  "llm": "openai/gpt-6-luna"
 }

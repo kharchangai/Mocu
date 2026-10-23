@@ -7,11 +7,13 @@ import {
 import type { ReactNode } from "react";
 
 import { MarkdownRenderer, StreamingMarkdown } from "./markdown";
+import type { GeneratedChatImage } from "../types/generatedImage";
 
 import "./AssistantMessage.css";
 
 type AssistantMessageProps = {
   content: string;
+  generatedImages?: GeneratedChatImage[];
 
   /*
    * Set while the response is still streaming in: renders the content
@@ -101,6 +103,7 @@ function RetryIcon() {
 
 function AssistantMessageImpl({
   content,
+  generatedImages = [],
   streaming = false,
   footer,
   failureDetails,
@@ -243,11 +246,12 @@ function AssistantMessageImpl({
       ) : (
         <div className="assistant-message__body">
           {streaming ? (
-            <StreamingMarkdown content={content} />
+            <StreamingMarkdown content={content} generatedImages={generatedImages} />
           ) : (
             <MarkdownRenderer
               content={content}
               direction="auto"
+              generatedImages={generatedImages}
             />
           )}
         </div>

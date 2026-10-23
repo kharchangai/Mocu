@@ -1,0 +1,1369 @@
+﻿<!doctype html>
+<html lang="en" dir="ltr">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="light dark">
+  <title>Language Tutor</title>
+  <style>
+    :root {
+      color-scheme: light dark;
+      font-family: Inter, "Segoe UI Variable Text", "Segoe UI", system-ui, -apple-system, "Helvetica Neue", sans-serif;
+      font-synthesis: none;
+      text-rendering: optimizeLegibility;
+      -webkit-font-smoothing: antialiased;
+
+      /* Canvas & surfaces */
+      --bg: #f1f4f1;
+      --surface: #ffffff;
+      --surface-2: #f6f8f6;
+      --surface-3: #ebefec;
+      /* Ink */
+      --ink: #131a17;
+      --ink-2: #39423e;
+      --muted: #6e7773;
+      --faint: #96a09b;
+      --line: #e3e8e4;
+      --line-strong: #d0d8d3;
+      /* Accent ┬╖ jade */
+      --accent: #0f8f6d;
+      --accent-strong: #0a7156;
+      --accent-ink: #0b6a51;
+      --accent-soft: #e6f4ee;
+      --accent-line: #c9e6da;
+      --accent-glow: rgba(15,143,109,.20);
+      --grad-accent: linear-gradient(180deg, #1cae86 0%, #0a7a5c 100%);
+      --grad-mark: linear-gradient(145deg, #22b28b 0%, #0a6f56 100%);
+      /* Secondary ┬╖ sand */
+      --sand: #8a6524;
+      --sand-ink: #6a5220;
+      --sand-soft: #faf2e2;
+      --sand-line: #eddfc2;
+      /* Status */
+      --danger: #cf4555;
+      --danger-soft: #fcecee;
+      --grad-danger: linear-gradient(180deg, #e2606f 0%, #c33a4c 100%);
+      /* Elevation & shape */
+      --shadow-xs: 0 1px 2px rgba(19,26,23,.05);
+      --shadow-sm: 0 2px 8px rgba(19,26,23,.06);
+      --shadow-md: 0 12px 30px rgba(19,26,23,.08);
+      --shadow-lg: 0 26px 64px rgba(19,26,23,.16);
+      --r-sm: 10px; --r-md: 13px; --r-lg: 17px; --r-xl: 20px; --r-2xl: 24px;
+
+      color: var(--ink);
+      background: var(--bg);
+    }
+    *, *::before, *::after { box-sizing: border-box; }
+    html { -webkit-text-size-adjust: 100%; }
+    body {
+      min-width: 320px;
+      min-height: 100dvh;
+      margin: 0;
+      padding: 22px clamp(16px, 2.4vw, 38px);
+      color: var(--ink);
+      background:
+        radial-gradient(900px 420px at 10% -10%, rgba(15,143,109,.10), transparent 60%),
+        radial-gradient(760px 380px at 98% 2%, rgba(190,160,92,.09), transparent 62%),
+        var(--bg);
+      background-attachment: fixed;
+    }
+    ::selection { background: rgba(15,143,109,.18); }
+    * { scrollbar-width: thin; scrollbar-color: var(--line-strong) transparent; }
+    *::-webkit-scrollbar { width: 10px; height: 10px; }
+    *::-webkit-scrollbar-track { background: transparent; }
+    *::-webkit-scrollbar-thumb { border: 3px solid transparent; border-radius: 999px; background: var(--line-strong); background-clip: content-box; }
+    *::-webkit-scrollbar-thumb:hover { background: var(--faint); background-clip: content-box; }
+    button, summary { -webkit-tap-highlight-color: transparent; }
+    button { font: inherit; color: inherit; cursor: pointer; }
+    button:focus-visible, summary:focus-visible, textarea:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+    button {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+      min-height: 40px;
+      padding: 9px 15px;
+      border: 1px solid var(--line);
+      border-radius: var(--r-md);
+      background: var(--surface);
+      color: var(--ink-2);
+      font-size: 12.5px;
+      font-weight: 600;
+      letter-spacing: -.1px;
+      line-height: 1.35;
+      box-shadow: var(--shadow-xs);
+      transition: transform .16s cubic-bezier(.2,.7,.3,1), background .16s ease, border-color .16s ease, box-shadow .16s ease, color .16s ease;
+    }
+    button:hover:not(:disabled) { border-color: var(--line-strong); background: var(--surface-2); color: var(--ink); }
+    button:active:not(:disabled) { transform: scale(.985); }
+    button:disabled { opacity: .5; cursor: not-allowed; box-shadow: none; }
+    .icon { width: 18px; height: 18px; flex: 0 0 auto; fill: none; stroke: currentColor; stroke-width: 1.7; stroke-linecap: round; stroke-linejoin: round; }
+    .icon-defs { position: absolute; width: 0; height: 0; overflow: hidden; }
+
+    main { position: relative; z-index: 1; width: min(100%, 1520px); height: calc(100dvh - 46px); min-height: 540px; margin: 0 auto; display: flex; flex-direction: column; gap: 12px; }
+
+    /* ΓöÇΓöÇ Top bar ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ */
+    .topbar {
+      display: flex; align-items: center; justify-content: space-between; gap: 16px; flex: 0 0 auto;
+      padding: 11px 13px; border: 1px solid var(--line); border-radius: var(--r-xl);
+      background: rgba(255,255,255,.82); box-shadow: var(--shadow-sm); backdrop-filter: blur(16px) saturate(1.3);
+    }
+    .brand { display: flex; align-items: center; gap: 12px; min-width: 0; }
+    .brand-mark { width: 42px; height: 42px; display: grid; place-items: center; flex: 0 0 auto; border-radius: 14px; color: #fff; background: var(--grad-mark); box-shadow: 0 8px 18px var(--accent-glow), inset 0 1px 0 rgba(255,255,255,.22); }
+    .brand-mark .icon { width: 21px; height: 21px; }
+    .brand-name { margin: 0; font-size: 14px; font-weight: 700; letter-spacing: -.2px; }
+    .brand-caption { margin: 2px 0 0; color: var(--muted); font-size: 11px; }
+    .top-actions { position: relative; display: flex; align-items: center; gap: 8px; }
+    .action-label { display: none; }
+    .top-actions > button { width: 42px; min-height: 42px; padding: 9px; }
+    #new-conv-btn {
+      border-color: transparent; color: #fff; background: var(--grad-accent);
+      box-shadow: 0 8px 20px var(--accent-glow), inset 0 1px 0 rgba(255,255,255,.16);
+    }
+    #new-conv-btn:hover:not(:disabled) {
+      border-color: transparent; color: #fff;
+      background: linear-gradient(180deg, #1fba92 0%, #0b8767 100%);
+      box-shadow: 0 11px 26px var(--accent-glow), inset 0 1px 0 rgba(255,255,255,.16);
+    }
+    #conv-btn.active { color: var(--accent-ink); border-color: var(--accent-line); background: var(--accent-soft); box-shadow: none; }
+
+    /* ΓöÇΓöÇ Page heading ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ */
+    .page-heading { display: flex; align-items: flex-end; justify-content: space-between; gap: 20px; flex: 0 0 auto; padding: 2px 6px 0; }
+    .eyebrow {
+      display: inline-flex; align-items: center; gap: 7px; margin: 0 0 11px; padding: 5px 12px 5px 9px;
+      border: 1px solid var(--accent-line); border-radius: 999px; background: var(--accent-soft); color: var(--accent-ink);
+      font-size: 10.5px; font-weight: 650; letter-spacing: .2px;
+    }
+    .eyebrow::before { content: ""; width: 6px; height: 6px; border-radius: 50%; background: var(--accent); box-shadow: 0 0 0 3px rgba(15,143,109,.16); }
+    h1 { margin: 0; font-size: clamp(24px, 2.3vw, 33px); line-height: 1.18; letter-spacing: -.9px; font-weight: 700; }
+    .intro { max-width: 640px; margin: 9px 0 0; color: var(--muted); font-size: 13px; line-height: 1.65; }
+    .practice-tag { display: inline-flex; align-items: center; gap: 8px; padding: 9px 14px; border: 1px solid var(--line); border-radius: 999px; background: var(--surface); color: var(--muted); font-size: 11.5px; white-space: nowrap; box-shadow: var(--shadow-xs); }
+    .practice-tag .icon { width: 15px; height: 15px; color: var(--accent); }
+    .practice-tag bdi { color: var(--ink); font-weight: 600; }
+
+    /* ΓöÇΓöÇ Layout ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ */
+    .workspace { display: grid; grid-template-columns: minmax(0, 1fr) minmax(300px, 348px); gap: 18px; flex: 1; min-height: 0; }
+    .card { min-width: 0; border: 1px solid var(--line); border-radius: var(--r-2xl); background: var(--surface); box-shadow: var(--shadow-md); }
+    .practice-card { display: flex; flex-direction: column; overflow: hidden; }
+
+    .section-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex: 0 0 auto; min-height: 58px; padding: 13px 20px; border-bottom: 1px solid var(--line); }
+    .section-title { display: flex; align-items: center; gap: 10px; margin: 0; font-size: 13px; font-weight: 680; letter-spacing: -.1px; white-space: nowrap; }
+    .live-dot { width: 7px; height: 7px; flex: 0 0 auto; border-radius: 50%; background: var(--accent); box-shadow: 0 0 0 4px var(--accent-soft); }
+    .session-label {
+      min-width: 0; max-width: 46%; overflow: hidden; padding: 5px 11px; border-radius: 999px;
+      background: var(--surface-2); color: var(--muted); font-size: 11px; text-overflow: ellipsis; white-space: nowrap;
+    }
+
+    /* ΓöÇΓöÇ Conversation ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ */
+    .session-content { display: flex; flex: 1; min-height: 0; padding: 20px; overflow: hidden; background: linear-gradient(180deg, rgba(246,248,246,.85), rgba(255,255,255,0) 200px); }
+    .welcome { display: grid; place-items: center; flex: 1; min-width: 0; padding: 20px 12px; text-align: center; overflow-y: auto; }
+    .welcome-art {
+      width: 74px; height: 74px; display: grid; place-items: center; margin: 0 auto 18px; border-radius: 23px;
+      color: #fff; background: var(--grad-mark); box-shadow: 0 16px 34px var(--accent-glow), inset 0 1px 0 rgba(255,255,255,.22);
+    }
+    .welcome-art .icon { width: 30px; height: 30px; stroke-width: 1.5; }
+    .welcome h2 { margin: 0; font-size: 19px; font-weight: 700; letter-spacing: -.4px; }
+    .welcome p { max-width: 370px; margin: 9px auto 0; color: var(--muted); font-size: 12.5px; line-height: 1.8; }
+    .starter { display: inline-block; margin-top: 18px; padding: 10px 16px; border: 1px dashed var(--accent-line); border-radius: var(--r-md); background: var(--accent-soft); color: var(--accent-ink); font-size: 12px; font-weight: 550; line-height: 1.6; }
+
+    .transcript { width: 100%; margin: 0; display: flex; flex-direction: column; gap: 16px; overflow-y: auto; padding: 4px 6px 10px; direction: ltr; scroll-behavior: smooth; scrollbar-gutter: stable; }
+    .transcript:empty { display: none; }
+    .msg { width: fit-content; max-width: 80%; min-width: 0; animation: message-in .28s cubic-bezier(.2,.7,.3,1) both; }
+    @keyframes message-in { from { opacity: 0; transform: translateY(8px) scale(.99); } to { opacity: 1; transform: none; } }
+    .msg.user { align-self: flex-end; }
+    .msg.tutor { align-self: flex-start; }
+    .msg-label {
+      display: inline-flex; align-items: center; gap: 6px; margin: 0 4px 6px; color: var(--muted);
+      font-size: 9.5px; font-weight: 700; letter-spacing: .6px; text-transform: uppercase; line-height: 1.4;
+    }
+    .msg-label::before { content: ""; width: 5px; height: 5px; border-radius: 50%; background: var(--faint); }
+    .msg.user .msg-label { margin-left: auto; }
+    .msg.user .msg-label::before { background: var(--accent); }
+    .msg.tutor .msg-label { margin-right: auto; }
+    .msg-text {
+      padding: 12px 16px; border: 1px solid var(--line); border-radius: var(--r-lg); background: var(--surface); color: var(--ink);
+      font-size: 13px; line-height: 1.75; text-align: start; white-space: pre-wrap; overflow-wrap: anywhere; unicode-bidi: plaintext;
+      box-shadow: var(--shadow-xs);
+    }
+    .msg.user .msg-text { border-color: transparent; border-bottom-right-radius: 6px; color: #fff; background: var(--grad-accent); box-shadow: 0 8px 18px var(--accent-glow); }
+    .msg.tutor .msg-text { border-bottom-left-radius: 6px; }
+    .msg-hints { margin: 8px 0 0; padding: 12px 14px; border: 1px solid var(--sand-line); border-radius: var(--r-md); background: var(--sand-soft); color: var(--sand-ink); }
+    .msg-hints-label { display: block; margin-bottom: 7px; color: var(--sand); font-size: 9.5px; font-weight: 700; letter-spacing: .5px; text-transform: uppercase; }
+    .msg-hints ul { margin: 0; padding-inline-start: 16px; display: grid; gap: 5px; }
+    .msg-hints li { font-size: 11.5px; line-height: 1.7; text-align: start; overflow-wrap: anywhere; unicode-bidi: plaintext; }
+    .msg-hints li::marker { color: var(--sand); }
+
+    /* ΓöÇΓöÇ Controls ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ */
+    .controls { flex: 0 0 auto; padding: 16px 20px 15px; border-top: 1px solid var(--line); background: var(--surface); }
+    .topic-controls { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 10px; align-items: end; margin-bottom: 12px; }
+    .topic-field { display: grid; gap: 6px; min-width: 0; color: var(--ink-2); font-size: 9.5px; font-weight: 700; letter-spacing: .7px; text-transform: uppercase; }
+    .topic-field textarea {
+      width: 100%; min-height: 46px; max-height: 120px; resize: vertical; padding: 11px 13px;
+      border: 1px solid var(--line); border-radius: var(--r-md); color: var(--ink); background: var(--surface-2);
+      font: inherit; font-size: 12.5px; font-weight: 450; letter-spacing: 0; line-height: 1.6; text-transform: none;
+      transition: border-color .16s ease, box-shadow .16s ease, background .16s ease;
+    }
+    .topic-field textarea::placeholder { color: var(--faint); text-transform: none; letter-spacing: 0; }
+    .topic-field textarea:focus-visible { outline: none; border-color: var(--accent); background: var(--surface); box-shadow: 0 0 0 4px var(--accent-soft); }
+    #save-topic-btn { min-height: 42px; color: var(--accent-ink); border-color: var(--accent-line); background: var(--accent-soft); box-shadow: none; letter-spacing: 0; text-transform: none; font-size: 12px; }
+    #save-topic-btn:hover:not(:disabled) { border-color: var(--accent); background: #d8eee4; color: var(--accent-strong); }
+    .toolbar { display: flex; flex-wrap: wrap; align-items: center; gap: 9px; }
+    #record-btn, #stop-btn {
+      min-height: 46px; padding-inline: 20px; color: #fff; border-color: transparent; background: var(--grad-accent);
+      box-shadow: 0 10px 22px var(--accent-glow), inset 0 1px 0 rgba(255,255,255,.16);
+    }
+    #record-btn:hover:not(:disabled) {
+      border-color: transparent; color: #fff; background: linear-gradient(180deg, #1fba92 0%, #0b8767 100%);
+      box-shadow: 0 13px 28px var(--accent-glow), inset 0 1px 0 rgba(255,255,255,.16);
+    }
+    #stop-btn { background: var(--grad-danger); box-shadow: 0 10px 22px rgba(207,69,85,.22), inset 0 1px 0 rgba(255,255,255,.16); }
+    #stop-btn:hover:not(:disabled) { border-color: transparent; color: #fff; filter: brightness(1.05); box-shadow: 0 13px 28px rgba(207,69,85,.26), inset 0 1px 0 rgba(255,255,255,.16); }
+    #replay-btn { color: var(--ink-2); }
+    .control-hint { margin-inline-start: auto; color: var(--faint); font-size: 10.5px; letter-spacing: .1px; }
+    .status { min-height: 17px; margin: 10px 2px 0; color: var(--muted); font-size: 10.5px; line-height: 1.6; overflow-wrap: anywhere; }
+    .status::before { content: ""; display: inline-block; width: 5px; height: 5px; margin-inline-end: 7px; border-radius: 50%; background: var(--accent); vertical-align: middle; }
+    .status.error { color: var(--danger); }
+    .status.error::before { background: var(--danger); }
+    .recording .live-dot { background: var(--danger); box-shadow: 0 0 0 4px var(--danger-soft); animation: live-pulse 1.6s ease-in-out infinite; }
+    .recording #stop-btn .icon { animation: record-pulse 1.2s ease-in-out infinite; }
+    @keyframes record-pulse { 50% { opacity: .35; } }
+    @keyframes live-pulse { 0%, 100% { box-shadow: 0 0 0 3px var(--danger-soft); } 50% { box-shadow: 0 0 0 6px rgba(207,69,85,.20); } }
+
+    /* ΓöÇΓöÇ Side column ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ */
+    .side-column { display: flex; flex-direction: column; gap: 14px; min-height: 0; }
+    .tutor-side { display: flex; flex-direction: column; min-height: 0; flex: 1; overflow: hidden; }
+    .side-heading { display: flex; align-items: center; gap: 9px; margin: 0; font-size: 13px; font-weight: 680; letter-spacing: -.1px; }
+    .side-heading .icon { color: var(--accent); }
+    .side-kicker { color: var(--faint); font-size: 10.5px; }
+    .side-scroll { min-height: 0; overflow-y: auto; padding: 16px; scrollbar-gutter: stable; display: flex; flex-direction: column; gap: 13px; }
+
+    .feedback-empty { padding: 10px 12px; border: 1px dashed var(--line-strong); border-radius: var(--r-md); color: var(--muted); font-size: 11px; line-height: 1.65; }
+    .feedback-empty p { margin: 0; }
+
+    .feedback-block { display: flex; flex-direction: column; gap: 9px; }
+    .block-label { display: flex; align-items: center; gap: 8px; margin: 0; color: var(--ink); font-size: 9.5px; font-weight: 700; letter-spacing: .6px; text-transform: uppercase; }
+    .block-label .icon { width: 15px; height: 15px; color: var(--accent); }
+    .grammar {
+      padding: 13px 15px; border: 1px solid var(--sand-line); border-radius: var(--r-md); background: var(--sand-soft); color: var(--sand-ink);
+      font-size: 11.5px; line-height: 1.85; white-space: pre-wrap; overflow-wrap: anywhere; text-align: start; unicode-bidi: plaintext;
+    }
+    .examples { margin: 0; padding: 0; display: grid; gap: 8px; list-style: none; counter-reset: examples; }
+    .examples li {
+      position: relative; padding: 11px 13px 11px 42px; border: 1px solid var(--line); border-radius: var(--r-md);
+      background: var(--surface); color: var(--ink-2); box-shadow: var(--shadow-xs);
+      font-size: 11.5px; line-height: 1.75; text-align: start; white-space: pre-wrap; overflow-wrap: anywhere; unicode-bidi: plaintext;
+      counter-increment: examples;
+    }
+    .examples li::before {
+      content: counter(examples, decimal-leading-zero); position: absolute; left: 12px; top: 12px; padding: 2px 6px;
+      border-radius: 6px; background: var(--accent-soft); color: var(--accent-ink); font-size: 9px; font-weight: 700; letter-spacing: .5px;
+    }
+
+    .turn-detail { border: 1px solid var(--line); border-radius: var(--r-md); background: var(--surface-2); }
+    summary { cursor: pointer; list-style: none; }
+    summary::-webkit-details-marker { display: none; }
+    .turn-detail summary, .learning-side summary { display: flex; align-items: center; gap: 9px; color: var(--ink-2); font-size: 10.5px; font-weight: 650; letter-spacing: .3px; text-transform: uppercase; }
+    .turn-detail summary { padding: 11px 13px; }
+    .chevron { width: 14px; height: 14px; margin-inline-start: auto; color: var(--faint); transition: transform .18s ease; }
+    details[open] > summary .chevron { transform: rotate(180deg); }
+    .you-bubble {
+      margin: 0; padding: 11px 13px; border: 1px solid var(--line); border-radius: var(--r-sm);
+      background: var(--surface-2); color: var(--ink-2);
+      font-size: 11.5px; line-height: 1.8; white-space: pre-wrap; overflow-wrap: anywhere; text-align: start; unicode-bidi: plaintext;
+    }
+
+    /* ΓöÇΓöÇ Learning card ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ */
+    .learning-side { flex: 0 0 auto; padding: 0 16px; }
+    .learning-side summary { padding: 14px 0; color: var(--ink); font-size: 11.5px; text-transform: none; letter-spacing: 0; }
+    .learning-side summary > .icon:first-child { color: var(--accent); }
+    .learned-count { order: 2; margin-inline-start: auto; min-width: 22px; padding: 3px 8px; border-radius: 999px; background: var(--accent-soft); color: var(--accent-ink); font-size: 10px; font-weight: 700; text-align: center; }
+    .learning-side summary .chevron { order: 3; margin-inline-start: 0; }
+    .learned-issues { max-height: 190px; overflow-y: auto; margin: 0 0 14px; padding: 0; display: grid; gap: 8px; list-style: none; }
+    .learned-issues li { padding: 10px 12px; border: 1px solid var(--accent-line); border-radius: var(--r-sm); background: var(--accent-soft); color: var(--ink-2); font-size: 10.5px; line-height: 1.75; white-space: pre-wrap; overflow-wrap: anywhere; }
+    .learned-rule { display: block; color: var(--accent-ink); font-size: 11px; font-weight: 700; letter-spacing: -.1px; }
+    .learned-example { display: block; direction: ltr; text-align: left; margin-top: 3px; color: var(--muted); }
+    .conv-empty { color: var(--muted); font-size: 10.5px; line-height: 1.7; }
+    .privacy { display: flex; align-items: flex-start; gap: 7px; flex: 0 0 auto; margin: 0 6px; color: var(--faint); font-size: 9.5px; line-height: 1.7; }
+    .privacy .icon { width: 13px; height: 13px; margin-top: 1px; flex: 0 0 auto; }
+
+    /* ΓöÇΓöÇ History panel ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ */
+    .conv-panel {
+      display: none; position: absolute; top: calc(100% + 10px); right: 0; z-index: 20;
+      width: min(400px, calc(100vw - 32px)); padding: 15px; border: 1px solid var(--line); border-radius: var(--r-xl);
+      background: var(--surface); box-shadow: var(--shadow-lg);
+    }
+    .conv-panel.open { display: block; animation: panel-in .18s cubic-bezier(.2,.7,.3,1) both; }
+    @keyframes panel-in { from { opacity: 0; transform: translateY(-6px) scale(.99); } to { opacity: 1; transform: none; } }
+    .panel-caption { margin: 0 0 12px; color: var(--muted); font-size: 11px; line-height: 1.65; }
+    #conv-list { max-height: min(360px, 58dvh); overflow-y: auto; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 6px; list-style: none; }
+    .conv-item { display: flex; align-items: center; gap: 6px; padding: 5px; border: 1px solid transparent; border-radius: var(--r-md); background: var(--surface-2); transition: background .16s ease, border-color .16s ease, box-shadow .16s ease; }
+    .conv-item:hover { border-color: var(--line); background: var(--surface); box-shadow: var(--shadow-xs); }
+    .conv-main { flex: 1; min-width: 0; display: block; min-height: 34px; padding: 7px 10px; overflow: hidden; background: transparent; border-color: transparent; box-shadow: none; text-align: start; text-overflow: ellipsis; white-space: nowrap; font-size: 11px; font-weight: 550; color: var(--ink-2); }
+    .conv-main:hover:not(:disabled) { background: transparent; box-shadow: none; color: var(--ink); }
+    .conv-del { min-height: 30px; padding: 5px 10px; border-color: transparent; color: var(--danger); background: var(--danger-soft); box-shadow: none; font-size: 10px; font-weight: 650; }
+    .conv-del:hover:not(:disabled) { border-color: transparent; background: #f7dbdf; color: #b8384a; }
+    .hidden { display: none !important; }
+
+    @media (max-width: 1100px) {
+      body { padding: 18px; }
+      main { height: calc(100dvh - 38px); gap: 16px; }
+      .workspace { grid-template-columns: minmax(0, 1fr) 300px; gap: 14px; }
+      .session-content { padding: 16px; }
+      .section-head { padding-inline: 16px; min-height: 54px; }
+      .controls { padding-inline: 16px; }
+      .control-hint { display: none; }
+      h1 { font-size: clamp(22px, 2.6vw, 28px); }
+    }
+    @media (max-width: 850px) {
+      body { padding: 16px; }
+      main { height: auto; min-height: calc(100dvh - 34px); gap: 18px; }
+      .workspace { grid-template-columns: 1fr; flex: none; }
+      .practice-card { height: clamp(480px, 66dvh, 740px); }
+      .side-column { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); align-items: start; }
+      .tutor-side { grid-row: span 2; }
+      .side-scroll { max-height: 460px; }
+      .privacy { grid-column: 2; }
+    }
+    @media (max-width: 560px) {
+      body { padding: 12px; }
+      main { min-height: calc(100dvh - 26px); gap: 15px; }
+      .topbar { gap: 10px; padding: 9px 10px; border-radius: var(--r-lg); }
+      .brand-mark { width: 38px; height: 38px; border-radius: 12px; }
+      .brand { gap: 9px; }
+      .brand-name { font-size: 13px; }
+      .brand-caption { font-size: 10px; }
+      .top-actions { gap: 6px; }
+      .top-actions button { width: 38px; min-height: 38px; padding: 8px; }
+      .action-label { display: none; }
+      .page-heading { align-items: flex-start; }
+      .eyebrow { margin-bottom: 8px; font-size: 9.5px; }
+      h1 { font-size: 23px; letter-spacing: -.6px; }
+      .intro { margin-top: 7px; font-size: 11.5px; }
+      .practice-tag { display: none; }
+      .card { border-radius: var(--r-xl); }
+      .practice-card { height: clamp(460px, 70dvh, 650px); }
+      .section-head { min-height: 52px; padding: 11px 14px; }
+      .section-title { font-size: 12px; }
+      .session-label { font-size: 10px; max-width: 44%; }
+      .session-content { padding: 14px 10px; }
+      .msg { max-width: 92%; }
+      .msg-text { font-size: 12px; padding: 10px 13px; }
+      .controls { padding: 12px; }
+      .toolbar { gap: 7px; }
+      .topic-controls { grid-template-columns: minmax(0, 1fr) auto; gap: 7px; }
+      .topic-field { font-size: 9px; }
+      .topic-field textarea { min-height: 43px; padding: 9px; font-size: 11.5px; }
+      #save-topic-btn { min-height: 40px; padding: 8px 10px; font-size: 11px; }
+      #record-btn, #stop-btn { min-height: 44px; flex: 1; padding-inline: 12px; font-size: 11.5px; }
+      #replay-btn { padding-inline: 10px; font-size: 10.5px; }
+      .status { font-size: 9.5px; }
+      .welcome h2 { font-size: 17px; }
+      .welcome p { font-size: 11.5px; }
+      .starter { font-size: 10.5px; }
+      .side-column { display: flex; }
+      .side-scroll { max-height: none; padding: 15px; }
+      .learning-side, .tutor-side { width: 100%; }
+      .privacy { margin-bottom: 8px; }
+    }
+    @media (prefers-color-scheme: dark) {
+      :root {
+        --bg: #0d1211;
+        --surface: #151a19;
+        --surface-2: #1a201e;
+        --surface-3: #212824;
+        --ink: #ecf0ee;
+        --ink-2: #c3ccc9;
+        --muted: #8e9995;
+        --faint: #6c7673;
+        --line: #26302c;
+        --line-strong: #38433f;
+        --accent: #3ec49b;
+        --accent-strong: #58d3ab;
+        --accent-ink: #82e2c1;
+        --accent-soft: #16302a;
+        --accent-line: #25463c;
+        --accent-glow: rgba(62,196,155,.22);
+        --grad-accent: linear-gradient(180deg, #22b489 0%, #0e8262 100%);
+        --grad-mark: linear-gradient(145deg, #26bb92 0%, #0c7059 100%);
+        --sand: #e0c48c;
+        --sand-ink: #e8d6b0;
+        --sand-soft: #2a2519;
+        --sand-line: #453f31;
+        --danger: #f18495;
+        --danger-soft: #3a2027;
+        --grad-danger: linear-gradient(180deg, #e2606f 0%, #c33a4c 100%);
+        --shadow-xs: 0 1px 2px rgba(0,0,0,.3);
+        --shadow-sm: 0 2px 8px rgba(0,0,0,.3);
+        --shadow-md: 0 14px 34px rgba(0,0,0,.36);
+        --shadow-lg: 0 28px 66px rgba(0,0,0,.55);
+      }
+      body { background: radial-gradient(900px 420px at 10% -10%, rgba(62,196,155,.10), transparent 60%), radial-gradient(760px 380px at 98% 2%, rgba(224,196,140,.06), transparent 62%), var(--bg); }
+      .topbar { background: rgba(21,26,25,.86); }
+      .msg-hints { color: var(--sand-ink); }
+      .conv-del:hover:not(:disabled) { background: #4a2a31; color: #ffb3bd; }
+      #save-topic-btn:hover:not(:disabled) { background: #1c3a31; color: var(--accent-strong); }
+    }
+    .mode-nav { display: flex; gap: 8px; flex: 0 0 auto; }
+    .mode-nav button { min-height: 36px; padding: 7px 13px; }
+    .mode-nav button.active { border-color: var(--accent-line); color: var(--accent-ink); background: var(--accent-soft); box-shadow: none; }
+    .practice-setup { flex: 1; min-height: 0; overflow: auto; padding: clamp(22px, 5vw, 64px); border: 1px solid var(--line); border-radius: var(--r-2xl); background: var(--surface); box-shadow: var(--shadow-md); }
+    .practice-setup-inner { width: min(100%, 760px); margin: 0 auto; }
+    .practice-setup h1 { margin: 0; font-size: clamp(25px, 4vw, 38px); }
+    .practice-setup p { color: var(--muted); font-size: 13px; line-height: 1.75; }
+    .practice-options { display: flex; flex-wrap: wrap; gap: 9px; margin: 24px 0; }
+    .practice-options button { min-height: 42px; }
+    #saved-practice-options { display: grid; grid-template-columns: minmax(0, 1fr); gap: 10px; max-height: min(48vh, 460px); overflow-y: auto; align-content: start; margin: 14px 0 0; padding: 3px 10px 3px 2px; scrollbar-gutter: stable; }
+    #saved-practice-options .saved-issue { width: 100%; min-width: 0; min-height: 0; display: grid; justify-items: stretch; gap: 9px; padding: 13px 15px; border: 1px solid var(--line); border-radius: var(--r-lg); background: var(--surface); text-align: start; white-space: normal; box-shadow: var(--shadow-xs); }
+    #saved-practice-options .saved-issue:hover { border-color: var(--accent-line); background: var(--surface-2); box-shadow: var(--shadow-sm); }
+    .saved-issue-title { color: var(--ink); font-size: 12px; font-weight: 700; line-height: 1.5; overflow-wrap: anywhere; }
+    .saved-issue-examples { display: grid; gap: 4px; color: var(--muted); font-size: 10.5px; line-height: 1.55; }
+    .saved-issue-example { overflow-wrap: anywhere; }
+    .saved-issue-example b { color: var(--ink-2); font-weight: 650; }
+    .saved-issue-progress-meta { display: flex; justify-content: space-between; gap: 10px; color: var(--accent-ink); font-size: 10px; font-weight: 700; }
+    .saved-issue-progress-track { height: 5px; overflow: hidden; border-radius: 999px; background: var(--surface-3); }
+    .saved-issue-progress-fill { height: 100%; border-radius: inherit; background: var(--grad-accent); transition: width .25s ease; }
+    .practice-custom { display: grid; gap: 8px; margin-top: 24px; color: var(--ink-2); font-size: 11px; font-weight: 650; }
+    .practice-custom textarea { min-height: 90px; resize: vertical; padding: 12px; border: 1px solid var(--line); border-radius: var(--r-md); background: var(--surface-2); color: var(--ink); font: inherit; font-size: 13px; line-height: 1.6; }
+    #begin-practice-btn { margin-top: 14px; color: white; border-color: transparent; background: var(--grad-accent); }
+    .practice-setup .saved-heading { margin-top: 28px; color: var(--ink-2); font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: .5px; }
+    .practice-mode .topic-controls { display: none; }
+    .practice-progress-panel { display: grid; gap: 9px; flex: 0 0 auto; margin: 12px 18px 0; padding: 13px 16px; border: 1px solid var(--accent-line); border-radius: var(--r-lg); background: var(--accent-soft); }
+    .practice-progress-heading { margin: 0; color: var(--accent-ink); font-size: 11px; font-weight: 700; }
+    .practice-progress-meta { display: flex; justify-content: space-between; align-items: baseline; gap: 12px; min-width: 0; }
+    .practice-progress-topic { overflow: hidden; color: var(--ink-2); font-size: 11px; font-weight: 600; text-overflow: ellipsis; white-space: nowrap; }
+    .practice-progress-count { flex: 0 0 auto; color: var(--accent-ink); font-size: 11px; font-weight: 750; }
+    .practice-progress-track { height: 8px; overflow: hidden; border-radius: 999px; background: var(--surface); }
+    .practice-progress-fill { width: 0; height: 100%; border-radius: inherit; background: var(--grad-accent); transition: width .3s ease; }
+    .practice-progress-note { margin: 0; color: var(--muted); font-size: 10px; line-height: 1.5; }
+    @media (max-width: 560px) { .mode-nav { gap: 5px; } .mode-nav button { min-height: 34px; padding: 6px 9px; font-size: 10.5px; } .practice-setup { padding: 22px 16px; } }
+  </style>
+</head>
+<body>
+  <svg class="icon-defs" xmlns="http://www.w3.org/2000/svg" aria-hidden="true"><defs>
+    <symbol id="i-chat" viewBox="0 0 24 24"><path d="M21 11.5a8.5 8.5 0 0 1-8.5 8.5H4l-2 2V11.5A8.5 8.5 0 0 1 10.5 3h2a8.5 8.5 0 0 1 8.5 8.5Z"/><path d="M7 10h9M7 14h6"/></symbol>
+    <symbol id="i-mic" viewBox="0 0 24 24"><rect x="9" y="2" width="6" height="12" rx="3"/><path d="M5 10v2a7 7 0 0 0 14 0v-2M12 19v3M8 22h8"/></symbol>
+    <symbol id="i-plus" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></symbol>
+    <symbol id="i-history" viewBox="0 0 24 24"><path d="M3 11a9 9 0 1 1 2.6 7.4M3 4v7h7M12 7v5l3 2"/></symbol>
+    <symbol id="i-spark" viewBox="0 0 24 24"><path d="m12 3 2.5 6.5L21 12l-6.5 2.5L12 21l-2.5-6.5L3 12l6.5-2.5ZM20 2v4M18 4h4"/></symbol>
+    <symbol id="i-book" viewBox="0 0 24 24"><path d="M12 5c-3-2-6-2-10-1v15c4-1 7-1 10 1 3-2 6-2 10-1V4c-4-1-7-1-10 1Zm0 0v15"/></symbol>
+    <symbol id="i-check" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="m8 12 3 3 5-6"/></symbol>
+    <symbol id="i-chevron" viewBox="0 0 24 24"><path d="m6 9 6 6 6-6"/></symbol>
+    <symbol id="i-replay" viewBox="0 0 24 24"><path d="M3 10a9 9 0 1 1 2 8M3 3v7h7"/><path d="m11 8 5 4-5 4Z"/></symbol>
+    <symbol id="i-stop" viewBox="0 0 24 24"><rect x="6" y="6" width="12" height="12" rx="2"/></symbol>
+    <symbol id="i-shield" viewBox="0 0 24 24"><path d="m12 3 8 3v6c0 5-8 9-8 9s-8-4-8-9V6Z"/><path d="m8 12 3 3 5-6"/></symbol>
+  </defs></svg>
+  <main>
+    <header class="topbar">
+      <div class="brand">
+        <div class="brand-mark" aria-hidden="true"><svg class="icon"><use href="#i-chat"/></svg></div>
+        <div><p class="brand-name" dir="ltr">Language Tutor</p><p class="brand-caption">Your English practice companion</p></div>
+      </div>
+      <div class="top-actions">
+        <nav class="mode-nav" aria-label="Practice mode">
+          <button id="general-mode-btn" type="button" class="active" aria-pressed="true">Conversation</button>
+          <button id="practice-mode-btn" type="button" aria-pressed="false">Practise a difficulty</button>
+          <button id="learned-mode-btn" type="button" aria-pressed="false">Review learned topics</button>
+        </nav>
+        <button id="new-conv-btn" type="button" aria-label="New conversation" title="New conversation"><svg class="icon" aria-hidden="true"><use href="#i-plus"/></svg><span class="action-label">New conversation</span></button>
+        <button id="conv-btn" type="button" aria-label="Conversation history" title="Conversation history" aria-expanded="false" aria-controls="conv-panel"><svg class="icon" aria-hidden="true"><use href="#i-history"/></svg><span class="action-label">Conversation history</span></button>
+        <div id="conv-panel" class="conv-panel" role="region" aria-label="Conversation history">
+          <p class="panel-caption">Choose a conversation to pick up where you left off.</p>
+          <ul id="conv-list"></ul>
+        </div>
+      </div>
+    </header>
+
+    <section id="practice-setup" class="practice-setup hidden" aria-label="Choose a difficulty to practise">
+      <div class="practice-setup-inner">
+        <p class="eyebrow">FOCUSED PRACTICE</p>
+        <h1>What would you like to get better at?</h1>
+        <p>Choose a tricky English skill or describe your own. Your Practice Coach will keep the conversation focused, explain things simply, and help you practise one step at a time.</p>
+        <p class="saved-heading">Try a popular topic</p>
+        <div class="practice-options" id="practice-options">
+          <button type="button" data-topic="English past tense">Past tense</button>
+          <button type="button" data-topic="English articles: a, an, and the">A, an, and the</button>
+          <button type="button" data-topic="English prepositions">Prepositions</button>
+          <button type="button" data-topic="English pronunciation">Pronunciation</button>
+          <button type="button" data-topic="Speaking with confidence">Speaking with confidence</button>
+        </div>
+        <div id="active-topics-section">
+          <p class="saved-heading">Active challenges to practise</p>
+          <div class="practice-options" id="saved-practice-options" aria-label="Active challenges"><span class="conv-empty">Loading your active challengesΓÇª</span></div>
+        </div>
+        <div id="learned-topics-section" class="hidden">
+          <p class="saved-heading">Learned topics</p>
+          <div class="practice-options" id="learned-practice-options"><span class="conv-empty">Loading learned topicsΓÇª</span></div>
+        </div>
+        <label class="practice-custom" for="custom-practice-topic">Or describe the difficulty in your own words
+          <textarea id="custom-practice-topic" maxlength="1000" placeholder="For example: IΓÇÖm not sure when to use the present perfect."></textarea>
+        </label>
+        <button id="begin-practice-btn" type="button">Start focused practice</button>
+        <p id="practice-status" class="status" role="status" aria-live="polite">You can switch back to ordinary conversation whenever you like.</p>
+      </div>
+    </section>
+
+    <div id="conversation-workspace" class="workspace">
+      <section class="card practice-card" aria-label="Conversation practice">
+        <div class="section-head">
+          <h2 id="conversation-section-title" class="section-title"><span class="live-dot" aria-hidden="true"></span>Your conversation</h2>
+          <bdi id="conv-title" class="session-label" style="display:none"></bdi>
+        </div>
+        <section class="practice-progress-panel hidden" id="practice-progress-panel" aria-label="Focused practice progress" aria-live="polite">
+          <p class="practice-progress-heading">Your progress toward learning this difficulty</p>
+          <div class="practice-progress-meta">
+            <span class="practice-progress-topic" id="practice-progress-topic"></span>
+            <span class="practice-progress-count" id="practice-progress-count">0 of 5</span>
+          </div>
+          <div class="practice-progress-track" id="practice-progress-track" role="progressbar" aria-label="Consecutive correct answers toward learning this difficulty" aria-valuemin="0" aria-valuemax="5" aria-valuenow="0">
+            <div class="practice-progress-fill" id="practice-progress-fill"></div>
+          </div>
+          <p class="practice-progress-note" id="practice-progress-note">Five consecutive correct answers will complete this skill.</p>
+        </section>
+        <div class="session-content">
+          <div id="welcome-state" class="welcome">
+            <div><h2>Start speaking to begin</h2></div>
+          </div>
+          <div id="transcript" class="transcript" role="log" aria-label="Conversation transcript" aria-live="polite"></div>
+        </div>
+        <div class="controls">
+          <div class="topic-controls">
+            <label class="topic-field" for="conversation-topic">
+              Topic or description for this conversation
+              <textarea id="conversation-topic" maxlength="1000" placeholder="For example: ordering at a restaurant, a job interview, or a trip to London"></textarea>
+            </label>
+            <button id="save-topic-btn" type="button">Save topic</button>
+          </div>
+          <div class="toolbar">
+            <button id="record-btn" type="button"><svg class="icon" aria-hidden="true"><use href="#i-mic"/></svg>Start speaking</button>
+            <button id="stop-btn" type="button" class="hidden"><svg class="icon" aria-hidden="true"><use href="#i-stop"/></svg>Stop and send</button>
+            <button id="replay-btn" type="button" class="hidden"><svg class="icon" aria-hidden="true"><use href="#i-replay"/></svg>Play again</button>
+            <span class="control-hint">Your voice, your pace</span>
+          </div>
+          <p id="status" class="status" role="status" aria-live="polite">Tap the microphone whenever you are ready.</p>
+        </div>
+      </section>
+
+      <aside class="side-column" aria-label="Practice guide">
+        <section class="card tutor-side">
+          <div class="section-head">
+            <h2 class="side-heading"><svg class="icon" aria-hidden="true"><use href="#i-spark"/></svg>Coach guide</h2>
+          </div>
+          <div class="side-scroll">
+            <div class="feedback-empty"><p>Coach tips appear after you speak.</p></div>
+            <section class="feedback-block" aria-label="Grammar tip">
+              <h3 class="block-label"><svg class="icon" aria-hidden="true"><use href="#i-spark"/></svg>This turnΓÇÖs tip</h3>
+              <div id="grammar" class="grammar" dir="auto"></div>
+            </section>
+            <section class="feedback-block" aria-label="Suggested phrases">
+              <h3 class="block-label"><svg class="icon" aria-hidden="true"><use href="#i-chat"/></svg>You could also say it this way</h3>
+              <ul id="examples" class="examples"></ul>
+            </section>
+            <section class="feedback-block" aria-label="Your last turn">
+              <h3 class="block-label">Your last turn</h3>
+              <div id="you-said" class="you-bubble" dir="auto">Nothing recorded yet.</div>
+            </section>
+          </div>
+        </section>
+
+        <details class="card learning-side">
+          <summary><svg class="icon" aria-hidden="true"><use href="#i-check"/></svg>What you have learned<span id="learned-count" class="learned-count" aria-label="Learned items">0</span><svg class="icon chevron" aria-hidden="true"><use href="#i-chevron"/></svg></summary>
+          <ul id="learned-issues" class="learned-issues"><li class="conv-empty">No tips saved yet.</li></ul>
+        </details>
+        <p class="privacy"><svg class="icon" aria-hidden="true"><use href="#i-shield"/></svg><span>Audio is processed and played using the STT and TTS models selected in Mocu settings.</span></p>
+      </aside>
+    </div>
+  </main>
+
+  <script src="./vendor/mocu-ui.js"></script>
+  <script>
+    (() => {
+      "use strict";
+
+      const practiceModeBtn = document.getElementById("practice-mode-btn");
+      const generalModeBtn = document.getElementById("general-mode-btn");
+      const learnedModeBtn = document.getElementById("learned-mode-btn");
+      const practiceSetup = document.getElementById("practice-setup");
+      const conversationWorkspace = document.getElementById("conversation-workspace");
+      const customPracticeTopic = document.getElementById("custom-practice-topic");
+      const beginPracticeBtn = document.getElementById("begin-practice-btn");
+      const practiceStatus = document.getElementById("practice-status");
+      const savedPracticeOptions = document.getElementById("saved-practice-options");
+      const learnedPracticeOptions = document.getElementById("learned-practice-options");
+      const activeTopicsSection = document.getElementById("active-topics-section");
+      const learnedTopicsSection = document.getElementById("learned-topics-section");
+      const recordBtn = document.getElementById("record-btn");
+      const stopBtn = document.getElementById("stop-btn");
+      const replayBtn = document.getElementById("replay-btn");
+      const newConvBtn = document.getElementById("new-conv-btn");
+      const convBtn = document.getElementById("conv-btn");
+      const convPanel = document.getElementById("conv-panel");
+      const convList = document.getElementById("conv-list");
+      const convTitleEl = document.getElementById("conv-title");
+      const conversationSectionTitle = document.getElementById("conversation-section-title");
+      const topicInput = document.getElementById("conversation-topic");
+      const saveTopicBtn = document.getElementById("save-topic-btn");
+      const transcriptEl = document.getElementById("transcript");
+      const welcomeState = document.getElementById("welcome-state");
+      const statusEl = document.getElementById("status");
+      const youSaidEl = document.getElementById("you-said");
+      const grammarEl = document.getElementById("grammar");
+      const examplesEl = document.getElementById("examples");
+      const grammarBlock = grammarEl.closest(".feedback-block");
+      const examplesBlock = examplesEl.closest(".feedback-block");
+      const feedbackEmpty = document.querySelector(".feedback-empty");
+      const learnedIssuesEl = document.getElementById("learned-issues");
+      const learnedCountEl = document.getElementById("learned-count");
+      const practiceProgressPanel = document.getElementById("practice-progress-panel");
+      const practiceProgressTopic = document.getElementById("practice-progress-topic");
+      const practiceProgressCount = document.getElementById("practice-progress-count");
+      const practiceProgressTrack = document.getElementById("practice-progress-track");
+      const practiceProgressFill = document.getElementById("practice-progress-fill");
+      const practiceProgressNote = document.getElementById("practice-progress-note");
+
+      let mediaRecorder = null;
+      let audioChunks = [];
+      let stream = null;
+      let conversationId = "";
+      let lastTts = null;
+      let currentAudio = null;
+      let appMode = "general";
+      let selectedPracticeTopic = "";
+      let selectedPracticeIssueId = "";
+      let showingLearnedTopics = false;
+      let latestLearnerProgress = null;
+
+      function setStatus(message, isError = false) {
+        statusEl.textContent = message;
+        statusEl.classList.toggle("error", Boolean(isError));
+      }
+
+      function renderPracticeProgress(learnerProgress) {
+        if (learnerProgress && Array.isArray(learnerProgress.issues)) latestLearnerProgress = learnerProgress;
+        if (appMode !== "practice") {
+          practiceProgressPanel.classList.add("hidden");
+          return;
+        }
+        const progress = learnerProgress && Array.isArray(learnerProgress.issues)
+          ? learnerProgress
+          : latestLearnerProgress;
+        const activeId = selectedPracticeIssueId
+          || (progress && typeof progress.activePracticeIssueId === "string" ? progress.activePracticeIssueId : "");
+        const issues = progress && Array.isArray(progress.issues) ? progress.issues : [];
+        const issue = issues.find((item) => item && item.id === activeId);
+        const rawStreak = issue && Number.isFinite(Number(issue.correctStreak)) ? Number(issue.correctStreak) : 0;
+        const streak = Math.max(0, Math.min(5, rawStreak));
+        practiceProgressTopic.textContent = issue && (issue.rule || issue.id)
+          ? (issue.rule || issue.id)
+          : (selectedPracticeTopic || "Skill progress will appear here");
+        practiceProgressCount.textContent = streak + " of 5";
+        practiceProgressTrack.setAttribute("aria-valuenow", String(streak));
+        practiceProgressFill.style.width = (streak / 5 * 100) + "%";
+        practiceProgressNote.textContent = issue
+          ? "Five consecutive correct answers will complete this skill. Two mistakes in a row reset the count."
+          : "Your coach will track this difficulty as soon as a specific skill is identified.";
+        practiceProgressPanel.classList.toggle("hidden", !selectedPracticeTopic);
+      }
+
+      function updateGuideVisibility() {
+        const hasGrammar = Boolean(grammarEl.textContent.trim());
+        const hasExamples = examplesEl.children.length > 0;
+        const hasUserTurn = Boolean(youSaidEl.textContent.trim()) && !["Nothing recorded yet.", "No speech recorded yet.", "ΓÇö"].includes(youSaidEl.textContent.trim());
+        grammarBlock.classList.toggle("hidden", !hasGrammar);
+        examplesBlock.classList.toggle("hidden", !hasExamples);
+        feedbackEmpty.classList.toggle("hidden", hasGrammar || hasExamples || hasUserTurn);
+      }
+
+      function renderTranscript(messages) {
+        transcriptEl.textContent = "";
+        const validMessages = Array.isArray(messages)
+          ? messages.filter((message) => message && typeof message.text === "string" && message.text.trim())
+          : [];
+        welcomeState.classList.toggle("hidden", validMessages.length > 0);
+        for (const message of validMessages) {
+          const div = document.createElement("div");
+          div.className = "msg " + (message.role === "user" ? "user" : "tutor");
+          const label = document.createElement("span");
+          label.className = "msg-label";
+          label.dir = "ltr";
+          label.textContent = message.role === "user" ? "You" : "Coach";
+          const text = document.createElement("div");
+          text.className = "msg-text";
+          text.dir = "auto";
+          text.textContent = message.text;
+          div.append(label, text);
+          const hints = Array.isArray(message.hints)
+            ? message.hints.filter((hint) => typeof hint === "string" && hint.trim()).slice(0, 3)
+            : [];
+          if (message.role !== "user" && hints.length) {
+            const hintBox = document.createElement("div");
+            hintBox.className = "msg-hints";
+            const hintLabel = document.createElement("span");
+            hintLabel.className = "msg-hints-label";
+            hintLabel.textContent = "Hints to help you remember";
+            const hintList = document.createElement("ul");
+            for (const hint of hints) {
+              const item = document.createElement("li");
+              item.dir = "auto";
+              item.textContent = hint.trim();
+              hintList.appendChild(item);
+            }
+            hintBox.append(hintLabel, hintList);
+            div.appendChild(hintBox);
+          }
+          transcriptEl.appendChild(div);
+        }
+        if (validMessages.length) transcriptEl.scrollTop = transcriptEl.scrollHeight;
+      }
+      function switchMode(mode) {
+        const previousMode = appMode;
+        appMode = mode === "practice" ? "practice" : "general";
+        if (previousMode === "practice" && appMode === "general") {
+          conversationId = "";
+          topicInput.value = "";
+          convTitleEl.style.display = "none";
+          renderTranscript([]);
+          grammarEl.textContent = "";
+          examplesEl.textContent = "";
+          youSaidEl.textContent = "Nothing recorded yet.";
+          updateGuideVisibility();
+        }
+        const choosingTopic = appMode === "practice" && !selectedPracticeTopic;
+        practiceSetup.classList.toggle("hidden", !choosingTopic);
+        conversationWorkspace.classList.toggle("hidden", choosingTopic);
+        document.body.classList.toggle("practice-mode", appMode === "practice" && !choosingTopic);
+        activeTopicsSection.classList.toggle("hidden", showingLearnedTopics);
+        learnedTopicsSection.classList.toggle("hidden", !showingLearnedTopics);
+        practiceModeBtn.classList.toggle("active", appMode === "practice" && !showingLearnedTopics);
+        learnedModeBtn.classList.toggle("active", appMode === "practice" && showingLearnedTopics);
+        generalModeBtn.classList.toggle("active", appMode === "general");
+        practiceModeBtn.setAttribute("aria-pressed", String(appMode === "practice" && !showingLearnedTopics));
+        learnedModeBtn.setAttribute("aria-pressed", String(appMode === "practice" && showingLearnedTopics));
+        generalModeBtn.setAttribute("aria-pressed", String(appMode === "general"));
+        newConvBtn.classList.toggle("hidden", appMode === "practice");
+        convBtn.classList.toggle("hidden", appMode === "practice");
+        conversationSectionTitle.innerHTML = appMode === "practice"
+          ? '<span class="live-dot" aria-hidden="true"></span>Focused practice'
+          : '<span class="live-dot" aria-hidden="true"></span>Your conversation';
+        renderPracticeProgress(latestLearnerProgress);
+        if (appMode === "practice") {
+          refreshPracticeChallenges();
+          refreshLearnedPracticeTopics();
+        }
+      }
+      async function refreshPracticeChallenges() {
+        savedPracticeOptions.textContent = "";
+        try {
+          const result = await window.mocu.extension.execute("getLearningProgress", {});
+          renderPracticeProgress(result && result.learnerProgress);
+          const issues = result && result.learnerProgress && Array.isArray(result.learnerProgress.issues)
+            ? result.learnerProgress.issues
+            : [];
+          const activeIssues = issues.filter((issue) => issue && issue.mastered !== true);
+          if (!activeIssues.length) {
+            const empty = document.createElement("span");
+            empty.className = "conv-empty";
+            empty.textContent = "No active challenges right now. Choose a popular topic above, or review learned topics in Conversation.";
+            savedPracticeOptions.appendChild(empty);
+            return;
+          }
+          for (const issue of activeIssues) {
+            const button = document.createElement("button");
+            button.type = "button";
+            button.className = "saved-issue";
+            button.title = issue.explanation || issue.correction || issue.rule || issue.id;
+            const issueLabel = issue.rule || issue.id;
+            const title = document.createElement("span");
+            title.className = "saved-issue-title";
+            title.textContent = issueLabel;
+            const examples = document.createElement("span");
+            examples.className = "saved-issue-examples";
+            if (issue.original) {
+              const original = document.createElement("span");
+              original.className = "saved-issue-example";
+              const label = document.createElement("b");
+              label.textContent = "You said: ";
+              original.append(label, document.createTextNode(issue.original));
+              examples.appendChild(original);
+            }
+            if (issue.correction) {
+              const correction = document.createElement("span");
+              correction.className = "saved-issue-example";
+              const label = document.createElement("b");
+              label.textContent = "Better: ";
+              correction.append(label, document.createTextNode(issue.correction));
+              examples.appendChild(correction);
+            }
+            const streak = Math.max(0, Math.min(5, Number(issue.correctStreak) || 0));
+            const progressMeta = document.createElement("span");
+            progressMeta.className = "saved-issue-progress-meta";
+            const progressLabel = document.createElement("span");
+            progressLabel.textContent = "Progress";
+            const progressCount = document.createElement("span");
+            progressCount.textContent = streak + "/5 consecutive wins";
+            progressMeta.append(progressLabel, progressCount);
+            const progressTrack = document.createElement("span");
+            progressTrack.className = "saved-issue-progress-track";
+            progressTrack.setAttribute("role", "progressbar");
+            progressTrack.setAttribute("aria-label", "Challenge progress");
+            progressTrack.setAttribute("aria-valuemin", "0");
+            progressTrack.setAttribute("aria-valuemax", "5");
+            progressTrack.setAttribute("aria-valuenow", String(streak));
+            const progressFill = document.createElement("span");
+            progressFill.className = "saved-issue-progress-fill";
+            progressFill.style.display = "block";
+            progressFill.style.width = (streak / 5 * 100) + "%";
+            progressTrack.appendChild(progressFill);
+            button.append(title, examples, progressMeta, progressTrack);
+            button.setAttribute("aria-label", issueLabel + ", progress " + streak + " out of 5. Click to practise.");
+            button.addEventListener("click", () => {
+              const context = [
+                issueLabel,
+                issue.original ? "Learner's example: " + issue.original : "",
+                issue.correction ? "Corrected example: " + issue.correction : "",
+                issue.explanation ? "What to practise: " + issue.explanation : "",
+              ].filter(Boolean).join("\n");
+              selectPracticeTopic(context, issue.id);
+              beginFocusedPractice();
+            });
+            savedPracticeOptions.appendChild(button);
+          }
+        } catch (error) {
+          const empty = document.createElement("span");
+          empty.className = "conv-empty";
+          empty.textContent = "Could not load active challenges: "
+            + (error && error.message ? error.message : error)
+            + ". You can still choose or describe a topic.";
+          savedPracticeOptions.appendChild(empty);
+        }
+      }
+
+      async function refreshLearnedPracticeTopics() {
+        learnedPracticeOptions.textContent = "";
+        try {
+          const result = await window.mocu.extension.execute("getLearningProgress", {});
+          const issues = result && result.learnerProgress && Array.isArray(result.learnerProgress.issues)
+            ? result.learnerProgress.issues.filter((issue) => issue && issue.mastered === true)
+            : [];
+          if (!issues.length) {
+            const empty = document.createElement("span");
+            empty.className = "conv-empty";
+            empty.textContent = "No learned topics yet. Keep practising and five consecutive correct attempts will move a challenge here.";
+            learnedPracticeOptions.appendChild(empty);
+            return;
+          }
+          for (const issue of issues.slice(0, 12)) {
+            const button = document.createElement("button");
+            button.type = "button";
+            button.className = "saved-issue";
+            const label = issue.rule || issue.id;
+            button.textContent = [label, issue.correction ? "Better: " + issue.correction : "", "Learned ┬╖ review occasionally in Conversation"].filter(Boolean).join("\n");
+            button.title = issue.explanation || issue.correction || label;
+            learnedPracticeOptions.appendChild(button);
+          }
+        } catch (error) {
+          const empty = document.createElement("span");
+          empty.className = "conv-empty";
+          empty.textContent = "Could not load learned topics: " + (error && error.message ? error.message : error);
+          learnedPracticeOptions.appendChild(empty);
+        }
+      }
+
+      function selectPracticeTopic(topic, issueId = "") {
+        selectedPracticeTopic = typeof topic === "string" ? topic.trim().slice(0, 1000) : "";
+        selectedPracticeIssueId = issueId;
+        customPracticeTopic.value = selectedPracticeTopic;
+        renderPracticeProgress(latestLearnerProgress);
+        practiceStatus.textContent = selectedPracticeTopic ? "Ready to practise: " + selectedPracticeTopic : "Choose a difficulty to begin.";
+        practiceStatus.classList.remove("error");
+      }
+
+      async function beginFocusedPractice() {
+        const topic = (customPracticeTopic.value || selectedPracticeTopic).trim().slice(0, 1000);
+        if (!topic) {
+          practiceStatus.textContent = "Choose a topic or describe your difficulty first.";
+          practiceStatus.classList.add("error");
+          customPracticeTopic.focus();
+          return;
+        }
+        selectedPracticeTopic = topic;
+        practiceStatus.textContent = "Your Practice Coach is getting readyΓÇª";
+        practiceStatus.classList.remove("error");
+        beginPracticeBtn.disabled = true;
+        try {
+          const result = await window.mocu.extension.execute("tutor", {
+            mode: "practice", start: true, topic, practiceIssueId: selectedPracticeIssueId, text: "", conversationId: undefined,
+          });
+          conversationId = result && typeof result.conversationId === "string" ? result.conversationId : "";
+          renderPracticeProgress(result && result.learnerProgress);
+          const conv = await window.mocu.extension.execute("getConversation", { id: conversationId });
+          setConversation(conv.id, conv.title, conv.messages, conv.topic);
+          switchMode("practice");
+          grammarEl.textContent = "";
+          examplesEl.textContent = "";
+          youSaidEl.textContent = "Nothing recorded yet.";
+          updateGuideVisibility();
+          const assistantReply = [...(conv.messages || [])].reverse().find((message) => message.role !== "user");
+          if (assistantReply && assistantReply.text) {
+            setStatus("Your Practice Coach has started the session. Speak whenever you are ready.");
+            const tts = await window.mocu.extension.execute("speak", { text: assistantReply.text });
+            lastTts = { audio: tts.audio, mimeType: tts.mimeType };
+            replayBtn.classList.remove("hidden");
+            if (lastTts.audio) await playAudio(await base64ToAudio(lastTts.audio, lastTts.mimeType));
+          }
+        } catch (error) {
+          practiceStatus.textContent = "Could not start focused practice: " + (error && error.message ? error.message : error);
+          practiceStatus.classList.add("error");
+        } finally {
+          beginPracticeBtn.disabled = false;
+        }
+      }
+
+      function setConversation(id, title, messages, topic = "") {
+        conversationId = id || "";
+        topicInput.value = typeof topic === "string" ? topic : "";
+        topicInput.disabled = false;
+        saveTopicBtn.disabled = false;
+        if (title && messages && messages.length) {
+          convTitleEl.textContent = title;
+          convTitleEl.style.display = "";
+        } else {
+          convTitleEl.style.display = "none";
+        }
+        renderTranscript(messages);
+      }
+
+      async function ensureConversation() {
+        if (conversationId) return;
+        const topic = appMode === "practice" ? selectedPracticeTopic : topicInput.value;
+        const conv = await window.mocu.extension.execute("newConversation", {
+          mode: appMode,
+          topic,
+        });
+        setConversation(conv.id, conv.title, [], conv.topic);
+        if (appMode === "general") topicInput.value = topic;
+      }
+
+      async function saveConversationTopic(showStatus = true) {
+        try {
+          await ensureConversation();
+          saveTopicBtn.disabled = true;
+          const result = await window.mocu.extension.execute("setConversationTopic", {
+            id: conversationId,
+            topic: topicInput.value,
+          });
+          topicInput.value = result && typeof result.topic === "string" ? result.topic : topicInput.value.trim();
+          if (showStatus) setStatus("Conversation topic saved.");
+          return true;
+        } catch (error) {
+          if (showStatus) setStatus("Could not save the topic: " + (error && error.message ? error.message : error), true);
+          return false;
+        } finally {
+          saveTopicBtn.disabled = !conversationId;
+        }
+      }
+
+      function setRecordingUi(recording) {
+        recordBtn.classList.toggle("hidden", recording);
+        stopBtn.classList.toggle("hidden", !recording);
+        document.body.classList.toggle("recording", recording);
+      }
+
+      async function startRecording() {
+        if (currentAudio) { currentAudio.pause(); currentAudio = null; }
+        if (!navigator.mediaDevices || !window.MediaRecorder) {
+          setStatus("Audio recording is not supported in this browser.", true);
+          return;
+        }
+        try {
+          stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+        } catch (error) {
+          setStatus("Microphone access was denied: " + (error && error.message ? error.message : error), true);
+          return;
+        }
+        const options = {};
+        if (typeof MediaRecorder.isTypeSupported === "function") {
+          if (MediaRecorder.isTypeSupported("audio/webm;codecs=opus")) options.mimeType = "audio/webm;codecs=opus";
+          else if (MediaRecorder.isTypeSupported("audio/webm")) options.mimeType = "audio/webm";
+        }
+        try {
+          mediaRecorder = options.mimeType ? new MediaRecorder(stream, options) : new MediaRecorder(stream);
+        } catch (error) {
+          stream.getTracks().forEach((track) => track.stop());
+          setStatus("Could not start recording: " + (error && error.message ? error.message : error), true);
+          return;
+        }
+        audioChunks = [];
+        mediaRecorder.ondataavailable = (event) => {
+          if (event.data && event.data.size > 0) audioChunks.push(event.data);
+        };
+        mediaRecorder.onerror = () => stopRecording();
+        mediaRecorder.onstop = () => {
+          stream.getTracks().forEach((track) => track.stop());
+          const blob = new Blob(audioChunks, { type: mediaRecorder.mimeType || "audio/webm" });
+          handleRecording(blob, mediaRecorder.mimeType || "audio/webm");
+        };
+        mediaRecorder.start();
+        setRecordingUi(true);
+        setStatus("RecordingΓÇª When you are done, tap ΓÇÿStop and send.ΓÇÖ");
+      }
+
+      function stopRecording() {
+        if (mediaRecorder && mediaRecorder.state !== "inactive") mediaRecorder.stop();
+        setRecordingUi(false);
+        setStatus("Transcribing your audioΓÇª");
+      }
+
+      function blobToBase64(blob) {
+        return new Promise((resolve, reject) => {
+          const reader = new FileReader();
+          reader.onload = () => {
+            const result = String(reader.result || "");
+            const commaIndex = result.indexOf(",");
+            resolve(commaIndex >= 0 ? result.slice(commaIndex + 1) : result);
+          };
+          reader.onerror = () => reject(reader.error || new Error("Could not read audio data."));
+          reader.readAsDataURL(blob);
+        });
+      }
+
+      function normalizeExamples(value) {
+        const toText = (item) => {
+          if (typeof item === "string") return item.trim();
+          if (!item || typeof item !== "object") return "";
+          const english = item.english || item.example || item.text || item.corrected || item.sentence || "";
+          const explanation = item.translation || item.note || item.explanation || "";
+          return [english, explanation].filter((part) => typeof part === "string" && part.trim()).join("\n").trim();
+        };
+        const items = Array.isArray(value) ? value.map(toText) : typeof value === "string" ? value.split(/\r?\n/) : [];
+        return items.map((item) => item.replace(/^\s*(?:[-*ΓÇó]|\d+[.)])\s*/, "").trim()).filter(Boolean);
+      }
+
+      function parseTutorJson(raw) {
+        let rawText = typeof raw === "string" ? raw : (raw && typeof raw.text === "string" ? raw.text : "");
+        if (!rawText.trim()) throw new Error("The coach returned an empty response.");
+        const fenced = rawText.match(/```(?:json)?\s*([\s\S]*?)```/i);
+        if (fenced) rawText = fenced[1];
+        const start = rawText.indexOf("{");
+        const end = rawText.lastIndexOf("}");
+        if (start < 0 || end <= start) {
+          return { conversation: rawText.trim(), grammarFeedback: "", grammarIssue: null, examples: [], hints: [] };
+        }
+        const jsonText = rawText.slice(start, end + 1);
+        let parsed;
+        try {
+          parsed = JSON.parse(jsonText);
+        } catch {
+          try {
+            // Accept JSON replies with trailing commas so the chat and speech use only the conversation field.
+            parsed = JSON.parse(jsonText.replace(/,\s*([}\]])/g, "$1"));
+          } catch {
+            return { conversation: rawText.trim(), grammarFeedback: "", grammarIssue: null, examples: [], hints: [] };
+          }
+        }
+        return {
+          conversation: typeof parsed.conversation === "string" ? parsed.conversation : "",
+          grammarFeedback: typeof parsed.grammarFeedback === "string" ? parsed.grammarFeedback : "",
+          grammarIssue: parsed.grammarIssue && typeof parsed.grammarIssue === "object" ? parsed.grammarIssue : null,
+          examples: normalizeExamples(parsed.examples),
+          hints: Array.isArray(parsed.hints)
+            ? parsed.hints.filter((hint) => typeof hint === "string" && hint.trim()).map((hint) => hint.trim()).slice(0, 3)
+            : [],
+        };
+      }
+      async function refreshLearnedIssues() {
+        try {
+          const response = await window.mocu.extension.execute("getLearningProgress", {});
+          const issues = response && response.learnerProgress && Array.isArray(response.learnerProgress.issues)
+            ? response.learnerProgress.issues.filter((issue) => issue && issue.mastered === true)
+            : [];
+          learnedCountEl.textContent = String(issues.length);
+          learnedIssuesEl.textContent = "";
+          if (!issues.length) {
+            const empty = document.createElement("li");
+            empty.className = "conv-empty";
+            empty.textContent = "No tips saved yet. Three correct answers on separate turns add a tip to this list.";
+            learnedIssuesEl.appendChild(empty);
+            return;
+          }
+          for (const issue of issues) {
+            const item = document.createElement("li");
+            const rule = document.createElement("span");
+            rule.className = "learned-rule";
+            rule.textContent = issue.rule || issue.id;
+            const example = document.createElement("span");
+            example.className = "learned-example";
+            example.textContent = issue.correction || "";
+            item.append(rule, example);
+            learnedIssuesEl.appendChild(item);
+          }
+        } catch { /* Keep the conversation usable if progress cannot be loaded. */ }
+      }
+
+      async function base64ToAudio(base64, mimeType) {
+        const binary = atob(base64);
+        const bytes = new Uint8Array(binary.length);
+        for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
+        const blob = new Blob([bytes], { type: mimeType || "audio/mpeg" });
+        return new Audio(URL.createObjectURL(blob));
+      }
+
+      async function playAudio(audio) {
+        if (currentAudio) currentAudio.pause();
+        currentAudio = audio;
+        await audio.play();
+        return new Promise((resolve) => {
+          audio.onended = () => {
+            URL.revokeObjectURL(audio.src);
+            if (currentAudio === audio) currentAudio = null;
+            resolve();
+          };
+        });
+      }
+
+      async function handleRecording(blob, mimeType) {
+        recordBtn.disabled = true;
+        try {
+          const base64Audio = await blobToBase64(blob);
+          const stt = await window.mocu.extension.execute("transcribe", { audio: base64Audio, mimeType });
+          const saidText = stt && typeof stt.text === "string" ? stt.text.trim() : "";
+          youSaidEl.textContent = saidText || "ΓÇö";
+          updateGuideVisibility();
+          if (!saidText) {
+            setStatus("No speech detected. Please try again.", true);
+            return;
+          }
+          setStatus("Your coach is thinkingΓÇª");
+          if (!await saveConversationTopic(false)) throw new Error("Could not save the conversation topic.");
+          const tutorRes = await window.mocu.extension.execute("tutor", {
+            text: saidText,
+            conversationId: conversationId || undefined,
+            mode: appMode,
+            topic: appMode === "practice" ? selectedPracticeTopic : topicInput.value.trim(),
+          });
+          if (tutorRes && typeof tutorRes.conversationId === "string") conversationId = tutorRes.conversationId;
+          renderPracticeProgress(tutorRes && tutorRes.learnerProgress);
+          const parsed = parseTutorJson(tutorRes && typeof tutorRes.reply === "string" ? tutorRes.reply : "");
+          grammarEl.textContent = parsed.grammarFeedback || "";
+          grammarEl.dir = "auto";
+          examplesEl.textContent = "";
+          for (const example of parsed.examples) {
+            const li = document.createElement("li");
+            li.dir = "auto";
+            li.textContent = example;
+            examplesEl.appendChild(li);
+          }
+          updateGuideVisibility();
+          await refreshLearnedIssues();
+          try {
+            const conv = await window.mocu.extension.execute("getConversation", { id: conversationId });
+            setConversation(conv.id, conv.title, conv.messages, conv.topic);
+          } catch { /* Keep the last turn visible. */ }
+          setStatus("Converting your coachΓÇÖs reply to speechΓÇª");
+          const tts = await window.mocu.extension.execute("speak", { text: parsed.conversation });
+          lastTts = { audio: tts.audio, mimeType: tts.mimeType };
+          replayBtn.classList.remove("hidden");
+          if (lastTts.audio) await playAudio(await base64ToAudio(lastTts.audio, lastTts.mimeType));
+          setStatus("Your coachΓÇÖs turn is complete. Record again to continue the conversation.");
+        } catch (error) {
+          setStatus("Error: " + (error && error.message ? error.message : error), true);
+        } finally {
+          recordBtn.disabled = false;
+        }
+      }
+
+      async function refreshConversationList() {
+        convList.textContent = "";
+        let conversations = [];
+        try {
+          const response = await window.mocu.extension.execute("listConversations", {});
+          conversations = Array.isArray(response && response.conversations) ? response.conversations : [];
+        } catch (error) {
+          const item = document.createElement("li");
+          item.className = "conv-empty";
+          item.textContent = "Could not load conversations: " + (error && error.message ? error.message : error);
+          convList.appendChild(item);
+          return;
+        }
+        if (!conversations.length) {
+          const item = document.createElement("li");
+          item.className = "conv-empty";
+          item.textContent = "No conversations saved yet. Start your first recording!";
+          convList.appendChild(item);
+          return;
+        }
+        for (const conv of conversations) {
+          const item = document.createElement("li");
+          item.className = "conv-item";
+          const openBtn = document.createElement("button");
+          openBtn.type = "button";
+          openBtn.className = "conv-main";
+          const date = conv.updatedAt ? new Date(conv.updatedAt).toLocaleString("en-US") : "";
+          openBtn.textContent = (conv.topic ? conv.topic + " ┬╖ " : "") + conv.title + " ΓÇö " + date;
+          openBtn.addEventListener("click", async () => {
+            try {
+              const full = await window.mocu.extension.execute("getConversation", { id: conv.id });
+              setConversation(full.id, full.title, full.messages, full.topic);
+              selectedPracticeTopic = full.mode === "practice" ? full.topic : "";
+              customPracticeTopic.value = selectedPracticeTopic;
+              switchMode(full.mode === "practice" ? "practice" : "general");
+              convPanel.classList.remove("open");
+              convBtn.classList.remove("active");
+              convBtn.setAttribute("aria-expanded", "false");
+              lastTts = null;
+              replayBtn.classList.add("hidden");
+              const lastUser = [...(full.messages || [])].reverse().find((message) => message.role === "user");
+              youSaidEl.textContent = lastUser ? lastUser.text : "No speech recorded yet.";
+              youSaidEl.dir = "auto";
+              grammarEl.textContent = "";
+              examplesEl.textContent = "";
+              updateGuideVisibility();
+            } catch (error) {
+              setStatus("Could not load conversation: " + (error && error.message ? error.message : error), true);
+            }
+          });
+          const deleteBtn = document.createElement("button");
+          deleteBtn.type = "button";
+          deleteBtn.className = "conv-del";
+          deleteBtn.textContent = "Delete";
+          deleteBtn.addEventListener("click", async () => {
+            try {
+              await window.mocu.extension.execute("deleteConversation", { id: conv.id });
+              if (conversationId === conv.id) {
+                conversationId = "";
+                setConversation("", "", [], "");
+                youSaidEl.textContent = "Nothing recorded yet.";
+                grammarEl.textContent = "";
+                examplesEl.textContent = "";
+                updateGuideVisibility();
+              }
+              await refreshConversationList();
+            } catch (error) {
+              setStatus("Could not delete: " + (error && error.message ? error.message : error), true);
+            }
+          });
+          item.append(openBtn, deleteBtn);
+          convList.appendChild(item);
+        }
+      }
+
+      async function startNewConversation() {
+        if (currentAudio) { currentAudio.pause(); currentAudio = null; }
+        try {
+          newConvBtn.disabled = true;
+          const conv = await window.mocu.extension.execute("newConversation", { mode: "general" });
+          selectedPracticeTopic = "";
+          switchMode("general");
+          setConversation(conv.id, conv.title, [], conv.topic);
+          grammarEl.textContent = "";
+          examplesEl.textContent = "";
+          youSaidEl.textContent = "Nothing recorded yet.";
+          updateGuideVisibility();
+          lastTts = null;
+          replayBtn.classList.add("hidden");
+          setStatus("New conversation started. Add a topic or start speaking.");
+        } catch (error) {
+          setStatus("Error: " + (error && error.message ? error.message : error), true);
+        } finally {
+          newConvBtn.disabled = false;
+        }
+      }
+
+      function toggleConvPanel() {
+        const open = !convPanel.classList.contains("open");
+        convPanel.classList.toggle("open", open);
+        convBtn.classList.toggle("active", open);
+        convBtn.setAttribute("aria-expanded", String(open));
+        if (open) refreshConversationList();
+      }
+
+      async function replayLast() {
+        if (!lastTts || !lastTts.audio) return;
+        try {
+          await playAudio(await base64ToAudio(lastTts.audio, lastTts.mimeType));
+        } catch (error) {
+          setStatus("Could not replay audio: " + (error && error.message ? error.message : error), true);
+        }
+      }
+
+      recordBtn.addEventListener("click", startRecording);
+      stopBtn.addEventListener("click", stopRecording);
+      newConvBtn.addEventListener("click", startNewConversation);
+      convBtn.addEventListener("click", toggleConvPanel);
+      replayBtn.addEventListener("click", replayLast);
+      saveTopicBtn.addEventListener("click", () => saveConversationTopic(true));
+      practiceModeBtn.addEventListener("click", () => {
+        showingLearnedTopics = false;
+        if (appMode === "practice") {
+          conversationId = "";
+          selectedPracticeTopic = "";
+          selectedPracticeIssueId = "";
+          customPracticeTopic.value = "";
+          setConversation("", "", [], "");
+          grammarEl.textContent = "";
+          examplesEl.textContent = "";
+          youSaidEl.textContent = "Nothing recorded yet.";
+          updateGuideVisibility();
+        }
+        switchMode("practice");
+      });
+      learnedModeBtn.addEventListener("click", () => {
+        showingLearnedTopics = true;
+        selectedPracticeTopic = "";
+        selectedPracticeIssueId = "";
+        customPracticeTopic.value = "";
+        if (appMode === "practice") {
+          conversationId = "";
+          setConversation("", "", [], "");
+          renderTranscript([]);
+        }
+        practiceStatus.textContent = "Learned topics are reviewed casually in ordinary Conversation. They are not active practice challenges.";
+        switchMode("practice");
+      });
+      generalModeBtn.addEventListener("click", () => {
+        showingLearnedTopics = false;
+        if (appMode === "practice") {
+          conversationId = "";
+          selectedPracticeTopic = "";
+          selectedPracticeIssueId = "";
+          customPracticeTopic.value = "";
+          setConversation("", "", [], "");
+          grammarEl.textContent = "";
+          examplesEl.textContent = "";
+          youSaidEl.textContent = "Nothing recorded yet.";
+          updateGuideVisibility();
+        }
+        switchMode("general");
+      });
+      beginPracticeBtn.addEventListener("click", beginFocusedPractice);
+      document.getElementById("practice-options").addEventListener("click", (event) => {
+        const button = event.target.closest("button[data-topic]");
+        if (button) {
+          showingLearnedTopics = false;
+          selectPracticeTopic(button.dataset.topic);
+        }
+      });
+      customPracticeTopic.addEventListener("input", () => {
+        selectedPracticeIssueId = "";
+        selectedPracticeTopic = customPracticeTopic.value.trim();
+      });
+      document.addEventListener("click", (event) => {
+        if (!convPanel.classList.contains("open") || convPanel.contains(event.target) || convBtn.contains(event.target)) return;
+        convPanel.classList.remove("open");
+        convBtn.classList.remove("active");
+        convBtn.setAttribute("aria-expanded", "false");
+      });
+      document.addEventListener("keydown", (event) => {
+        if (event.key !== "Escape" || !convPanel.classList.contains("open")) return;
+        convPanel.classList.remove("open");
+        convBtn.classList.remove("active");
+        convBtn.setAttribute("aria-expanded", "false");
+        convBtn.focus();
+      });
+
+      setConversation("", "", [], "");
+      updateGuideVisibility();
+      refreshLearnedIssues();
+    })();
+  </script>
+</body>
+</html>

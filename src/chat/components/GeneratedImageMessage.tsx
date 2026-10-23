@@ -4,7 +4,7 @@ import { revealItemInDir } from '@tauri-apps/plugin-opener';
 import type { GeneratedChatImage } from '../types/generatedImage';
 import './GeneratedImageMessage.css';
 
-function GeneratedImageCard({ image }: { image: GeneratedChatImage }) {
+export function GeneratedImageCard({ image }: { image: GeneratedChatImage }) {
   const [imageUrl, setImageUrl] = useState('');
   const [error, setError] = useState('');
 
@@ -25,11 +25,11 @@ function GeneratedImageCard({ image }: { image: GeneratedChatImage }) {
   }, [image.path, image.mimeType]);
 
   return (
-    <div className="generated-image-card">
+    <span className="generated-image-card">
       {imageUrl ? <img src={imageUrl} alt={image.name} loading="lazy" /> : (
-        <div className="generated-image-loading" role={error ? 'alert' : 'status'}>
+        <span className="generated-image-loading" role={error ? 'alert' : 'status'}>
           {error || 'Loading generated image…'}
-        </div>
+        </span>
       )}
       <button
         type="button"
@@ -45,7 +45,7 @@ function GeneratedImageCard({ image }: { image: GeneratedChatImage }) {
           <path d="M12 11v6m0-6 3 3m-3-3-3 3" />
         </svg>
       </button>
-    </div>
+    </span>
   );
 }
 

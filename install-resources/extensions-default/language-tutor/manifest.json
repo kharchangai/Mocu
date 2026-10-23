@@ -49,6 +49,11 @@
       "description": "Routes messages to the general conversation or focused-practice coach based on the selected mode, then saves conversation turns and validated learning progress."
     },
     {
+      "id": "ask-ai",
+      "title": "Ask AI",
+      "description": "Answer a quick English question using the active Language Tutor screen and optional pronunciation help."
+    },
+    {
       "id": "speak",
       "title": "Text to Speech",
       "description": "Converts input text to audio using the Mocu TTS model and returns it as base64."

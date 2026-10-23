@@ -7,8 +7,10 @@
 }
 .generated-image-card {
   position: relative;
+  display: inline-block;
   width: min(100%, 540px);
   overflow: hidden;
+  vertical-align: top;
   border: 1px solid #e8e8e6;
   border-radius: 14px;
   background: #f7f7f6;

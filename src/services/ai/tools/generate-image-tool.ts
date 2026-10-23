@@ -85,11 +85,16 @@ export const generateImageTool = tool(
         detail: { ...image, chatId: getChatIdFromConfig(config) },
       }));
     }
-    return JSON.stringify({ name, path, prompt, message: "Image generated and saved successfully." });
+    const displayMarkdown = `![Generated image](mocu-generated-image:${id})`;
+    return JSON.stringify({
+      name, path, prompt,
+      display_markdown: displayMarkdown,
+      message: "Image generated and saved successfully. To show it in your final answer, include the display_markdown value exactly as provided. Omit it when the image is only an internal intermediate result.",
+    });
   },
   {
     name: "generate_image",
-    description: "Generate an image using the image model configured in Settings. Provide resolution (1K, 2K, or 4K) and aspect_ratio (such as 1:1, 16:9, or 9:16) when requested. Use attached chat images as visual references when relevant, or pass input_references explicitly. The generated image is saved to disk and shown in the chat.",
+    description: "Generate an image using the image model configured in Settings. Provide resolution (1K, 2K, or 4K) and aspect_ratio (such as 1:1, 16:9, or 9:16) when requested. Use attached chat images as visual references when relevant, or pass input_references explicitly. The generated image is saved to disk. The result includes an optional display_markdown reference: include it in your final answer only when showing the image is relevant; otherwise omit it. The UI renders that reference inline within your answer.",
     schema: z.object({
       prompt: z.string().min(1).describe("A detailed visual description of the image to generate."),
       resolution: z.enum(["1K", "2K", "4K"]).optional().describe("Requested output resolution: 1K, 2K, or 4K."),

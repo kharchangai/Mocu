@@ -18,6 +18,7 @@
 import { memo } from "react";
 
 import { MarkdownRenderer } from "./MarkdownRenderer";
+import type { GeneratedChatImage } from "../../types/generatedImage";
 
 /*
  * Rough size cap for one chunk. Only the last chunk (the growing tail)
@@ -153,11 +154,13 @@ export const buildChunks = (
  */
 const MarkdownChunk = memo(function MarkdownChunk({
   text,
+  generatedImages,
 }: {
   text: string;
+  generatedImages: GeneratedChatImage[];
 }) {
   return (
-    <MarkdownRenderer content={text} direction="auto" />
+    <MarkdownRenderer content={text} direction="auto" generatedImages={generatedImages} />
   );
 });
 
@@ -168,25 +171,30 @@ const MarkdownChunk = memo(function MarkdownChunk({
 const CodeChunk = memo(function CodeChunk({
   language,
   body,
+  generatedImages,
 }: {
   language: string;
   body: string;
+  generatedImages: GeneratedChatImage[];
 }) {
   return (
     <MarkdownRenderer
       content={`\`\`\`${language}\n${body}\n\`\`\``}
       direction="auto"
+      generatedImages={generatedImages}
     />
   );
 });
 
 export type StreamingMarkdownProps = {
   content: string;
+  generatedImages?: GeneratedChatImage[];
 };
 
 export const StreamingMarkdown = memo(
   function StreamingMarkdown({
     content,
+    generatedImages = [],
   }: StreamingMarkdownProps) {
     if (!content || !content.trim()) {
       return null;
@@ -202,11 +210,13 @@ export const StreamingMarkdown = memo(
               key={index}
               language={chunk.language}
               body={chunk.text}
+              generatedImages={generatedImages}
             />
           ) : (
             <MarkdownChunk
               key={index}
               text={chunk.text}
+              generatedImages={generatedImages}
             />
           ),
         )}

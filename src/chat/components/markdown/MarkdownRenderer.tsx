@@ -11,6 +11,9 @@ import {
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import rehypeHighlight from "rehype-highlight";
+import { defaultUrlTransform } from "react-markdown";
+import type { GeneratedChatImage } from "../../types/generatedImage";
+import { GeneratedImageCard } from "../GeneratedImageMessage";
 
 import { getTextDirection } from "../textDirection";
 import "./MarkdownRenderer.css";
@@ -24,6 +27,7 @@ export type MarkdownRendererProps = {
   content: string;
   className?: string;
   direction?: MarkdownDirection;
+  generatedImages?: GeneratedChatImage[];
 };
 
 type CodeElementProps = {
@@ -280,6 +284,7 @@ function MarkdownRendererImpl({
   content,
   className = "",
   direction = "auto",
+  generatedImages = [],
 }: MarkdownRendererProps) {
   if (!content || !content.trim()) {
     return null;
@@ -313,6 +318,7 @@ function MarkdownRendererImpl({
             },
           ],
         ]}
+        urlTransform={(url) => url.startsWith("mocu-generated-image:") ? url : defaultUrlTransform(url)}
         components={{
           pre: CodeBlock,
 
@@ -346,14 +352,16 @@ function MarkdownRendererImpl({
             src,
             alt,
             ...props
-          }) => (
-            <img
-              {...props}
-              src={src}
-              alt={alt ?? ""}
-              loading="lazy"
-            />
-          ),
+          }) => {
+            const generatedImageId = src?.startsWith("mocu-generated-image:")
+              ? src.slice("mocu-generated-image:".length)
+              : "";
+            const generatedImage = generatedImageId
+              ? generatedImages.find((image) => image.id === generatedImageId)
+              : undefined;
+            if (generatedImage) return <GeneratedImageCard image={generatedImage} />;
+            return <img {...props} src={src} alt={alt ?? ""} loading="lazy" />;
+          },
         }}
       >
         {content.trim()}

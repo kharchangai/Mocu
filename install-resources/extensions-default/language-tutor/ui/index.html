@@ -436,6 +436,25 @@
     .practice-progress-fill { width: 0; height: 100%; border-radius: inherit; background: var(--grad-accent); transition: width .3s ease; }
     .practice-progress-note { margin: 0; color: var(--muted); font-size: 10px; line-height: 1.5; }
     @media (max-width: 560px) { .mode-nav { gap: 5px; } .mode-nav button { min-height: 34px; padding: 6px 9px; font-size: 10.5px; } .practice-setup { padding: 22px 16px; } }
+    .ask-ai-fab { position: fixed; z-index: 40; right: 22px; bottom: 22px; width: 62px; height: 62px; display: flex; flex-direction: column; gap: 2px; border: 0; border-radius: 50%; color: #fff; background: var(--grad-accent); box-shadow: 0 9px 24px var(--accent-glow); font-size: 10px; font-weight: 700; line-height: 1.1; }
+    .ask-ai-fab:hover { transform: translateY(-2px); }
+    .ask-ai-fab .icon { width: 20px; height: 20px; }
+    .ask-ai-panel { position: fixed; z-index: 41; right: 22px; bottom: 96px; display: flex; width: min(390px, calc(100vw - 32px)); max-height: min(560px, calc(100dvh - 120px)); flex-direction: column; overflow: hidden; border: 1px solid var(--line); border-radius: var(--r-xl); color: var(--ink); background: var(--surface); box-shadow: var(--shadow-lg); }
+    .ask-ai-head { display: flex; min-height: 54px; align-items: center; justify-content: space-between; gap: 12px; padding: 0 15px; border-bottom: 1px solid var(--line); background: var(--surface-2); }
+    .ask-ai-head strong { font-size: 13px; font-weight: 700; }
+    .ask-ai-subtitle { margin: 3px 0 0; color: var(--muted); font-size: 10px; }
+    .ask-ai-close { width: 32px; min-height: 32px; padding: 0; border: 0; box-shadow: none; font-size: 20px; }
+    .ask-ai-messages { display: flex; min-height: 100px; flex: 1; flex-direction: column; gap: 10px; overflow: auto; padding: 14px; }
+    .ask-ai-empty { margin: 0; color: var(--muted); font-size: 12px; line-height: 1.65; }
+    .ask-ai-message { max-width: 94%; padding: 10px 12px; border: 1px solid var(--line); border-radius: 12px; color: var(--ink-2); background: var(--surface-2); font-size: 12px; line-height: 1.65; white-space: pre-wrap; overflow-wrap: anywhere; }
+    .ask-ai-message-user { align-self: flex-end; border-color: transparent; color: #fff; background: var(--grad-accent); }
+    .ask-ai-message-assistant { align-self: flex-start; }
+    .ask-ai-message-error { border-color: var(--danger); color: var(--danger); }
+    .ask-ai-form { display: flex; align-items: flex-end; gap: 8px; padding: 11px; border-top: 1px solid var(--line); }
+    .ask-ai-input { min-width: 0; min-height: 42px; max-height: 120px; flex: 1; resize: vertical; padding: 10px 12px; border: 1px solid var(--line-strong); border-radius: 11px; color: var(--ink); background: var(--surface); font: inherit; font-size: 12px; line-height: 1.5; }
+    .ask-ai-send { min-height: 42px; padding-inline: 14px; border-color: transparent; color: #fff; background: var(--grad-accent); }
+    .ask-ai-send:disabled { cursor: wait; opacity: .55; }
+    @media (max-width: 560px) { .ask-ai-fab { right: 14px; bottom: 14px; width: 58px; height: 58px; } .ask-ai-panel { right: 10px; bottom: 82px; width: calc(100vw - 20px); max-height: calc(100dvh - 100px); } }
   </style>
 </head>
 <body>
@@ -513,6 +532,7 @@
           <div class="practice-progress-meta">
             <span class="practice-progress-topic" id="practice-progress-topic"></span>
             <span class="practice-progress-count" id="practice-progress-count">0 of 5</span>
+            <span class="practice-progress-count" id="practice-points-count">Points: 0</span>
           </div>
           <div class="practice-progress-track" id="practice-progress-track" role="progressbar" aria-label="Consecutive correct answers toward learning this difficulty" aria-valuemin="0" aria-valuemax="5" aria-valuenow="0">
             <div class="practice-progress-fill" id="practice-progress-fill"></div>
@@ -573,8 +593,15 @@
       </aside>
     </div>
   </main>
+  <section id="ask-ai-panel" class="ask-ai-panel hidden" role="dialog" aria-label="Ask AI" aria-modal="false">
+    <header class="ask-ai-head"><div><strong>Ask AI</strong><p class="ask-ai-subtitle">Quick English help from this screen</p></div><button id="ask-ai-close" class="ask-ai-close" type="button" aria-label="Close Ask AI">&#215;</button></header>
+    <div id="ask-ai-messages" class="ask-ai-messages" role="log" aria-live="polite"><p class="ask-ai-empty">Ask about your current English practice, or ask how to pronounce a word. You can ask to hear it aloud, too.</p></div>
+    <form id="ask-ai-form" class="ask-ai-form"><textarea id="ask-ai-input" class="ask-ai-input" rows="1" maxlength="10000" placeholder="Ask a question..." aria-label="Your question" required></textarea><button id="ask-ai-send" class="ask-ai-send" type="submit">Ask</button></form>
+  </section>
+  <button id="ask-ai-toggle" class="ask-ai-fab" type="button" aria-label="Ask AI" aria-controls="ask-ai-panel" aria-expanded="false" title="Ask AI"><svg class="icon" aria-hidden="true"><use href="#i-spark"/></svg><span>Ask AI</span></button>
 
   <script src="./vendor/mocu-ui.js"></script>
+  <script src="./ask-ai.js"></script>
   <script>
     (() => {
       "use strict";
@@ -619,6 +646,7 @@
       const practiceProgressTrack = document.getElementById("practice-progress-track");
       const practiceProgressFill = document.getElementById("practice-progress-fill");
       const practiceProgressNote = document.getElementById("practice-progress-note");
+      const practicePointsCount = document.getElementById("practice-points-count");
 
       let mediaRecorder = null;
       let audioChunks = [];
@@ -652,10 +680,12 @@
         const issue = issues.find((item) => item && item.id === activeId);
         const rawStreak = issue && Number.isFinite(Number(issue.correctStreak)) ? Number(issue.correctStreak) : 0;
         const streak = Math.max(0, Math.min(5, rawStreak));
+        const points = progress && Number.isFinite(Number(progress.points)) ? Math.max(0, Number(progress.points)) : 0;
         practiceProgressTopic.textContent = issue && (issue.rule || issue.id)
           ? (issue.rule || issue.id)
           : (selectedPracticeTopic || "Skill progress will appear here");
         practiceProgressCount.textContent = streak + " of 5";
+        practicePointsCount.textContent = "Points: " + points;
         practiceProgressTrack.setAttribute("aria-valuenow", String(streak));
         practiceProgressFill.style.width = (streak / 5 * 100) + "%";
         practiceProgressNote.textContent = issue
@@ -890,6 +920,8 @@
         practiceStatus.classList.remove("error");
         beginPracticeBtn.disabled = true;
         try {
+          latestLearnerProgress = await window.mocu.extension.execute("getLearningProgress", {}).then((result) => result && result.learnerProgress || latestLearnerProgress);
+          renderPracticeProgress(latestLearnerProgress);
           const result = await window.mocu.extension.execute("tutor", {
             mode: "practice", start: true, topic, practiceIssueId: selectedPracticeIssueId, text: "", conversationId: undefined,
           });

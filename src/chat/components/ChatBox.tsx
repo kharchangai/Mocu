@@ -118,7 +118,6 @@ import {
 
 import type { ChatMessage } from '../types/chat';
 import { getGeneratedImages, subscribeGeneratedImages, takeGeneratedImages } from '../services/generatedImages';
-import { GeneratedImageMessage } from './GeneratedImageMessage';
 import { ImageGenerationProgress } from './ImageGenerationProgress';
 
 import type { SelectedSkill } from './skillTypes';
@@ -2458,9 +2457,8 @@ export function ChatBox({
                         <>
                           <ToolActivityFeed activities={toolActivity.pendingActivities} />
                           <ImageGenerationProgress active={toolActivity.pendingActivities.some((activity) => activity.tool === 'generate_image' && activity.status === 'running')} />
-                          <GeneratedImageMessage images={generatedImages} />
                           {toolActivity.liveAnswer ? (
-                            <AssistantMessage content={toolActivity.liveAnswer} streaming />
+                            <AssistantMessage content={toolActivity.liveAnswer} streaming generatedImages={generatedImages} />
                           ) : (
                             <ChatStatusBubble agentName={agentName} isLoading />
                           )}
@@ -2483,6 +2481,7 @@ export function ChatBox({
                         <>
                           <AssistantMessage
                             content={message.content}
+                            generatedImages={message.generatedImages}
                             footer={messageIndex === lastAssistantIndex ? memoryFooter : undefined}
                             failureDetails={getProjectAgentFailureDetails(message.content)}
                             workflowToolCallFailure={parseStepToolCallFailureMessage(message.content)}
@@ -2490,7 +2489,6 @@ export function ChatBox({
                               ? () => retryFromAssistantMessage(messageIndex)
                               : undefined}
                           />
-                          <GeneratedImageMessage images={message.generatedImages ?? []} />
                         </>
                       )}
                     </>
