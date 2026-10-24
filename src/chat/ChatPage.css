@@ -119,10 +119,24 @@ textarea {
 
 .chat-sidebar-main-nav {
   display: flex;
-  flex: 0 0 auto;
+  flex: 1 1 auto;
+  min-height: 0;
   flex-direction: column;
   gap: 1px;
   padding: 8px 10px 10px;
+  overflow-x: hidden;
+  overflow-y: auto;
+  scrollbar-color: #d8d6cf transparent;
+  scrollbar-width: thin;
+}
+
+.chat-sidebar-main-nav::-webkit-scrollbar {
+  width: 5px;
+}
+
+.chat-sidebar-main-nav::-webkit-scrollbar-thumb {
+  border-radius: 999px;
+  background: #d8d6cf;
 }
 
 .chat-sidebar-item {
@@ -744,39 +758,55 @@ textarea {
 /* ---------- Narrow screens: icon rail ---------- */
 
 @media (max-width: 720px) {
-  .chat-sidebar {
+  .chat-sidebar.chat-sidebar-collapsed {
     flex-basis: 60px;
     width: 60px;
-  }
-
-  .chat-sidebar-brand-name,
-  .chat-sidebar-icon-button,
-  .chat-sidebar-item-label,
-  .chat-sidebar-chats-list,
-  .chat-sidebar-agent-list,
-  .chat-sidebar-item-end-icon {
-    display: none;
-  }
-
-  .chat-sidebar-top {
-    justify-content: center;
-    padding: 14px 6px 4px;
-  }
-
-  .chat-sidebar-main-nav,
-  .chat-sidebar-footer {
-    padding-right: 6px;
-    padding-left: 6px;
-  }
-
-  .chat-sidebar-item {
-    justify-content: center;
-    padding: 0;
   }
 
   .chat-header {
     padding: 0 16px;
   }
+}
+
+/* Manually collapsible icon rail. */
+.chat-sidebar.chat-sidebar-collapsed {
+  flex-basis: 64px;
+  width: 64px;
+}
+
+.chat-sidebar-collapsed .chat-sidebar-top {
+  flex-direction: column;
+  justify-content: center;
+  gap: 8px;
+  padding: 12px 6px 4px;
+}
+
+.chat-sidebar-collapsed .chat-sidebar-brand {
+  justify-content: center;
+  padding: 2px;
+}
+
+.chat-sidebar-collapsed .chat-sidebar-brand-name,
+.chat-sidebar-collapsed .chat-sidebar-top .chat-sidebar-icon-button:not(.chat-sidebar-collapse-toggle),
+.chat-sidebar-collapsed .chat-sidebar-item-label,
+.chat-sidebar-collapsed .chat-sidebar-chats-list,
+.chat-sidebar-collapsed .chat-sidebar-item-end-icon {
+  display: none;
+}
+
+.chat-sidebar-collapsed .chat-sidebar-main-nav,
+.chat-sidebar-collapsed .chat-sidebar-footer {
+  padding-right: 6px;
+  padding-left: 6px;
+}
+
+.chat-sidebar-collapsed .chat-sidebar-item {
+  justify-content: center;
+  padding: 0;
+}
+
+.chat-sidebar-collapsed .chat-sidebar-collapse-toggle {
+  display: flex;
 }
 
 /* ---------- Project removal confirmation ---------- */

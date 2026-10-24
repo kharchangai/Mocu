@@ -2,6 +2,8 @@ import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react'
 import {
   AlertTriangle,
   Check,
+  ChevronLeft,
+  ChevronRight,
   Folder,
   FolderOpen,
   Pencil,
@@ -71,6 +73,8 @@ function NavButton({
       className={`chat-sidebar-item ${
         active ? 'chat-sidebar-item-active' : ''
       }`}
+      aria-label={label}
+      title={label}
       onClick={onClick}
       aria-current={active ? 'page' : undefined}
       aria-expanded={expanded}
@@ -532,7 +536,9 @@ export function ChatSidebar({
     title: string;
     isActive: boolean;
   } | null>(null);
-
+  const [isCollapsed, setIsCollapsed] = useState(
+    () => typeof window !== 'undefined' && window.matchMedia('(max-width: 720px)').matches,
+  );
   const handleDeleteChat = useCallback(
     (chatId: string, chatTitle: string) => {
       if (!onDeleteChat) {
@@ -582,7 +588,20 @@ export function ChatSidebar({
     isProjectsOpen || isProjectFolderActive;
 
   return (
-    <aside className="chat-sidebar">
+    <aside
+      className={`chat-sidebar ${isCollapsed ? 'chat-sidebar-collapsed' : ''}`}
+      onClickCapture={(event) => {
+        if (!isCollapsed) return;
+        const target = event.target;
+        if (
+          target instanceof Element &&
+          target.closest('button') &&
+          !target.closest('.chat-sidebar-collapse-toggle')
+        ) {
+          setIsCollapsed(false);
+        }
+      }}
+    >
       <div className="chat-sidebar-top">
         <button
           type="button"
@@ -617,6 +636,21 @@ export function ChatSidebar({
             <circle cx="11" cy="11" r="7" />
             <path d="m21 21-4.3-4.3" />
           </svg>
+        </button>
+
+        <button
+          type="button"
+          className="chat-sidebar-icon-button chat-sidebar-collapse-toggle"
+          onClick={() => setIsCollapsed((collapsed) => !collapsed)}
+          aria-label={isCollapsed ? 'Expand sidebar' : 'Collapse sidebar'}
+          title={isCollapsed ? 'Expand sidebar' : 'Collapse sidebar'}
+          aria-expanded={!isCollapsed}
+        >
+          {isCollapsed ? (
+            <ChevronRight size={16} aria-hidden="true" />
+          ) : (
+            <ChevronLeft size={16} aria-hidden="true" />
+          )}
         </button>
       </div>
 

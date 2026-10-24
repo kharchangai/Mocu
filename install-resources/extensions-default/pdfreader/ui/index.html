@@ -1,0 +1,270 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="light">
+  <meta name="theme-color" content="#f7f7f5">
+  <title>PDF Reader</title>
+  <style>
+    :root {
+      color-scheme: light;
+      font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      font-synthesis: none;
+      text-rendering: optimizeLegibility;
+      color: #181818;
+      background: #f7f7f5;
+      --ink: #181818;
+      --muted: #777771;
+      --line: #e8e8e4;
+      --paper: #fff;
+      --soft: #f0f0ee;
+    }
+    * { box-sizing: border-box; }
+    [hidden] { display: none !important; }
+    body { min-width: 320px; min-height: 100vh; margin: 0; background: #f7f7f5; }
+    button, input { font: inherit; }
+    button { cursor: pointer; }
+    button:focus-visible, input:focus-visible, .dropzone:focus-visible { outline: 3px solid #a5a5a5; outline-offset: 3px; }
+    button:disabled { cursor: not-allowed; opacity: .48; }
+    .shell { width: min(1180px, 100%); height: 100vh; min-height: 520px; margin: 0 auto; padding: 24px 32px 30px; display: flex; flex-direction: column; overflow: hidden; }
+    #landing { min-height: 0; overflow: auto; }
+    .topbar { flex: 0 0 auto; }
+    .reader { height: 0; }
+    .topbar { min-height: 46px; display: flex; align-items: center; justify-content: space-between; gap: 16px; }
+    .brand { display: flex; align-items: center; gap: 10px; font-size: 14px; font-weight: 680; letter-spacing: -.025em; }
+    .logo { width: 34px; height: 34px; display: grid; place-items: center; border: 1px solid var(--line); border-radius: 11px; background: var(--paper); font-size: 14px; }
+    .local { display: inline-flex; align-items: center; gap: 8px; color: var(--muted); font-size: 11px; }
+    .local::before { width: 7px; height: 7px; border-radius: 50%; background: #30302d; content: ""; }
+    .intro { padding: clamp(40px, 8vh, 76px) 0 30px; text-align: center; }
+    .eyebrow { margin: 0 0 13px; color: #696963; font-size: 10px; font-weight: 720; letter-spacing: .16em; text-transform: uppercase; }
+    h1 { margin: 0; font-size: clamp(34px, 5vw, 52px); font-weight: 670; line-height: 1.08; letter-spacing: -.065em; }
+    .subtitle { max-width: 510px; margin: 14px auto 0; color: #73736d; font-size: 14px; line-height: 1.8; }
+    .dropzone { position: relative; width: min(610px, 100%); min-height: 182px; margin: 0 auto; padding: 25px; display: grid; place-items: center; border: 1px dashed #d1d1cc; border-radius: 17px; background: var(--paper); text-align: center; transition: border-color .18s, background .18s, transform .18s; }
+    .dropzone.dragging, .shell.dragging .dropzone { transform: translateY(-2px); border-color: #222; background: #fbfbf9; }
+    .upload-inner { display: grid; justify-items: center; }
+    .upload-icon { width: 40px; height: 40px; margin-bottom: 10px; display: grid; place-items: center; border: 1px solid var(--line); border-radius: 12px; background: #fff; }
+    .upload-icon svg { width: 19px; height: 19px; }
+    .upload-title { margin: 0; font-size: 14px; font-weight: 640; }
+    .upload-help { margin: 7px 0 15px; color: var(--muted); font-size: 12px; }
+    .button { min-height: 38px; padding: 0 14px; display: inline-flex; align-items: center; justify-content: center; gap: 8px; border: 1px solid var(--line); border-radius: 9px; background: #fff; color: var(--ink); font-size: 12px; font-weight: 610; transition: background .15s, transform .15s; }
+    .button:hover:not(:disabled) { background: #f2f2f0; }
+    .button:active:not(:disabled) { transform: translateY(1px); }
+    .button svg { width: 15px; height: 15px; flex: 0 0 auto; }
+    .button.primary { border-color: var(--ink); background: var(--ink); color: #fff; }
+    .button.primary:hover:not(:disabled) { background: #383838; }
+    .format-row { margin-top: 13px; display: flex; justify-content: center; gap: 16px; color: #81817b; font-size: 10px; }
+    .status { min-height: 22px; margin: 14px 0 0; color: #73736d; font-size: 11px; text-align: center; }
+    .status.error { color: #9b2626; }
+    .progress { width: min(610px, 100%); height: 3px; margin: 5px auto 0; overflow: hidden; border-radius: 9px; background: #e5e5e1; }
+    .progress > span { display: block; width: 0; height: 100%; border-radius: inherit; background: #222; transition: width .12s linear; }
+    .progress.indeterminate > span { width: 38%; animation: progress 1.2s ease-in-out infinite alternate; }
+    @keyframes progress { from { transform: translateX(-35%); } to { transform: translateX(205%); } }
+    .features { width: min(740px, 100%); margin: 48px auto 0; display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 22px; }
+    .feature { display: flex; align-items: flex-start; gap: 10px; }
+    .feature-icon { width: 27px; height: 27px; flex: 0 0 auto; display: grid; place-items: center; border: 1px solid var(--line); border-radius: 8px; background: #fff; }
+    .feature-icon svg { width: 14px; height: 14px; }
+    .feature strong { display: block; margin: 2px 0 4px; font-size: 11px; font-weight: 650; }
+    .feature span { display: block; color: #797973; font-size: 10px; line-height: 1.65; }
+    .footer { margin-top: auto; padding-top: 36px; color: #85857f; font-size: 10px; text-align: center; }
+    .reader { width: 100%; flex: 1 1 auto; min-height: 0; margin: 26px auto 0; display: flex; flex-direction: column; overflow: hidden; border: 1px solid var(--line); border-radius: 15px; background: var(--paper); box-shadow: 0 14px 44px #15151508; }
+    .reader-head { min-height: 58px; padding: 10px 17px; display: flex; align-items: center; justify-content: space-between; gap: 14px; border-bottom: 1px solid var(--line); }
+    .doc-info { min-width: 0; display: grid; gap: 4px; }
+    .doc-name { max-width: min(50vw, 570px); overflow: hidden; color: #272725; font-size: 12px; font-weight: 630; text-overflow: ellipsis; white-space: nowrap; }
+    .doc-meta { color: var(--muted); font-size: 10px; }
+    .reader-actions { flex: 0 0 auto; display: flex; align-items: center; gap: 7px; }
+    .reader-actions .button { min-height: 33px; padding: 0 10px; font-size: 11px; }
+    .reader-body { position: relative; min-height: 0; flex: 1; padding: clamp(12px, 2.5vw, 27px); overflow: auto; background: var(--soft); overscroll-behavior: contain; }
+    .page-stage { width: max-content; min-width: 100%; min-height: 100%; display: flex; justify-content: center; align-items: flex-start; }
+    .pdf-page { position: relative; flex: 0 0 auto; background: #fff; box-shadow: 0 3px 18px #1515151c; }
+    #pdf-canvas { display: block; max-width: none; height: auto; background: #fff; }
+    .text-layer { position: absolute; inset: 0; overflow: hidden; line-height: 1; letter-spacing: normal; word-spacing: normal; text-size-adjust: none; forced-color-adjust: none; transform-origin: 0 0; caret-color: CanvasText; z-index: 1; --min-font-size: 1; --total-scale-factor: 1; --scale-round-x: 1px; --scale-round-y: 1px; --text-scale-factor: calc(var(--total-scale-factor) * var(--min-font-size)); --min-font-size-inv: calc(1 / var(--min-font-size)); }
+    .text-layer :is(span, br) { position: absolute; color: transparent; white-space: pre; cursor: text; transform-origin: 0 0; user-select: text; -webkit-user-select: text; }
+    .text-layer > :not(.markedContent), .text-layer .markedContent span:not(.markedContent) { z-index: 1; --font-height: 0; font-size: calc(var(--text-scale-factor) * var(--font-height)); --scale-x: 1; --rotate: 0deg; transform: rotate(var(--rotate)) scaleX(var(--scale-x)) scale(var(--min-font-size-inv)); }
+    .text-layer .markedContent { display: contents; }
+    .text-layer span[role="img"] { user-select: none; cursor: default; }
+    .text-layer ::selection { background: rgb(65 125 255 / 32%); color: transparent; }
+    .zoom-label { color: #65655f; font-size: 10px; font-variant-numeric: tabular-nums; white-space: nowrap; }
+    .page-total { color: #65655f; font-size: 10px; font-variant-numeric: tabular-nums; white-space: nowrap; }
+    .reader-foot { min-height: 58px; padding: 9px 15px; display: flex; align-items: center; justify-content: space-between; gap: 12px; border-top: 1px solid var(--line); background: #fdfdfc; }
+    .page-label { min-width: 105px; color: #73736d; font-size: 10px; white-space: nowrap; }
+    .page-controls { display: flex; align-items: center; justify-content: center; gap: 8px; }
+    .page-controls .button { min-height: 32px; padding: 0 10px; font-size: 10px; }
+    .page-controls .button svg { width: 13px; height: 13px; }
+    .page-entry { width: 44px; height: 30px; padding: 0 3px; border: 1px solid var(--line); border-radius: 7px; background: #fff; color: #252523; font-size: 11px; text-align: center; font-variant-numeric: tabular-nums; }
+    .page-total, .zoom-label { color: #65655f; font-size: 10px; font-variant-numeric: tabular-nums; white-space: nowrap; }
+    .foot-spacer { min-width: 105px; display: flex; justify-content: flex-end; align-items: center; gap: 7px; }
+    input[type="file"] { display: none; }
+    @media (max-width: 680px) {
+      .shell { height: 100vh; min-height: 0; padding: 17px 16px 22px; }
+      .intro { padding: 49px 0 27px; }
+      .features { grid-template-columns: 1fr; gap: 15px; margin-top: 36px; }
+      .reader { margin-top: 18px; }
+      .reader-head { min-height: 54px; padding: 9px 11px; }
+      .reader-actions { gap: 5px; }
+      .reader-actions .button { padding: 0 8px; }
+      .reader-body { min-height: 320px; }
+      .reader-foot { padding: 8px 9px; flex-wrap: wrap; justify-content: center; }
+      .page-label { display: none; }
+      .foot-spacer { min-width: 0; }
+      .page-controls { gap: 6px; }
+      .local { font-size: 10px; }
+      .format-row { flex-wrap: wrap; gap: 7px 12px; }
+    }
+    @media (max-width: 390px) {
+      .shell { padding-right: 11px; padding-left: 11px; }
+      .reader-actions .open-label { display: none; }
+      .doc-name { max-width: 42vw; }
+      .page-controls .button { padding: 0 7px; }
+      .zoom-control .zoom-label { display: none; }
+    }
+    .shell.reading { width: 100%; height: 100dvh; min-height: 0; max-width: none; padding: 0; overflow: hidden; }
+    .shell.reading .topbar { display: none; }
+    .shell.reading .reader { position: relative; width: 100%; flex: 1 1 auto; min-height: 0; margin: 0; overflow: hidden; border: 0; border-radius: 0; box-shadow: none; }
+    .shell.reading .reader-head { position: absolute; z-index: 4; top: 14px; right: 14px; left: 14px; min-height: 0; padding: 0; border: 0; pointer-events: none; }
+    .shell.reading .doc-info, .shell.reading .reader-actions { pointer-events: auto; padding: 8px 11px; border: 1px solid #e5e5e2; border-radius: 11px; background: rgb(255 255 255 / 92%); box-shadow: 0 4px 18px #15151518; backdrop-filter: blur(12px); }
+    .shell.reading .doc-info { max-width: min(34vw, 360px); }
+    .shell.reading .reader-actions { gap: 5px; padding: 5px; }
+    .shell.reading .reader-actions .button { min-height: 34px; padding: 0 9px; }
+    .shell.reading .reader-body { position: absolute; inset: 0; min-height: 0; padding: 0; overflow: auto; background: #e8e8e6; }
+    .shell.reading .page-stage { min-height: 100%; }
+    .shell.reading #reader-status:not([hidden]) { position: absolute; z-index: 5; top: 66px; left: 50%; max-width: calc(100% - 24px); min-height: 0; margin: 0; padding: 6px 10px; transform: translateX(-50%); border: 1px solid #e5e5e2; border-radius: 999px; background: rgb(255 255 255 / 88%); box-shadow: 0 2px 10px #15151512; pointer-events: none; }
+    .shell.reading #reader-progress { position: absolute; z-index: 6; top: 0; left: 0; width: 100%; height: 2px; margin: 0; border-radius: 0; pointer-events: none; }
+    .shell.reading .reader-foot { position: absolute; z-index: 4; right: 14px; bottom: 14px; left: auto; width: max-content; min-height: 0; padding: 0; transform: none; border: 0; background: transparent; pointer-events: none; }
+    .shell.reading .page-controls { gap: 6px; padding: 5px; border: 1px solid #e5e5e2; border-radius: 12px; background: rgb(255 255 255 / 93%); box-shadow: 0 4px 18px #15151518; backdrop-filter: blur(12px); pointer-events: auto; }
+    .shell.reading .page-controls .button { min-height: 34px; }
+    @media (max-width: 680px) {
+      .shell.reading .reader-head { top: 8px; right: 8px; left: 8px; }
+      .shell.reading .doc-info { max-width: 33vw; padding: 6px 8px; }
+      .shell.reading .doc-meta { display: none; }
+      .shell.reading .reader-actions { gap: 3px; padding: 4px; }
+      .shell.reading .reader-actions .button { min-height: 32px; padding: 0 7px; }
+      .shell.reading .reader-foot { bottom: 8px; flex-wrap: nowrap; }
+      .shell.reading .page-controls { gap: 4px; padding: 4px; }
+      .shell.reading .page-controls .button { min-height: 31px; padding: 0 7px; }
+      .shell.reading .page-entry { width: 38px; }
+    }
+    @media (max-width: 390px) {
+      .shell.reading .doc-info { display: none; }
+      .shell.reading .reader-head { justify-content: flex-end; }
+      .shell.reading .reader-actions .button { padding: 0 6px; }
+      .shell.reading .reader-actions #fit-page { display: none; }
+    }
+    .shell.reading.controls-hidden .reader-head, .shell.reading.controls-hidden .reader-foot { opacity: 0; visibility: hidden; transition: opacity .3s, visibility .3s; pointer-events: none; }
+    .shell.reading .reader-head, .shell.reading .reader-foot { transition: opacity .3s, visibility .3s; }
+    .shell.reading.controls-hidden .reader-head { pointer-events: none; }
+    .selection-action { position: fixed; z-index: 10; display: flex; gap: 6px; padding: 5px; border: 1px solid #e5e5e2; border-radius: 10px; background: #fff; box-shadow: 0 4px 18px #15151524; }
+    .selection-action .button { width: 34px; min-height: 32px; padding: 0; }
+    .translation-panel { position: fixed; z-index: 11; top: 68px; right: 14px; width: min(420px, calc(100vw - 28px)); max-height: min(45vh, 380px); display: flex; flex-direction: column; overflow: hidden; border: 1px solid #e5e5e2; border-radius: 13px; background: rgb(255 255 255 / 97%); box-shadow: 0 8px 28px #15151524; }
+    .translation-head { min-height: 42px; padding: 9px 12px; display: flex; align-items: center; justify-content: space-between; gap: 10px; border-bottom: 1px solid var(--line); font-size: 12px; font-weight: 650; }
+    .translation-close { width: 28px; height: 28px; border: 0; border-radius: 7px; background: transparent; color: var(--muted); font-size: 18px; }
+    .translation-content { padding: 12px; overflow: auto; white-space: pre-wrap; overflow-wrap: anywhere; font-size: 13px; line-height: 1.65; text-align: start; }
+    .translation-content .translation-message { color: var(--muted); font-size: 12px; }
+    .settings-dialog { width: min(440px, calc(100vw - 32px)); padding: 0; border: 1px solid var(--line); border-radius: 15px; background: #fff; color: var(--ink); box-shadow: 0 20px 70px #0003; }
+    .settings-dialog::backdrop { background: #1118; backdrop-filter: blur(2px); }
+    .settings-form { padding: 20px; }
+    .settings-title-row { display: flex; justify-content: space-between; align-items: flex-start; gap: 12px; }
+    .settings-title { margin: 0; font-size: 17px; }
+    .settings-help { margin: 8px 0 18px; color: var(--muted); font-size: 12px; line-height: 1.6; }
+    .settings-label { display: block; margin-bottom: 7px; font-size: 12px; font-weight: 620; }
+    .settings-input { width: 100%; height: 40px; padding: 0 11px; border: 1px solid var(--line); border-radius: 8px; background: #fff; color: var(--ink); font-size: 13px; }
+    .settings-actions { margin-top: 18px; display: flex; justify-content: flex-end; gap: 8px; }
+    @media (max-width: 680px) { .shell.reading .translation-panel { top: 52px; right: 8px; } .settings-form { padding: 17px; } }
+    @media (prefers-reduced-motion: reduce) { *, *::before, *::after { animation-duration: .01ms !important; transition-duration: .01ms !important; } }
+  </style>
+</head>
+<body>
+  <main id="shell" class="shell">
+    <header class="topbar">
+      <div class="brand"><span class="logo" aria-hidden="true">M.</span><span>PDF Reader</span></div>
+      <span class="local">Private · processed locally</span>
+    </header>
+
+    <section id="landing" aria-labelledby="title">
+      <div class="intro">
+        <p class="eyebrow">A faithful way to read</p>
+        <h1 id="title">Your PDF,<br>just as it was designed.</h1>
+        <p class="subtitle">Open and read your original pages with their images, tables, typography, and equations intact. Your document stays on this device.</p>
+      </div>
+      <section id="dropzone" class="dropzone" aria-label="Open a PDF" tabindex="0">
+        <div class="upload-inner">
+          <span class="upload-icon" aria-hidden="true">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M12 16V4m0 0L7.5 8.5M12 4l4.5 4.5"/><path d="M5 14v4.5A1.5 1.5 0 0 0 6.5 20h11a1.5 1.5 0 0 0 1.5-1.5V14"/></svg>
+          </span>
+          <p class="upload-title">Choose a PDF to get started</p>
+          <p class="upload-help">Select a file from your device or drop it here.</p>
+          <button id="choose-file" class="button primary" type="button">Choose PDF</button>
+          <div class="format-row"><span>PDF files only</span><span>Up to 100 MB</span><span>No cloud upload</span></div>
+        </div>
+      </section>
+      <input id="file-input" type="file" accept="application/pdf,.pdf" aria-label="Choose a PDF file">
+      <p id="status" class="status" role="status" aria-live="polite">Your PDF stays on this device.</p>
+      <div id="progress" class="progress" role="progressbar" aria-label="Opening PDF" hidden><span></span></div>
+
+      <section class="features" aria-label="Reader features">
+        <div class="feature"><span class="feature-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><rect x="5" y="3.5" width="14" height="17" rx="2"/><path d="M9 8h6m-6 4h6m-6 4h3"/></svg></span><div><strong>Original pages</strong><span>View the PDF itself, not a converted or reformatted text copy.</span></div></div>
+        <div class="feature"><span class="feature-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="6.5"/><path d="m16 16 4.2 4.2M11 8v6m-3-3h6"/></svg></span><div><strong>Read comfortably</strong><span>Turn pages, enter a page number, and zoom to fit your screen.</span></div></div>
+        <div class="feature"><span class="feature-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M12 21s7-3.5 7-9V5l-7-2-7 2v7c0 5.5 7 9 7 9Z"/><path d="m9 12 2 2 4-4"/></svg></span><div><strong>Private by design</strong><span>Pages are rendered on your device. Nothing is uploaded.</span></div></div>
+      </section>
+      <footer class="footer">Rendered on your device with bundled Mozilla PDF.js · No OCR or extra installation required</footer>
+    </section>
+
+    <section id="reader" class="reader" aria-label="PDF reader" hidden>
+      <header class="reader-head">
+        <div class="doc-info"><span id="doc-name" class="doc-name">Document</span><span id="doc-meta" class="doc-meta">Original PDF</span></div>
+        <div class="reader-actions">
+          <button id="zoom-out" class="button zoom-control" type="button" aria-label="Zoom out" title="Zoom out">
+            <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"><circle cx="8.5" cy="8.5" r="5.5"/><path d="m12.5 12.5 4 4M6 8.5h5"/></svg>
+          </button>
+          <span id="zoom-label" class="zoom-label">Fit width</span>
+          <button id="zoom-in" class="button zoom-control" type="button" aria-label="Zoom in" title="Zoom in">
+            <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"><circle cx="8.5" cy="8.5" r="5.5"/><path d="m12.5 12.5 4 4M8.5 6v5m-2.5-2.5h5"/></svg>
+          </button>
+          <button id="fit-page" class="button" type="button" title="Fit the whole page on screen">Fit page</button>
+          <button id="open-settings" class="button" type="button" title="Translation settings">Settings</button>
+          <button id="open-another" class="button" type="button" title="Open another PDF">
+            <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M10 13V3m0 0L6.5 6.5M10 3l3.5 3.5"/><path d="M4 11v4.5A1.5 1.5 0 0 0 5.5 17h9a1.5 1.5 0 0 0 1.5-1.5V11"/></svg>
+            <span class="open-label">Open PDF</span>
+          </button>
+        </div>
+      </header>
+      <div id="reader-status" class="status" role="status" aria-live="polite" hidden></div>
+      <div id="reader-progress" class="progress" role="progressbar" aria-label="Rendering PDF page" hidden><span></span></div>
+      <div id="reader-body" class="reader-body"><div class="page-stage"><div id="pdf-page" class="pdf-page"><canvas id="pdf-canvas" aria-label="Original PDF page"></canvas><div id="text-layer" class="text-layer" aria-label="Selectable PDF text"></div></div></div></div>
+      <footer class="reader-foot">
+        <span id="page-label" class="page-label">Original PDF</span>
+        <div class="page-controls">
+          <button id="previous" class="button" type="button" aria-label="Previous page">
+            <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="m12.5 4-6 6 6 6"/></svg>Previous
+          </button>
+          <label for="page-number" class="page-total">Page</label>
+          <input id="page-number" class="page-entry" type="number" min="1" step="1" value="1" inputmode="numeric" aria-label="Current page number">
+          <span class="page-total">of <span id="page-count">1</span></span>
+          <button id="next" class="button" type="button" aria-label="Next page">Next
+            <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="m7.5 4 6 6-6 6"/></svg>
+          </button>
+        </div>
+        <span class="foot-spacer"><span id="zoom-short" class="zoom-label">100%</span></span>
+      </footer>
+      <div id="selection-action" class="selection-action" role="toolbar" aria-label="Text selection actions" hidden><button id="translate-selection" class="button primary" type="button" aria-label="Translate selected text" title="Translate selected text"><svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 5h8M7 3v2m3 0c-.7 3-3 5.5-6 7m1-4c1.5 2 3.5 3.5 6 4.5M13 15l2.2-6 2.3 6m-3.7-2h2.9"/></svg></button></div>
+      <section id="translation-panel" class="translation-panel" aria-label="Translation result" hidden>
+        <header class="translation-head"><span id="translation-title">Translation</span><button id="close-translation" class="translation-close" type="button" aria-label="Close translation">×</button></header>
+        <div id="translation-content" class="translation-content" aria-live="polite"></div>
+      </section>
+      <dialog id="settings-dialog" class="settings-dialog" aria-labelledby="settings-title">
+        <form id="settings-form" class="settings-form">
+          <div class="settings-title-row"><h2 id="settings-title" class="settings-title">Translation Settings</h2><button id="close-settings" class="translation-close" type="button" aria-label="Close settings">×</button></div>
+          <p class="settings-help">Choose the language that selected text should be translated into. Your preference is saved on this device.</p>
+          <label class="settings-label" for="target-language">Target language</label>
+          <input id="target-language" class="settings-input" type="text" maxlength="80" placeholder="For example, Spanish" autocomplete="off" required>
+          <div class="settings-actions"><button id="cancel-settings" class="button" type="button">Cancel</button><button class="button primary" type="submit">Save settings</button></div>
+        </form>
+      </dialog>
+    </section>
+  </main>
+  <script src="./vendor/mocu-ui.js"></script>
+  <script src="./reader.js"></script>
+
+
+</body>
+</html>

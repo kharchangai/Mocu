@@ -1,0 +1,14 @@
+{
+  "name": "mocu-pdf-reader",
+  "version": "3.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Mocu PDF reader extension with agent-powered selected-text translation.",
+  "scripts": {
+    "test": "node tests/ui-smoke.mjs && node tests/translation-smoke.mjs && node tests/pdfjs-smoke.mjs"
+  },
+  "dependencies": {
+    "@mocu/extension-sdk": "file:./vendor/extension-sdk",
+    "@mocu/extension-contracts": "file:./vendor/extension-contracts"
+  }
+}

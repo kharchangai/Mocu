@@ -1,0 +1,21 @@
+{
+  "id": "com.mocu.markdown-reader",
+  "name": "PDF Reader",
+  "description": "A local page-by-page PDF reader app with selectable text and agent-powered translation for highlighted passages.",
+  "version": "3.1.0",
+  "runtime": "node",
+  "entry": "index.js",
+  "permissions": ["agents.invoke"],
+  "commands": [
+    {
+      "id": "translate",
+      "title": "Translate selected PDF text",
+      "description": "Translate only the selected PDF passage into the requested target language using the saved Text Translation Agent.",
+      "timeoutSeconds": 0
+    }
+  ],
+  "app": {
+    "entry": "ui/index.html",
+    "title": "PDF Reader"
+  }
+}
