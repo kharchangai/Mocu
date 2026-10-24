@@ -28,7 +28,8 @@
     button:focus-visible, input:focus-visible, .dropzone:focus-visible { outline: 3px solid #a5a5a5; outline-offset: 3px; }
     button:disabled { cursor: not-allowed; opacity: .48; }
     .shell { width: min(1180px, 100%); height: 100vh; min-height: 520px; margin: 0 auto; padding: 24px 32px 30px; display: flex; flex-direction: column; overflow: hidden; }
-    #landing { min-height: 0; overflow: auto; }
+    #landing { min-height: 0; overflow: auto; scrollbar-width: none; -ms-overflow-style: none; }
+    #landing::-webkit-scrollbar { display: none; }
     .topbar { flex: 0 0 auto; }
     .reader { height: 0; }
     .topbar { min-height: 46px; display: flex; align-items: center; justify-content: space-between; gap: 16px; }
@@ -63,9 +64,9 @@
     .features { width: min(740px, 100%); margin: 48px auto 0; display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 22px; }
     .feature { display: flex; align-items: flex-start; gap: 10px; }
     .feature-icon { width: 27px; height: 27px; flex: 0 0 auto; display: grid; place-items: center; border: 1px solid var(--line); border-radius: 8px; background: #fff; }
-    .feature-icon svg { width: 14px; height: 14px; }
+    .feature-icon svg { display: block; width: 14px; height: 14px; place-self: center; }
     .feature strong { display: block; margin: 2px 0 4px; font-size: 11px; font-weight: 650; }
-    .feature span { display: block; color: #797973; font-size: 10px; line-height: 1.65; }
+    .feature > div > span { display: block; color: #797973; font-size: 10px; line-height: 1.65; }
     .footer { margin-top: auto; padding-top: 36px; color: #85857f; font-size: 10px; text-align: center; }
     .reader { width: 100%; flex: 1 1 auto; min-height: 0; margin: 26px auto 0; display: flex; flex-direction: column; overflow: hidden; border: 1px solid var(--line); border-radius: 15px; background: var(--paper); box-shadow: 0 14px 44px #15151508; }
     .reader-head { min-height: 58px; padding: 10px 17px; display: flex; align-items: center; justify-content: space-between; gap: 14px; border-bottom: 1px solid var(--line); }
