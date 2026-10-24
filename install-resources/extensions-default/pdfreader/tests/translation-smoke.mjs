@@ -25,11 +25,11 @@ assert.match(translateButton, /aria-label="Translate selected text"/, "icon-only
 assert.doesNotMatch(translateButton, /<span>/, "selection action has no visible Translate label");
 assert.match(ui, /controlsHideDelayMs = 5 \* 1000/);
 assert.match(ui, /window\.localStorage\.setItem\(settingsStorageKey/);
-assert.match(ui, /window\.mocu\.extension\.execute\("translate"/);
+assert.match(ui, /window\.mocu\.extension\.execute\(commandId, \{ text, targetLanguage \}\)/, "selected-text actions invoke their extension command with the chosen language");
 assert.match(ui, /selectedTextForTranslation/);
 assert.match(ui, /selectedTextDirection = getTextDirection\(selectedTextForTranslation\)/, "translation direction follows the selected text script");
 assert.match(ui, /translationContent\.dir = selectedTextDirection/, "translation status follows the selected text direction");
-assert.match(ui, /translationContent\.dir = getTextDirection\(translation\)/, "completed translation direction follows the translated text script");
+assert.match(ui, /translationContent\.dir = getTextDirection\(output\)/, "completed translation direction follows the translated text script");
 assert.match(ui, /Script=Arabic[\s\S]*?Script=Hebrew/, "direction detection handles right-to-left scripts");
 assert.match(html, /\.translation-content\s*\{[^}]*text-align:\s*start;/, "translation aligns to its text direction");
 new vm.Script(ui, { filename: "reader.js" });

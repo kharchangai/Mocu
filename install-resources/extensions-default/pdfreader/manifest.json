@@ -12,6 +12,12 @@
       "title": "Translate selected PDF text",
       "description": "Translate only the selected PDF passage into the requested target language using the saved Text Translation Agent.",
       "timeoutSeconds": 0
+    },
+    {
+      "id": "explain",
+      "title": "Explain selected PDF text simply",
+      "description": "Explain only the selected PDF passage in simple language, with an example if useful, using the requested target language and the saved Simple Text Explainer agent.",
+      "timeoutSeconds": 0
     }
   ],
   "app": {

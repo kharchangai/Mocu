@@ -7,7 +7,7 @@ const scriptMatch = html.match(/<script\s+src="\.\/reader\.js"><\/script>/);
 assert.ok(scriptMatch, "the app loads its self-hosted local reader script");
 const script = await readFile(new URL("../ui/reader.js", import.meta.url), "utf8");
 new vm.Script(script, { filename: "reader.js" });
-
+assert.match(script, /^\s*loadTargetLanguage\(\);\s*$/m, "saved translation settings are loaded when the reader starts");
 const ids = [...html.matchAll(/\bid="([^"]+)"/g)].map((match) => match[1]);
 assert.equal(new Set(ids).size, ids.length, "HTML element IDs are unique");
 const actualIds = new Set(ids);

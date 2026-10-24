@@ -21,6 +21,7 @@
   const pageInput = $("#page-number");
   const selectionAction = $("#selection-action");
   const translateSelectionButton = $("#translate-selection");
+  const explainSelectionButton = $("#explain-selection");
   const translationPanel = $("#translation-panel");
   const translationTitle = $("#translation-title");
   const translationContent = $("#translation-content");
@@ -98,6 +99,7 @@
     } catch (_) { targetLanguage = ""; }
     targetLanguageInput.value = targetLanguage;
   }
+  loadTargetLanguage();
 
   function openSettings() {
     targetLanguageInput.value = targetLanguage;
@@ -131,7 +133,12 @@
     translationPanel.hidden = false;
   }
 
-  async function translateSelectedText() {
+  function closeTranslation() {
+    translationSequence += 1;
+    translationPanel.hidden = true;
+  }
+
+  async function runSelectionCommand(commandId, title, button, progressMessage) {
     const text = selectedTextForTranslation;
     translationContent.dir = selectedTextDirection;
     if (!text) {
@@ -140,7 +147,7 @@
       return;
     }
     if (!targetLanguage) {
-      showTranslationMessage("Choose and save a target language in Settings before translating.", true);
+      showTranslationMessage("Choose and save a target language in Settings before continuing.", true);
       openSettings();
       return;
     }
@@ -149,27 +156,27 @@
       return;
     }
     if (typeof window.mocu?.extension?.execute !== "function") {
-      showTranslationMessage("Translation is only available inside the Mocu app.", true);
+      showTranslationMessage("This feature is only available inside the Mocu app.", true);
       return;
     }
 
     const sequence = ++translationSequence;
-    translateSelectionButton.disabled = true;
-    translationTitle.textContent = `Translation · ${targetLanguage}`;
-    showTranslationMessage("Translating selected text…");
+    button.disabled = true;
+    translationTitle.textContent = `${title} · ${targetLanguage}`;
+    showTranslationMessage(progressMessage);
     try {
-      const result = await window.mocu.extension.execute("translate", { text, targetLanguage });
+      const result = await window.mocu.extension.execute(commandId, { text, targetLanguage });
       if (sequence !== translationSequence) return;
-      const translation = typeof result === "string" ? result.trim() : result && typeof result.text === "string" ? result.text.trim() : "";
-      if (!translation) throw new Error("The translation agent returned an empty result.");
-      translationContent.dir = getTextDirection(translation);
-      translationContent.textContent = translation;
+      const output = typeof result === "string" ? result.trim() : result && typeof result.text === "string" ? result.text.trim() : "";
+      if (!output) throw new Error(`The ${title.toLowerCase()} agent returned an empty result.`);
+      translationContent.dir = getTextDirection(output);
+      translationContent.textContent = output;
       translationPanel.hidden = false;
     } catch (error) {
       if (sequence !== translationSequence) return;
-      showTranslationMessage(error instanceof Error ? `Translation failed: ${error.message}` : "Translation failed. Please try again.", true);
+      showTranslationMessage(error instanceof Error ? `${title} failed: ${error.message}` : `${title} failed. Please try again.`, true);
     } finally {
-      if (sequence === translationSequence) translateSelectionButton.disabled = false;
+      button.disabled = false;
     }
   }
 
@@ -215,7 +222,7 @@
 
   function setZoomLabel() {
     const percentage = Math.round(zoomFactor * 100);
-    $("#zoom-label").textContent = fitWholePage ? "Fit page" : zoomFactor === 1 ? "Fit width" : `${percentage}%`;
+    $("#zoom-label").textContent = fitWholePage ? "Fit page" : `${percentage}%`;
     $("#zoom-short").textContent = fitWholePage ? "Fit page" : `${percentage}%`;
   }
 
@@ -501,8 +508,9 @@
       showStatus("Could not save settings in this browser. Check its storage permissions.", true, !reader.hidden);
     }
   });
-  translateSelectionButton.addEventListener("click", () => void translateSelectedText());
-  $("#close-translation").addEventListener("click", () => { translationSequence += 1; translationPanel.hidden = true; });
+  $("#close-translation").addEventListener("click", closeTranslation);
+  translateSelectionButton.addEventListener("click", () => void runSelectionCommand("translate", "Translation", translateSelectionButton, "Translating selected text…"));
+  explainSelectionButton.addEventListener("click", () => void runSelectionCommand("explain", "Simple explanation", explainSelectionButton, "Explaining selected text…"));
   const refreshSelectionAction = () => window.requestAnimationFrame(positionSelectionAction);
   window.addEventListener("selectionchange", refreshSelectionAction);
   textLayerContainer.addEventListener("pointerup", refreshSelectionAction);
@@ -510,7 +518,7 @@
   textLayerContainer.addEventListener("touchend", refreshSelectionAction, { passive: true });
   readerBody.addEventListener("scroll", () => { if (!selectionAction.hidden) positionSelectionAction(); }, { passive: true });
   window.addEventListener("resize", () => { if (!selectionAction.hidden) positionSelectionAction(); });
-  translateSelectionButton.addEventListener("mousedown", (event) => event.preventDefault());
+  for (const button of [translateSelectionButton, explainSelectionButton]) button.addEventListener("mousedown", (event) => event.preventDefault());
   shell.addEventListener("pointermove", revealControls, { passive: true });
   shell.addEventListener("pointerdown", revealControls, { passive: true });
   shell.addEventListener("focusin", revealControls);
@@ -533,7 +541,7 @@
   });
   fitPageButton.addEventListener("click", () => {
     if (!pdfDocument || isLoading) return;
-    fitWholePage = true;
+    fitWholePage = false;
     zoomFactor = 1;
     setZoomLabel();
     void renderPage(currentPage, { scrollTop: false });
