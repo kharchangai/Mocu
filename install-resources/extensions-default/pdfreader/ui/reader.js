@@ -18,8 +18,10 @@
   const canvas = $("#pdf-canvas");
   const pageContainer = $("#pdf-page");
   const textLayerContainer = $("#text-layer");
+  const highlightLayer = $("#highlight-layer");
   const pageInput = $("#page-number");
   const selectionAction = $("#selection-action");
+  const highlightSelectionButton = $("#highlight-selection");
   const translateSelectionButton = $("#translate-selection");
   const explainSelectionButton = $("#explain-selection");
   const translationPanel = $("#translation-panel");
@@ -31,6 +33,7 @@
   const controlsHideDelayMs = 5 * 1000;
   const maxTranslationChars = 12000;
   const settingsStorageKey = "mocu.pdfreader.translationSettings.v1";
+  const readingStoragePrefix = "mocu.pdfreader.reading.v1:";
   const pageCount = $("#page-count");
   const previousButton = $("#previous");
   const nextButton = $("#next");
@@ -46,6 +49,8 @@
   let pdfDocument = null;
   let loadingTask = null;
   let activeFile = null;
+  let activeDocumentKey = "";
+  let documentState = null;
   let currentPage = 1;
   let zoomFactor = 1;
   let fitWholePage = false;
@@ -199,6 +204,137 @@
     selectionAction.style.top = `${Math.max(8, top)}px`;
   }
 
+  async function hashText(text) {
+    if (window.crypto?.subtle) {
+      try {
+        const digest = await window.crypto.subtle.digest("SHA-256", new TextEncoder().encode(text));
+        return `sha256-${Array.from(new Uint8Array(digest), (byte) => byte.toString(16).padStart(2, "0")).join("")}`;
+      } catch (_) { /* Fall back if Web Crypto is unavailable in this local app context. */ }
+    }
+    let first = 2166136261;
+    let second = 2246822519;
+    for (let index = 0; index < text.length; index += 1) {
+      const code = text.charCodeAt(index);
+      first = Math.imul(first ^ code, 16777619);
+      second = Math.imul(second ^ (code + index), 3266489917);
+    }
+    return `fallback-${(first >>> 0).toString(16)}-${(second >>> 0).toString(16)}`;
+  }
+
+  async function identifyPdf(documentToIdentify, file, sequence) {
+    let title = file.name;
+    try {
+      const metadata = await documentToIdentify.getMetadata();
+      if (typeof metadata?.info?.Title === "string" && metadata.info.Title.trim()) title = metadata.info.Title.trim();
+    } catch (_) { /* Some PDFs have no readable metadata. */ }
+
+    const textParts = [];
+    for (let pageNumber = 1; pageNumber <= documentToIdentify.numPages; pageNumber += 1) {
+      if (sequence !== loadSequence) return null;
+      const page = await documentToIdentify.getPage(pageNumber);
+      try {
+        const content = await page.getTextContent();
+        textParts.push(content.items.map((item) => typeof item.str === "string" ? item.str : "").join(" "));
+      } finally {
+        page.cleanup();
+      }
+      const percent = Math.max(1, Math.min(99, Math.round(pageNumber * 100 / documentToIdentify.numPages)));
+      progressFill.style.width = `${percent}%`;
+      showStatus(`Identifying PDF text locally · ${percent}%`);
+    }
+
+    const normalizedTitle = title.normalize("NFC").trim();
+    const textHash = await hashText(textParts.join("\n"));
+    const identifier = await hashText(`${normalizedTitle}\n${textHash}`);
+    const key = `${readingStoragePrefix}${identifier}`;
+    let saved = null;
+    try { saved = JSON.parse(window.localStorage.getItem(key) || "null"); } catch (_) { saved = null; }
+    const highlights = Array.isArray(saved?.highlights) ? saved.highlights.flatMap((highlight) => {
+      const page = Number(highlight?.page);
+      if (!Number.isInteger(page) || page < 1 || page > documentToIdentify.numPages || !Array.isArray(highlight.rects)) return [];
+      const rects = highlight.rects.filter((rect) => rect && [rect.x, rect.y, rect.width, rect.height].every((value) => typeof value === "number" && Number.isFinite(value))
+        && rect.x >= 0 && rect.y >= 0 && rect.x < 1 && rect.y < 1 && rect.width > 0 && rect.height > 0)
+        .map((rect) => ({ x: rect.x, y: rect.y, width: Math.min(1 - rect.x, rect.width), height: Math.min(1 - rect.y, rect.height) }));
+      return rects.length ? [{ id: String(highlight.id || ""), page, rects, text: typeof highlight.text === "string" ? highlight.text.slice(0, 2000) : "" }] : [];
+    }) : [];
+    const savedPage = Number(saved?.page);
+    return {
+      key,
+      state: {
+        title: normalizedTitle,
+        textHash,
+        page: Number.isInteger(savedPage) && savedPage >= 1 && savedPage <= documentToIdentify.numPages ? savedPage : 1,
+        highlights,
+      },
+    };
+  }
+
+  function saveDocumentState() {
+    if (!activeDocumentKey || !documentState) return;
+    documentState.page = currentPage;
+    try {
+      window.localStorage.setItem(activeDocumentKey, JSON.stringify(documentState));
+    } catch (_) {
+      showReaderStatus("Could not save reading progress or highlights. Check this app's storage permissions.", true);
+    }
+  }
+
+  function renderSavedHighlights(pageNumber) {
+    highlightLayer.replaceChildren();
+    for (const highlight of documentState?.highlights || []) {
+      if (highlight.page !== pageNumber) continue;
+      for (const rect of highlight.rects) {
+        const mark = document.createElement("div");
+        mark.className = "pdf-highlight";
+        mark.style.left = `${rect.x * 100}%`;
+        mark.style.top = `${rect.y * 100}%`;
+        mark.style.width = `${rect.width * 100}%`;
+        mark.style.height = `${rect.height * 100}%`;
+        highlightLayer.append(mark);
+      }
+    }
+  }
+
+  function addSelectionHighlight() {
+    const selection = window.getSelection?.();
+    if (!selection || selection.isCollapsed || !selection.toString().trim() || !textLayerContainer.contains(selection.anchorNode) || !textLayerContainer.contains(selection.focusNode) || !documentState) return;
+    const pageRect = pageContainer.getBoundingClientRect();
+    if (!pageRect.width || !pageRect.height) return;
+    const range = selection.getRangeAt(0);
+    const rects = Array.from(range.getClientRects()).filter((rect) => rect.width > 0 && rect.height > 0).map((rect) => {
+      const x = Math.max(0, (rect.left - pageRect.left) / pageRect.width);
+      const y = Math.max(0, (rect.top - pageRect.top) / pageRect.height);
+      const right = Math.min(1, (rect.right - pageRect.left) / pageRect.width);
+      const bottom = Math.min(1, (rect.bottom - pageRect.top) / pageRect.height);
+      return { x, y, width: Math.min(1 - x, Math.max(0, right - x)), height: Math.min(1 - y, Math.max(0, bottom - y)) };
+    }).filter((rect) => rect.width > 0 && rect.height > 0);
+    if (!rects.length) return;
+
+    const selectedText = selection.toString().trim();
+    const normalizedText = selectedText.slice(0, 2000).replace(/\s+/gu, " ");
+    const tolerance = 0.005;
+    const existingIndex = documentState.highlights.findIndex((highlight) => {
+      if (highlight.page !== currentPage || highlight.text.replace(/\s+/gu, " ") !== normalizedText || highlight.rects.length !== rects.length) return false;
+      return rects.every((rect, index) => ["x", "y", "width", "height"].every((key) => Math.abs(rect[key] - highlight.rects[index][key]) <= tolerance));
+    });
+
+    if (existingIndex >= 0) {
+      documentState.highlights.splice(existingIndex, 1);
+    } else {
+      documentState.highlights.push({
+        id: window.crypto?.randomUUID?.() || `${Date.now()}-${Math.random().toString(16).slice(2)}`,
+        page: currentPage,
+        rects,
+        text: selectedText.slice(0, 2000),
+      });
+    }
+    saveDocumentState();
+    renderSavedHighlights(currentPage);
+    selectionAction.hidden = true;
+    selection.removeAllRanges();
+    showReaderStatus(existingIndex >= 0 ? "Highlight removed." : "Highlight saved.");
+  }
+
   function setNavigationState() {
     const ready = Boolean(pdfDocument) && !isLoading;
     previousButton.disabled = !ready || currentPage <= 1;
@@ -244,9 +380,13 @@
     renderSequence += 1;
     const oldTask = loadingTask;
     const oldDocument = pdfDocument;
+    saveDocumentState();
     loadingTask = null;
     pdfDocument = null;
     activeFile = null;
+    activeDocumentKey = "";
+    documentState = null;
+    highlightLayer.replaceChildren();
     await cancelCurrentRender();
     try { textLayer?.cancel(); } catch (_) { /* Best-effort cleanup when replacing a text layer. */ }
     selectionAction.hidden = true;
@@ -284,6 +424,7 @@
     if (sequence !== renderSequence || documentAtStart !== pdfDocument) return;
 
     currentPage = pageNumber;
+    saveDocumentState();
     setNavigationState();
     setZoomLabel();
     activeFileNameLabel.textContent = activeFile?.name || "Original PDF";
@@ -341,6 +482,7 @@
       });
       await textLayer.render();
       if (sequence !== renderSequence || documentAtStart !== pdfDocument) return;
+      renderSavedHighlights(pageNumber);
       page.cleanup();
       const viewScale = (readerBody.clientWidth - 4) / Math.max(1, baseViewport.width);
       const percent = Math.round((scale / viewScale) * 100);
@@ -399,8 +541,16 @@
         return;
       }
       if (!loadedDocument.numPages) throw new Error("This PDF does not contain any pages.");
+      const identity = await identifyPdf(loadedDocument, file, sequence);
+      if (sequence !== loadSequence) {
+        await loadedDocument.destroy();
+        return;
+      }
+      if (!identity) throw new Error("Could not identify this PDF.");
       pdfDocument = loadedDocument;
-      currentPage = 1;
+      activeDocumentKey = identity.key;
+      documentState = identity.state;
+      currentPage = documentState.page;
       zoomFactor = 1;
       fitWholePage = true;
       $("#doc-name").textContent = file.name;
@@ -411,7 +561,7 @@
       setControlsHidden(false);
       scheduleControlsHide();
       setLoading(false);
-      await renderPage(1, { scrollTop: false });
+      await renderPage(currentPage, { scrollTop: false });
     } catch (error) {
       if (sequence !== loadSequence) return;
       await disposeDocument();
@@ -511,6 +661,7 @@
   $("#close-translation").addEventListener("click", closeTranslation);
   translateSelectionButton.addEventListener("click", () => void runSelectionCommand("translate", "Translation", translateSelectionButton, "Translating selected text…"));
   explainSelectionButton.addEventListener("click", () => void runSelectionCommand("explain", "Simple explanation", explainSelectionButton, "Explaining selected text…"));
+  highlightSelectionButton.addEventListener("click", addSelectionHighlight);
   const refreshSelectionAction = () => window.requestAnimationFrame(positionSelectionAction);
   window.addEventListener("selectionchange", refreshSelectionAction);
   textLayerContainer.addEventListener("pointerup", refreshSelectionAction);
@@ -518,7 +669,7 @@
   textLayerContainer.addEventListener("touchend", refreshSelectionAction, { passive: true });
   readerBody.addEventListener("scroll", () => { if (!selectionAction.hidden) positionSelectionAction(); }, { passive: true });
   window.addEventListener("resize", () => { if (!selectionAction.hidden) positionSelectionAction(); });
-  for (const button of [translateSelectionButton, explainSelectionButton]) button.addEventListener("mousedown", (event) => event.preventDefault());
+  for (const button of [highlightSelectionButton, translateSelectionButton, explainSelectionButton]) button.addEventListener("mousedown", (event) => event.preventDefault());
   shell.addEventListener("pointermove", revealControls, { passive: true });
   shell.addEventListener("pointerdown", revealControls, { passive: true });
   shell.addEventListener("focusin", revealControls);
@@ -576,6 +727,7 @@
     resizeTimer = window.setTimeout(() => void renderPage(currentPage, { scrollTop: false }), 180);
   });
 
+  window.addEventListener("beforeunload", saveDocumentState);
   setNavigationState();
   import(new URL("./vendor/pdfjs/pdf.min.mjs", document.baseURI).href)
     .then((library) => {

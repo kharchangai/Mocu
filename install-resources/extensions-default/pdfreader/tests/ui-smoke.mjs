@@ -15,7 +15,7 @@ for (const match of script.matchAll(/\$\("#([^"\s>]+)/g)) {
   assert.ok(actualIds.has(match[1]), `UI code selector #${match[1]} refers to an existing element`);
 }
 for (const id of [
-  "pdf-canvas", "pdf-page", "text-layer", "page-number", "page-count", "previous", "next", "zoom-in",
+  "pdf-canvas", "pdf-page", "text-layer", "highlight-layer", "highlight-selection", "selection-action", "page-number", "page-count", "previous", "next", "zoom-in",
   "zoom-out", "fit-page", "open-another",
 ]) {
   assert.ok(actualIds.has(id), `reader includes ${id}`);
@@ -33,8 +33,17 @@ assert.match(html, /\.shell\.reading \.page-controls\s*\{[^}]*pointer-events:\s*
 assert.match(script, /shell\.classList\.add\("reading"\)/, "full-screen reading mode activates after a document opens");
 assert.match(script, /fitWholePage = true;/, "new PDFs open initially fitted to the complete page");
 const documentAssignment = script.indexOf("pdfDocument = loadedDocument;");
-const firstPageRender = script.indexOf("await renderPage(1, { scrollTop: false });");
-assert.ok(documentAssignment >= 0 && firstPageRender > documentAssignment, "the parsed PDF is stored before first-page rendering starts");
+const documentIdentity = script.indexOf("const identity = await identifyPdf(loadedDocument, file, sequence);");
+const firstResumeRender = script.indexOf("await renderPage(currentPage, { scrollTop: false });");
+assert.ok(documentIdentity >= 0 && documentAssignment > documentIdentity && firstResumeRender > documentAssignment, "the reader identifies PDFs before restoring their saved page");
+assert.match(script, /hashText\(textParts\.join\("\\n"\)\)/, "PDF text is hashed for document identity");
+assert.match(script, /readingStoragePrefix/, "reading position and highlights use document-specific storage");
+assert.match(script, /renderSavedHighlights\(pageNumber\)/, "saved highlights render on their original PDF page");
+assert.match(script, /highlightSelectionButton\.addEventListener\("click", addSelectionHighlight\)/, "selected text can be toggled as a persistent highlight");
+assert.match(html, /id="highlight-selection"[^>]*>\s*<svg/, "highlight action displays an icon instead of a text label");
+assert.match(script, /documentState\.highlights\.findIndex\(/, "clicking the same selected text finds its existing highlight");
+assert.match(script, /documentState\.highlights\.splice\(existingIndex, 1\)/, "clicking highlight again removes the existing highlight");
+assert.match(script, /showReaderStatus\(existingIndex >= 0 \? "Highlight removed\." : "Highlight saved\."\)/, "the reader reports whether the highlight was saved or removed");
 
 console.log("PDF Reader UI smoke test passed:", {
   uniqueElements: ids.length,
