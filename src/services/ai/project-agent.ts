@@ -1,4 +1,4 @@
-
+﻿
 import {
   AIMessage,
   BaseMessage,
@@ -175,6 +175,12 @@ import {
   findSpecialistProjectMemories,
   type SpecialistProjectMemoryMatch,
 } from "./agent/specialist-memory";
+import {
+  applyProjectFileRestore,
+  createProjectHistoryTools,
+  prepareProjectFileRestore,
+  withProjectHistorySession,
+} from "./project-history";
 import { createGraphRecorder, type GraphRecorder } from "../../graphStructure/recorder";
 import { shouldRouteToGraphSystem } from "../../graphStructure/jevGate";
 import { cleanRunRecords } from "../../graphStructure/cleanup";
@@ -661,7 +667,7 @@ const buildProjectAgentSystemPrompt = (
     "You are Mocu, a helpful AI assistant.",
     "",
     "TASK COMPLETION RULES",
-    "Before doing anything, make sure you understand exactly what the user wants. Ask them for clarification if needed. Then plan how to fulfill their request using as few tokens as possible—doing exactly what they asked, no more and no less.",
+    "Before doing anything, make sure you understand exactly what the user wants. Ask them for clarification if needed. Then plan how to fulfill their request using as few tokens as possibleâ€”doing exactly what they asked, no more and no less.",
     "If clarification is needed, call ask_user with one concise question; use its tool result (the user's answer) to continue the task.",
     "When the user asks about something related to Mocu, use the document tools to check whether a relevant saved document exists. If one exists, read it and use its contents to answer the user.",
     // "- Finish the user's request completely in this run. There is no step limit: keep calling tools for as many steps as the job needs.",
@@ -1738,7 +1744,7 @@ function createReadSpecialistSectionHistoryTool(chatId: string) {
 /*
  * Executes Mocu without sending the complete chat history to the model.
  */
-export const callProjectAgent =
+const callProjectAgentWithHistorySession =
   async (
     state:
       typeof GraphState.State,
@@ -2146,11 +2152,13 @@ export const callProjectAgent =
     const graphDigestTool = createGraphDigestTool(normalizedProjectPath);
     const graphToolLogTool = createGraphToolLogTool(normalizedProjectPath);
     const specialistMemoryTool = createFindSpecialistProjectMemoryTool(normalizedProjectPath);
+    const projectHistoryTools = createProjectHistoryTools(normalizedProjectPath);
     const llmWithTools = llm.bindTools([
       askUserTool, scheduleTool, desktopVisionTool, generateImageTool, terminalTool, perplexitySearchTool, summarizeTextTool,
       textToSpeechTool, speechControlTool, skillLoaderTool, createAgentTool,
       ...agentManagementTools,
       readFileTool, writeFileTool, editFileTool, findFileTool,
+      projectHistoryTools.history, projectHistoryTools.fileHistory, projectHistoryTools.restore,
       graphDigestTool.runnable, graphToolLogTool.runnable, specialistMemoryTool, readSpecialistHistoryTool,
       extractEntitiesTool,
       ...docTools, ...notesTools, ...extensionTools.tools, ...mcpTools.tools, ...agentTools.tools,
@@ -2182,7 +2190,40 @@ export const callProjectAgent =
       description: readSpecialistHistoryTool.description,
       execute: async (args) => readSpecialistHistoryTool.invoke(args as never, runnableConfig),
     });
-
+    toolExecutor.registerTool({
+      name: projectHistoryTools.history.name,
+      description: projectHistoryTools.history.description,
+      execute: async (args) => projectHistoryTools.history.invoke(args as never, runnableConfig),
+    });
+    toolExecutor.registerTool({
+      name: projectHistoryTools.fileHistory.name,
+      description: projectHistoryTools.fileHistory.description,
+      execute: async (args) => projectHistoryTools.fileHistory.invoke(args as never, runnableConfig),
+    });
+    toolExecutor.registerTool({
+      name: projectHistoryTools.restore.name,
+      description: projectHistoryTools.restore.description,
+      execute: async (args, context) => {
+        const input = args as { path?: unknown; checkpointId?: unknown };
+        if (typeof input.path !== "string" || typeof input.checkpointId !== "string") {
+          return "Error: both path and checkpointId are required.";
+        }
+        const plan = await prepareProjectFileRestore(normalizedProjectPath, {
+          path: input.path,
+          checkpointId: input.checkpointId,
+        });
+        if (plan.conflict) {
+          const answer = await askUserForClarification({
+            question: `The current file ${plan.relative} differs from Mocu's latest recorded version. Restoring it may overwrite newer user changes. Do you want to proceed?`,
+            options: ["Restore this file", "Cancel"],
+          }, context);
+          if (answer.trim().toLowerCase() !== "restore this file") {
+            return `Restore cancelled. ${plan.relative} was not changed.`;
+          }
+        }
+        return applyProjectFileRestore(plan);
+      },
+    });
     extensionTools.registerAll(toolExecutor);
     agentTools.registerAll(toolExecutor);
 
@@ -2191,6 +2232,7 @@ export const callProjectAgent =
       "speech_control", perplexitySearchTool.name, skillLoaderTool.name, createAgentTool.name,
       ...agentManagementTools.map((agentTool) => agentTool.name),
       readFileTool.name, writeFileTool.name, editFileTool.name, findFileTool.name,
+      projectHistoryTools.history.name, projectHistoryTools.fileHistory.name, projectHistoryTools.restore.name,
       graphDigestTool.name, graphToolLogTool.name, specialistMemoryTool.name, readSpecialistHistoryTool.name,
       extractEntitiesTool.name,
       ...docTools.map((item) => item.name), ...notesTools.map((item) => item.name),
@@ -2639,3 +2681,11 @@ export const callProjectAgent =
       ],
     };
   };
+
+export const callProjectAgent = async (
+  state: typeof GraphState.State,
+  projectPath: string,
+  config?: RunnableConfig,
+) => withProjectHistorySession(projectPath, () =>
+  callProjectAgentWithHistorySession(state, projectPath, config),
+);
