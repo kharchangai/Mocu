@@ -10,6 +10,12 @@ Reader controls and file information fade after three minutes so the page is uno
 
 Use **Previous / Next**, enter a page number, or use the left/right arrow keys to move through the document. **Fit width**, **Fit page**, and the zoom buttons adapt the page to the available space. Text-based PDFs support text selection and copying from the page; scanned image-only PDFs still need OCR for text recognition. `Home` and `End` move to the first and last page. Use **Open PDF** to switch documents. PDF processing does not upload documents or depend on internet access.
 
+## PDF Markdown cache and explanations
+
+When opened in Mocu, the reader extracts selectable text locally with its bundled PDF.js parser and stores one Markdown file per page in `<installed-extension-folder>/markdown-cache/<pdf-id>/1.md`, `2.md`, and so on (page numbering starts at 1). The PDF ID is derived from the normalized document title and extracted text. Existing usable page files are reused; missing, empty, invalid-UTF-8, or unreadable pages are regenerated. The original PDF remains the displayed document.
+
+The `explain` action passes the selected text, PDF ID, page count, and absolute cache folder to the saved **PDF Markdown Simplification Agent**, which searches the cached pages and reads relevant context. Create that agent in Mocu's Agents page if it is not already present. MarkItDown itself is a Python library/CLI; this Node extension instead turns PDF.js's locally extracted text into Markdown, without converting visual layout, images, or scanned-page OCR. The cache is local to this extension installation and is removed if the extension installation is removed.
+
 ## Requirements and limits
 
 The interface uses the bundled Mozilla PDF.js 6.4.299 module, worker, CMaps, and standard fonts under `ui/vendor/pdfjs/`. Each original PDF page is drawn at its native scale and overlaid with PDF.js's selectable text layer, so text can be selected and copied while images, diagrams, tables, and equations remain in their original positions. It does not need Python packages, a runtime command, network-loaded libraries, or OCR software. PDFs are limited to 100 MB. Password-protected PDFs must be unlocked before opening; scanned image-only PDFs display as original pages but require OCR for selectable text.

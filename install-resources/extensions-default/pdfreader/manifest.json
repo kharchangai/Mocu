@@ -1,8 +1,8 @@
 {
   "id": "com.mocu.markdown-reader",
   "name": "PDF Reader",
-  "description": "A local page-by-page PDF reader app with selectable text and agent-powered translation for highlighted passages.",
-  "version": "3.1.0",
+  "description": "A local page-by-page PDF reader with selectable text, cached per-page Markdown, and agent-powered translation and explanations.",
+  "version": "3.2.0",
   "runtime": "node",
   "entry": "index.js",
   "permissions": ["agents.invoke"],
@@ -16,7 +16,13 @@
     {
       "id": "explain",
       "title": "Explain selected PDF text simply",
-      "description": "Explain only the selected PDF passage in simple language, with an example if useful, using the requested target language and the saved Simple Text Explainer agent.",
+      "description": "Explain the selected passage using the matching page and surrounding context from the cached PDF Markdown files with the saved PDF Markdown Simplification Agent.",
+      "timeoutSeconds": 0
+    },
+    {
+      "id": "cacheMarkdown",
+      "title": "Cache PDF Markdown pages",
+      "description": "Save or verify locally extracted Markdown pages in the PDF Reader's per-document cache.",
       "timeoutSeconds": 0
     }
   ],

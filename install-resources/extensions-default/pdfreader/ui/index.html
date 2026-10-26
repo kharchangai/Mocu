@@ -162,7 +162,28 @@
     .translation-head { min-height: 42px; padding: 9px 12px; display: flex; align-items: center; justify-content: space-between; gap: 10px; border-bottom: 1px solid var(--line); font-size: 12px; font-weight: 650; }
     .translation-close { width: 28px; height: 28px; border: 0; border-radius: 7px; background: transparent; color: var(--muted); font-size: 18px; }
     .translation-content { padding: 12px; overflow: auto; white-space: pre-wrap; overflow-wrap: anywhere; font-size: 13px; line-height: 1.65; text-align: start; }
-    .translation-content .translation-message { color: var(--muted); font-size: 12px; }
+    .translation-content.markdown-content { white-space: normal; }
+    .translation-content.markdown-content > :first-child { margin-top: 0; }
+    .translation-content.markdown-content > :last-child { margin-bottom: 0; }
+    .translation-content.markdown-content p { margin: 0 0 10px; }
+    .translation-content.markdown-content h1, .translation-content.markdown-content h2, .translation-content.markdown-content h3, .translation-content.markdown-content h4, .translation-content.markdown-content h5, .translation-content.markdown-content h6 { margin: 14px 0 7px; line-height: 1.35; }
+    .translation-content.markdown-content h1 { font-size: 1.35em; }
+    .translation-content.markdown-content h2 { font-size: 1.2em; }
+    .translation-content.markdown-content h3, .translation-content.markdown-content h4, .translation-content.markdown-content h5, .translation-content.markdown-content h6 { font-size: 1.05em; }
+    .translation-content.markdown-content ul, .translation-content.markdown-content ol { margin: 0 0 10px; padding-inline-start: 24px; }
+    .translation-content.markdown-content li + li { margin-top: 4px; }
+    .translation-content.markdown-content blockquote { margin: 8px 0; padding-inline-start: 12px; border-inline-start: 3px solid var(--line); color: var(--muted); }
+    .translation-content.markdown-content code { padding: 1px 4px; border-radius: 4px; background: var(--soft); font-family: ui-monospace, SFMono-Regular, Consolas, monospace; font-size: .92em; }
+    .translation-content.markdown-content pre { max-width: 100%; margin: 8px 0; padding: 10px; overflow: auto; border-radius: 7px; background: var(--soft); }
+    .translation-content.markdown-content pre code { padding: 0; background: transparent; }
+    .translation-content.markdown-content table { width: 100%; margin: 8px 0; border-collapse: collapse; font-size: .95em; }
+    .translation-content.markdown-content th, .translation-content.markdown-content td { padding: 5px 7px; border: 1px solid var(--line); text-align: start; }
+    .translation-content.markdown-content th { background: var(--soft); }
+    .translation-content.markdown-content a { color: #2863aa; text-decoration: underline; }
+    .translation-content.markdown-content math { font-family: Cambria, "STIX Two Math", "Times New Roman", serif; font-size: 1.04em; direction: ltr; unicode-bidi: isolate; }
+    .translation-content.markdown-content math[display="block"] { display: block; max-width: 100%; margin: 12px 0; overflow-x: auto; overflow-y: hidden; text-align: center; }
+    .translation-content.markdown-content msub, .translation-content.markdown-content msup, .translation-content.markdown-content msubsup { font-size: .84em; }
+    .translation-content.markdown-content mfrac { padding: 0 2px; }
     .settings-dialog { width: min(440px, calc(100vw - 32px)); padding: 0; border: 1px solid var(--line); border-radius: 15px; background: #fff; color: var(--ink); box-shadow: 0 20px 70px #0003; }
     .settings-dialog::backdrop { background: #1118; backdrop-filter: blur(2px); }
     .settings-form { padding: 20px; }

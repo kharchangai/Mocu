@@ -51,6 +51,9 @@
   let activeFile = null;
   let activeDocumentKey = "";
   let documentState = null;
+  let activePdfId = "";
+  let activePageTexts = [];
+  let markdownCachePromise = null;
   let currentPage = 1;
   let zoomFactor = 1;
   let fitWholePage = false;
@@ -126,8 +129,279 @@
     }
     return "ltr";
   }
+  function renderMath(tex, display = false) {
+    const namespace = "http://www.w3.org/1998/Math/MathML";
+    const make = (name, text = "") => {
+      const node = document.createElementNS(namespace, name);
+      if (text) node.textContent = text;
+      return node;
+    };
+    const greek = {
+      alpha: "α", beta: "β", gamma: "γ", delta: "δ", epsilon: "ε", theta: "θ", lambda: "λ", mu: "μ", pi: "π", sigma: "σ", phi: "φ", omega: "ω",
+      Gamma: "Γ", Delta: "Δ", Theta: "Θ", Lambda: "Λ", Pi: "Π", Sigma: "Σ", Phi: "Φ", Omega: "Ω",
+    };
+    const symbols = {
+      le: "≤", leq: "≤", ge: "≥", geq: "≥", neq: "≠", ne: "≠", times: "×", cdot: "·", pm: "±", in: "∈", notin: "∉",
+      to: "→", rightarrow: "→", leftarrow: "←", implies: "⟹", iff: "⟺", approx: "≈", equiv: "≡", infinity: "∞", partial: "∂", sum: "∑", prod: "∏",
+      ldots: "…", cdots: "⋯", langle: "⟨", rangle: "⟩", lbrace: "{", rbrace: "}", percent: "%",
+    };
+    let cursor = 0;
+    const parseSequence = (inGroup = false, single = false) => {
+      const children = [];
+      while (cursor < tex.length) {
+        if (inGroup && tex[cursor] === "}") break;
+        if (/\s/.test(tex[cursor])) {
+          cursor += 1;
+          if (single) break;
+          if (children.length && cursor < tex.length && tex[cursor] !== "}") {
+            const space = make("mspace");
+            space.setAttribute("width", "0.18em");
+            children.push(space);
+          }
+          continue;
+        }
+
+        let base;
+        const character = tex[cursor++];
+        if (character === "{") {
+          base = parseSequence(true);
+          if (tex[cursor] === "}") cursor += 1;
+        } else if (character === "\\") {
+          const commandMatch = tex.slice(cursor).match(/^[A-Za-z]+/);
+          const command = commandMatch ? commandMatch[0] : tex[cursor++];
+          if (commandMatch) cursor += command.length;
+          if (command === "left" || command === "right") continue;
+          if ([",", ";", ":", "!"].includes(command)) {
+            base = make("mspace");
+            base.setAttribute("width", command === "!" ? "0.08em" : "0.22em");
+          } else if (command === "quad" || command === "qquad") {
+            base = make("mspace");
+            base.setAttribute("width", command === "quad" ? "1em" : "2em");
+          } else if (command === "frac") {
+            base = make("mfrac");
+            base.append(parseArgument(), parseArgument());
+          } else if (command === "sqrt") {
+            base = make("msqrt");
+            base.append(parseArgument());
+          } else if (command === "text") {
+            base = make("mtext", parseRawGroup());
+          } else if (["mathrm", "mathbf", "mathit", "mathbb"].includes(command)) {
+            base = make("mstyle");
+            base.setAttribute("mathvariant", ({mathrm: "normal", mathit: "italic", mathbb: "double-struck", mathbf: "bold"})[command]);
+            base.append(parseArgument());
+          } else if (Object.hasOwn(greek, command)) {
+            base = make("mi", greek[command]);
+          } else if (Object.hasOwn(symbols, command)) {
+            base = make("mo", symbols[command]);
+          } else {
+            base = make("mi", command || "\\");
+          }
+        } else if (/[0-9]/.test(character)) {
+          let value = character;
+          while (cursor < tex.length && /[0-9.,]/.test(tex[cursor])) value += tex[cursor++];
+          base = make("mn", value);
+        } else if (/\p{Letter}/u.test(character)) {
+          let value = character;
+          while (cursor < tex.length && /\p{Letter}/u.test(tex[cursor])) value += tex[cursor++];
+          base = make("mi", value);
+        } else {
+          base = make("mo", character);
+        }
+
+        let subscript = null;
+        let superscript = null;
+        while (tex[cursor] === "_" || tex[cursor] === "^") {
+          const marker = tex[cursor++];
+          const argument = parseArgument();
+          if (marker === "_") subscript = argument;
+          else superscript = argument;
+        }
+        if (subscript && superscript) {
+          const scripted = make("msubsup");
+          scripted.append(base, subscript, superscript);
+          base = scripted;
+        } else if (subscript || superscript) {
+          const scripted = make(subscript ? "msub" : "msup");
+          scripted.append(base, subscript || superscript);
+          base = scripted;
+        }
+        children.push(base);
+        if (single) break;
+      }
+      const row = make("mrow");
+      row.append(...children);
+      return row;
+    };
+    const parseArgument = () => {
+      if (tex[cursor] === "{") {
+        cursor += 1;
+        const group = parseSequence(true);
+        if (tex[cursor] === "}") cursor += 1;
+        return group;
+      }
+      return cursor < tex.length ? parseSequence(false, true) : make("mrow");
+    };
+    const parseRawGroup = () => {
+      if (tex[cursor] !== "{") return "";
+      cursor += 1;
+      const start = cursor;
+      let depth = 1;
+      while (cursor < tex.length && depth) {
+        if (tex[cursor] === "{") depth += 1;
+        else if (tex[cursor] === "}") depth -= 1;
+        cursor += 1;
+      }
+      return tex.slice(start, depth ? cursor : cursor - 1);
+    };
+
+    const math = make("math");
+    math.setAttribute("display", display ? "block" : "inline");
+    math.setAttribute("dir", "ltr");
+    math.setAttribute("aria-label", tex.trim());
+    math.append(parseSequence());
+    return math;
+  }
+  function isMathToken(token) {
+    return token.startsWith("\\(") || token.startsWith("\\[") || token.startsWith("$$") || token.startsWith("$");
+  }
+
+  function mathTokenContent(token) {
+    return token.startsWith("\\(") || token.startsWith("\\[") || token.startsWith("$$") ? token.slice(2, -2) : token.slice(1, -1);
+  }
+
+  function appendMarkdownInline(parent, text) {
+    const tokenPattern = /(\\\([\s\S]*?\\\)|\\\[[\s\S]*?\\\]|\$\$[\s\S]*?\$\$|(?<!\\)\$(?!\$)[^$\n]+\$|`[^`\n]*`|\[[^\]]+\]\(https?:\/\/[^\s)]+\)|\*\*[\s\S]+?\*\*|__[\s\S]+?__|~~[\s\S]+?~~|\*[^*\n]+\*|_[^_\n]+_)/g;
+    let lastIndex = 0;
+    for (const match of text.matchAll(tokenPattern)) {
+      const token = match[0];
+      if (match.index > lastIndex) parent.append(document.createTextNode(text.slice(lastIndex, match.index)));
+      if (token.startsWith("`")) {
+        const code = document.createElement("code");
+        code.textContent = token.slice(1, -1);
+        parent.append(code);
+      } else if (isMathToken(token)) {
+        parent.append(renderMath(mathTokenContent(token), token.startsWith("\\[") || token.startsWith("$$")));
+      } else {
+        const link = token.match(/^\[([\s\S]+)\]\((https?:\/\/[^\s)]+)\)$/);
+        const strong = token.startsWith("**") || token.startsWith("__");
+        const del = token.startsWith("~~");
+        const element = link ? document.createElement("a") : document.createElement(strong ? "strong" : del ? "del" : token.startsWith("*") || token.startsWith("_") ? "em" : "span");
+        const content = link ? link[1] : token.slice(strong || del ? 2 : 1, strong || del ? -2 : -1);
+        if (link) {
+          element.href = link[2];
+          element.target = "_blank";
+          element.rel = "noopener noreferrer";
+        }
+        appendMarkdownInline(element, content);
+        parent.append(element);
+      }
+      lastIndex = match.index + token.length;
+    }
+    if (lastIndex < text.length) parent.append(document.createTextNode(text.slice(lastIndex)));
+  }
+
+  function renderMarkdown(markdown) {
+    const fragment = document.createDocumentFragment();
+    const lines = markdown.replace(/\r\n?/g, "\n").split("\n");
+    const isBlockStart = (line) => /^\s*(?:#{1,6}\s|```|>|[-+*]\s|\d+[.)]\s|(?:\*\s*){3,}$|(?:-\s*){3,}$|(?:_\s*){3,}$)/.test(line);
+    const addInline = (parent, value) => appendMarkdownInline(parent, value.trim());
+    const splitTableRow = (line) => line.trim().replace(/^\|/, "").replace(/\|$/, "").split("|").map((cell) => cell.trim());
+
+    for (let index = 0; index < lines.length;) {
+      const line = lines[index];
+      if (!line.trim()) { index += 1; continue; }
+
+      const fence = line.match(/^\s*```\s*([\w+-]*)\s*$/);
+      if (fence) {
+        const codeLines = [];
+        index += 1;
+        while (index < lines.length && !/^\s*```\s*$/.test(lines[index])) codeLines.push(lines[index++]);
+        if (index < lines.length) index += 1;
+        const pre = document.createElement("pre");
+        const code = document.createElement("code");
+        if (fence[1]) code.className = `language-${fence[1]}`;
+        code.textContent = codeLines.join("\n");
+        pre.append(code);
+        fragment.append(pre);
+        continue;
+      }
+
+      const heading = line.match(/^\s{0,3}(#{1,6})\s+(.+?)\s*#*\s*$/);
+      if (heading) {
+        const node = document.createElement(`h${heading[1].length}`);
+        addInline(node, heading[2]);
+        fragment.append(node);
+        index += 1;
+        continue;
+      }
+
+      if (/^\s*(?:(?:\*\s*){3,}|(?:-\s*){3,}|(?:_\s*){3,})$/.test(line)) {
+        fragment.append(document.createElement("hr"));
+        index += 1;
+        continue;
+      }
+
+      if (/^\s*\|?.+\|.+\|?\s*$/.test(line) && index + 1 < lines.length && /^\s*\|?\s*:?-{3,}:?\s*(?:\|\s*:?-{3,}:?\s*)+\|?\s*$/.test(lines[index + 1])) {
+        const headers = splitTableRow(line);
+        const table = document.createElement("table");
+        const thead = document.createElement("thead");
+        const headerRow = document.createElement("tr");
+        for (const value of headers) { const cell = document.createElement("th"); addInline(cell, value); headerRow.append(cell); }
+        thead.append(headerRow);
+        table.append(thead);
+        index += 2;
+        const tbody = document.createElement("tbody");
+        while (index < lines.length && lines[index].includes("|")) {
+          const values = splitTableRow(lines[index++]);
+          const row = document.createElement("tr");
+          for (let column = 0; column < headers.length; column += 1) { const cell = document.createElement("td"); addInline(cell, values[column] || ""); row.append(cell); }
+          tbody.append(row);
+        }
+        table.append(tbody);
+        fragment.append(table);
+        continue;
+      }
+
+      const listMatch = line.match(/^\s*([-+*])\s+|^\s*(\d+)[.)]\s+/);
+      if (listMatch) {
+        const ordered = Boolean(listMatch[2]);
+        const list = document.createElement(ordered ? "ol" : "ul");
+        while (index < lines.length) {
+          const item = lines[index].match(/^\s*(?:[-+*])\s+(.+)$|^\s*\d+[.)]\s+(.+)$/);
+          if (!item || Boolean(lines[index].match(/^\s*\d+[.)]\s+/)) !== ordered) break;
+          const node = document.createElement("li");
+          addInline(node, item[1] || item[2]);
+          list.append(node);
+          index += 1;
+        }
+        fragment.append(list);
+        continue;
+      }
+
+      if (/^\s{0,3}>/.test(line)) {
+        const quote = document.createElement("blockquote");
+        while (index < lines.length && /^\s{0,3}>/.test(lines[index])) {
+          const paragraph = document.createElement("p");
+          addInline(paragraph, lines[index++].replace(/^\s{0,3}>\s?/, ""));
+          quote.append(paragraph);
+        }
+        fragment.append(quote);
+        continue;
+      }
+
+      const paragraphLines = [line.trim()];
+      index += 1;
+      while (index < lines.length && lines[index].trim() && !isBlockStart(lines[index])) paragraphLines.push(lines[index++].trim());
+      const paragraph = document.createElement("p");
+      addInline(paragraph, paragraphLines.join(" "));
+      fragment.append(paragraph);
+    }
+    return fragment;
+  }
+
 
   function showTranslationMessage(message, isError = false) {
+    translationContent.classList.remove("markdown-content");
     translationContent.dir = selectedTextDirection;
     translationContent.replaceChildren();
     const node = document.createElement("p");
@@ -141,6 +415,46 @@
   function closeTranslation() {
     translationSequence += 1;
     translationPanel.hidden = true;
+  }
+
+  async function ensureMarkdownCache(pdfId, pageCount, pageTexts, sequence) {
+    if (typeof window.mocu?.extension?.execute !== "function") throw new Error("Markdown caching is only available inside the Mocu app.");
+    const initial = await window.mocu.extension.execute("cacheMarkdown", { pdfId, pageCount });
+    if (sequence !== loadSequence) return initial;
+    const missingPages = Array.isArray(initial?.missingPages) ? initial.missingPages : [];
+    let offset = 0;
+
+    while (offset < missingPages.length) {
+      if (sequence !== loadSequence) return initial;
+      const batch = [];
+      let batchChars = 0;
+      while (offset < missingPages.length && batch.length < 40) {
+        const pageNumber = missingPages[offset];
+        const text = pageTexts[pageNumber - 1];
+        if (typeof text !== "string") throw new Error(`Could not extract the text for PDF page ${pageNumber}.`);
+        const markdown = `# Page ${pageNumber}\n\n${text.trim() || "_No selectable text could be extracted from this page._"}\n`;
+        if (batch.length && batchChars + markdown.length > 100_000) break;
+        batch.push({ pageNumber, markdown });
+        batchChars += markdown.length;
+        offset += 1;
+      }
+
+      await window.mocu.extension.execute("cacheMarkdown", { pdfId, pageCount, pages: batch });
+      if (sequence !== loadSequence) return initial;
+      const percent = missingPages.length ? Math.min(99, Math.round(offset * 100 / missingPages.length)) : 100;
+      showReaderStatus(`Saving PDF Markdown pages locally · ${percent}%`);
+    }
+
+    const completed = await window.mocu.extension.execute("cacheMarkdown", { pdfId, pageCount });
+    if (!completed?.complete) {
+      const count = Array.isArray(completed?.missingPages) ? completed.missingPages.length : "some";
+      throw new Error(`The PDF Markdown cache is incomplete (${count} page file(s) missing or unreadable).`);
+    }
+    if (sequence === loadSequence) {
+      activePageTexts = [];
+      showReaderStatus(`PDF Markdown cached locally · ${pageCount} page(s).`);
+    }
+    return completed;
   }
 
   async function runSelectionCommand(commandId, title, button, progressMessage) {
@@ -170,12 +484,25 @@
     translationTitle.textContent = `${title} · ${targetLanguage}`;
     showTranslationMessage(progressMessage);
     try {
-      const result = await window.mocu.extension.execute(commandId, { text, targetLanguage });
+      let commandInput = { text, targetLanguage };
+      if (commandId === "explain") {
+        if (!activePdfId || !pdfDocument) throw new Error("The current PDF identity is missing. Reopen the PDF and try again.");
+        if (markdownCachePromise) await markdownCachePromise;
+        if (sequence !== translationSequence) return;
+        commandInput = { ...commandInput, pdfId: activePdfId, pageCount: pdfDocument.numPages };
+      }
+      const result = await window.mocu.extension.execute(commandId, commandInput);
       if (sequence !== translationSequence) return;
       const output = typeof result === "string" ? result.trim() : result && typeof result.text === "string" ? result.text.trim() : "";
       if (!output) throw new Error(`The ${title.toLowerCase()} agent returned an empty result.`);
       translationContent.dir = getTextDirection(output);
-      translationContent.textContent = output;
+      if (commandId === "explain") {
+        translationContent.classList.add("markdown-content");
+        translationContent.replaceChildren(renderMarkdown(output));
+      } else {
+        translationContent.classList.remove("markdown-content");
+        translationContent.textContent = output;
+      }
       translationPanel.hidden = false;
     } catch (error) {
       if (sequence !== translationSequence) return;
@@ -204,6 +531,24 @@
     selectionAction.style.top = `${Math.max(8, top)}px`;
   }
 
+  function extractPdfPageText(content) {
+    const lines = [];
+    let line = "";
+    for (const item of content.items || []) {
+      const fragment = typeof item?.str === "string" ? item.str : "";
+      if (fragment) {
+        if (line && !/\s$/u.test(line) && !/^[,.;:!?%)}\]’”]/u.test(fragment)) line += " ";
+        line += fragment;
+      }
+      if (item?.hasEOL && line) {
+        lines.push(line.trimEnd());
+        line = "";
+      }
+    }
+    if (line) lines.push(line.trimEnd());
+    return lines.join("\n").replace(/[ \t]+\n/gu, "\n").trim();
+  }
+
   async function hashText(text) {
     if (window.crypto?.subtle) {
       try {
@@ -229,12 +574,14 @@
     } catch (_) { /* Some PDFs have no readable metadata. */ }
 
     const textParts = [];
+    const pageTexts = [];
     for (let pageNumber = 1; pageNumber <= documentToIdentify.numPages; pageNumber += 1) {
       if (sequence !== loadSequence) return null;
       const page = await documentToIdentify.getPage(pageNumber);
       try {
         const content = await page.getTextContent();
         textParts.push(content.items.map((item) => typeof item.str === "string" ? item.str : "").join(" "));
+        pageTexts.push(extractPdfPageText(content));
       } finally {
         page.cleanup();
       }
@@ -245,8 +592,8 @@
 
     const normalizedTitle = title.normalize("NFC").trim();
     const textHash = await hashText(textParts.join("\n"));
-    const identifier = await hashText(`${normalizedTitle}\n${textHash}`);
-    const key = `${readingStoragePrefix}${identifier}`;
+    const pdfId = await hashText(`${normalizedTitle}\n${textHash}`);
+    const key = `${readingStoragePrefix}${pdfId}`;
     let saved = null;
     try { saved = JSON.parse(window.localStorage.getItem(key) || "null"); } catch (_) { saved = null; }
     const highlights = Array.isArray(saved?.highlights) ? saved.highlights.flatMap((highlight) => {
@@ -260,7 +607,9 @@
     const savedPage = Number(saved?.page);
     return {
       key,
+      pageTexts,
       state: {
+        pdfId,
         title: normalizedTitle,
         textHash,
         page: Number.isInteger(savedPage) && savedPage >= 1 && savedPage <= documentToIdentify.numPages ? savedPage : 1,
@@ -384,6 +733,9 @@
     loadingTask = null;
     pdfDocument = null;
     activeFile = null;
+    activePdfId = "";
+    activePageTexts = [];
+    markdownCachePromise = null;
     activeDocumentKey = "";
     documentState = null;
     highlightLayer.replaceChildren();
@@ -550,6 +902,9 @@
       pdfDocument = loadedDocument;
       activeDocumentKey = identity.key;
       documentState = identity.state;
+      activePdfId = identity.state.pdfId;
+      activePageTexts = identity.pageTexts;
+      markdownCachePromise = null;
       currentPage = documentState.page;
       zoomFactor = 1;
       fitWholePage = true;
@@ -562,6 +917,16 @@
       scheduleControlsHide();
       setLoading(false);
       await renderPage(currentPage, { scrollTop: false });
+      if (sequence === loadSequence) {
+        const cacheAttempt = ensureMarkdownCache(activePdfId, loadedDocument.numPages, activePageTexts, sequence);
+        markdownCachePromise = cacheAttempt.catch((error) => {
+          if (sequence === loadSequence) markdownCachePromise = null;
+          const message = error instanceof Error ? error.message : String(error);
+          showReaderStatus(`Could not save PDF Markdown: ${message}`, true);
+          throw error;
+        });
+        void markdownCachePromise.catch(() => {}); // Keep the original PDF readable if Markdown caching fails.
+      }
     } catch (error) {
       if (sequence !== loadSequence) return;
       await disposeDocument();

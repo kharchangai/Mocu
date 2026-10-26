@@ -25,6 +25,9 @@ assert.match(script, /file\.arrayBuffer\(\)/, "PDF input is read as binary data 
 assert.match(script, /pdf\.worker\.min\.mjs/, "the bundled PDF.js worker is configured");
 assert.match(script, /new pdfjsLib\.TextLayer/, "PDF text is rendered in a selectable overlay over the page canvas");
 assert.match(script, /page\.getTextContent\(\)/, "selectable text comes from the PDF page text content");
+assert.match(script, /extractPdfPageText\(content\)/, "PDF.js extracted page text is converted into per-page Markdown content");
+assert.match(script, /ensureMarkdownCache\(activePdfId, loadedDocument\.numPages/, "each opened PDF is cached by its stable ID");
+assert.match(script, /pdfId: activePdfId, pageCount: pdfDocument\.numPages/, "the explain action identifies its PDF Markdown cache");
 assert.match(html, /user-select:\s*text/, "text layer allows users to select and copy text");
 assert.match(script, /cMapUrl/, "bundled PDF character maps are configured");
 assert.match(html, /\.shell\.reading \.reader-body\s*\{[^}]*position:\s*absolute;\s*inset:\s*0;/, "the reader viewport expands to the full window after opening a PDF");
