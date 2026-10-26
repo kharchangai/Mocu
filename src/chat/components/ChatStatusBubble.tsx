@@ -15,6 +15,7 @@ const STATUS_LABELS: Record<string, string> = {
   speaking: 'Speaking…',
   perplexity_search: 'Searching the web…',
   execute_research_pipeline: 'Running a research pipeline…',
+  checking_project_history: 'Checking project history…',
   memory_action: 'Accessing long-term memory…',
   terminal_executor: 'Running a terminal command…',
   desktop_vision_action: 'Looking at your screen…',

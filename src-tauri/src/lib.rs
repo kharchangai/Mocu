@@ -15,6 +15,8 @@ mod extension_host;
 // MCP stdio host (manages local MCP server child processes)
 mod mcp_stdio;
 
+mod project_history;
+
 // Install resources
 mod install_resources;
 
@@ -148,6 +150,7 @@ pub fn run() {
             extension_host::extension_fs_has_grant,
             extension_host::extension_fs_grant,
             extension_host::extension_fs_list,
+            project_history::project_history_scan,
             extension_host::extension_fs_write,
             extension_host::extension_fs_read,
             extension_host::extension_respond,

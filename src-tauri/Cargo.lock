@@ -2810,10 +2810,13 @@ version = "0.2.3"
 dependencies = [
  "base64 0.22.1",
  "image 0.25.10",
+ "rayon",
  "rdev",
+ "regex",
  "screenshots",
  "serde",
  "serde_json",
+ "sha2",
  "tauri",
  "tauri-build",
  "tauri-plugin-dialog",
@@ -2827,6 +2830,7 @@ dependencies = [
  "tauri-plugin-store",
  "tauri-plugin-updater",
  "uuid",
+ "walkdir",
 ]
 
 [[package]]

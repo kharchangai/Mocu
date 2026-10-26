@@ -49,6 +49,16 @@ vi.mock('../specialistCommands', () => ({ runSpecialistSlashCommand: async () =>
 vi.mock('../../../graphStructure/graphSearch', () => ({ searchRunGraphs: async () => ({ matches: [], totalGraphs: 0, query: '', scoring: 'none' }) }));
 vi.mock('../../../graphStructure/graphDigest', () => ({ searchRunGraphHints: async () => '', createGraphDigestTool: () => ({ name: 'get_relevant_run_graph_digest', description: '', runnable: { name: 'get_relevant_run_graph_digest' }, execute: async () => '' }), createGraphToolLogTool: () => ({ name: 'get_run_graph_tool_log', description: '', runnable: { name: 'get_run_graph_tool_log' }, execute: async () => '' }) }));
 vi.mock('../../../graphStructure/recorder', () => ({ createGraphRecorder: () => ({ startRun() {}, getRecords: () => [], finishRun() {}, recordModelCall() {}, recordToolCall() {}, runId: 'test-run', agentKind: 'project', chatId: 'test-chat' }) }));
+vi.mock('../project-history', () => ({
+  withProjectHistorySession: (_path: string, run: () => Promise<unknown>) => run(),
+  createProjectHistoryTools: () => ({
+    history: { name: 'project_history', description: '', invoke: vi.fn() },
+    fileHistory: { name: 'project_file_history', description: '', invoke: vi.fn() },
+    restore: { name: 'restore_project_file', description: '', invoke: vi.fn() },
+  }),
+  prepareProjectFileRestore: vi.fn(),
+  applyProjectFileRestore: vi.fn(),
+}));
 
 import { callChatAgent } from '../chat-agent';
 import { callProjectAgent } from '../project-agent';

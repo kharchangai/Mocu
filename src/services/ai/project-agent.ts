@@ -1,4 +1,4 @@
-﻿
+
 import {
   AIMessage,
   BaseMessage,
@@ -1903,34 +1903,32 @@ const callProjectAgentWithHistorySession =
       | ProjectMemoryRetrievalResult
       | null = null;
 
+    let relatedMemoryPrompt = "";
+    dispatchAgentActivity("checking_project_history");
     try {
-      memoryResult =
-        await retrieveProjectMemory({
-          userMessage:
-            userText,
-
-          projectPath:
-            normalizedProjectPath,
-
+      try {
+        memoryResult = await retrieveProjectMemory({
+          userMessage: userText,
+          projectPath: normalizedProjectPath,
           previousTurn,
         });
-    } catch (
-      error: unknown
-    ) {
-      console.warn(
-        "[Project Agent] Memory retrieval failed:",
-        error,
-      );
-    }
+      } catch (error: unknown) {
+        console.warn(
+          "[Project Agent] Memory retrieval failed:",
+          error,
+        );
+      }
 
-    let relatedMemoryPrompt = "";
-    try {
-      const baseMemoryPrompt = buildProjectMemoryPrompt(memoryResult);
-      const graphHint = await searchRunGraphHints(normalizedProjectPath, userText);
-      relatedMemoryPrompt = [baseMemoryPrompt, graphHint].filter(Boolean).join("\n\n");
-    } catch (error) {
-      console.warn("[Project Agent] Project memory prompt assembly failed:", error);
-      relatedMemoryPrompt = buildProjectMemoryPrompt(memoryResult);
+      try {
+        const baseMemoryPrompt = buildProjectMemoryPrompt(memoryResult);
+        const graphHint = await searchRunGraphHints(normalizedProjectPath, userText);
+        relatedMemoryPrompt = [baseMemoryPrompt, graphHint].filter(Boolean).join("\n\n");
+      } catch (error) {
+        console.warn("[Project Agent] Project memory prompt assembly failed:", error);
+        relatedMemoryPrompt = buildProjectMemoryPrompt(memoryResult);
+      }
+    } finally {
+      dispatchAgentActivity(null);
     }
 
     /*

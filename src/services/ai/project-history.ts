@@ -1,4 +1,5 @@
-﻿import { tool } from "@langchain/core/tools";
+import { tool } from "@langchain/core/tools";
+import { invoke } from "@tauri-apps/api/core";
 import { dirname, join, normalize } from "@tauri-apps/api/path";
 import {
   exists,
@@ -25,7 +26,7 @@ const IGNORE_FILE = ".mocuignore";
 const MAX_DIFF_CELLS = 2_000_000;
 const MAX_DIFF_LINES = 500;
 
-type FileState = { hash: string; size: number };
+type FileState = { hash: string; size: number; mtime?: string };
 type FileChange = {
   path: string;
   kind: "file";
@@ -58,6 +59,12 @@ type HistoryIndex = {
 type ScannedProject = {
   files: Map<string, FileState>;
   directories: Set<string>;
+  changes: Array<FileChange | DirectoryChange>;
+};
+type ScannedProjectResponse = {
+  files: Array<FileState & { path: string; mtime: string | null }>;
+  directories: string[];
+  changes: Array<FileChange | DirectoryChange>;
 };
 type StoredFileVersion = { hash: string; size: number; blobPath: string; checkpointId: string };
 
@@ -81,7 +88,6 @@ async function sha256(bytes: Uint8Array): Promise<string> {
   const digest = await crypto.subtle.digest("SHA-256", bytes);
   return Array.from(new Uint8Array(digest), (byte) => byte.toString(16).padStart(2, "0")).join("");
 }
-
 function globToRegex(pattern: string): RegExp {
   let source = "";
   for (let i = 0; i < pattern.length; i += 1) {
@@ -162,7 +168,7 @@ async function getPaths(projectPath: string) {
   };
 }
 
-async function ensureProjectFiles(projectPath: string): Promise<{ index: HistoryIndex; paths: Awaited<ReturnType<typeof getPaths>>; rules: IgnoreRule[] }> {
+async function ensureProjectFiles(projectPath: string): Promise<{ index: HistoryIndex; paths: Awaited<ReturnType<typeof getPaths>> }> {
   const paths = await getPaths(projectPath);
   await mkdir(paths.mocuPath, { recursive: true });
   await mkdir(paths.snapshotsPath, { recursive: true });
@@ -175,7 +181,6 @@ async function ensureProjectFiles(projectPath: string): Promise<{ index: History
     const header = "# Mocu project history exclusions. Seeded from the project's .gitignore when available.\n# Edit these rules independently; .mocu and .git are always excluded.\nnode_modules/\ndist/\ntarget/\nbuild/\n.mocu/\n.git/\n";
     await writeTextFile(paths.ignorePath, header + seeded);
   }
-  const rules = compileMocuIgnore(await readTextFile(paths.ignorePath));
   let index: HistoryIndex;
   if (await exists(paths.indexPath)) {
     index = JSON.parse(await readTextFile(paths.indexPath)) as HistoryIndex;
@@ -193,31 +198,28 @@ async function ensureProjectFiles(projectPath: string): Promise<{ index: History
       runs: [],
     };
   }
-  return { index, paths, rules };
+  return { index, paths };
 }
-async function scanProject(projectPath: string, rules: IgnoreRule[]): Promise<ScannedProject> {
-  const files = new Map<string, FileState>();
-  const directories = new Set<string>();
-  const stack = [{ absolute: projectPath, relative: "" }];
-  while (stack.length) {
-    const current = stack.pop()!;
-    let entries;
-    try { entries = await readDir(current.absolute); }
-    catch (error) { throw new Error(`Cannot scan project directory ${current.absolute}: ${String(error)}`); }
-    for (const entry of entries) {
-      if (!entry.name || entry.isSymlink) continue;
-      const relative = current.relative ? `${current.relative}/${entry.name}` : entry.name;
-      if (entry.isDirectory) {
-        if (isMocuIgnored(relative, true, rules)) continue;
-        directories.add(relative);
-        stack.push({ absolute: await joinPath(current.absolute, entry.name), relative });
-      } else if (entry.isFile && !isMocuIgnored(relative, false, rules)) {
-        const bytes = await readFile(await joinPath(current.absolute, entry.name));
-        files.set(relative, { hash: await sha256(bytes), size: bytes.byteLength });
-      }
-    }
-  }
-  return { files, directories };
+
+async function scanProject(
+  projectPath: string,
+  rulesText: string,
+  previousFiles: Record<string, FileState>,
+  previousDirectories: string[],
+  snapshotRoot: string,
+): Promise<ScannedProject> {
+  const result = await invoke<ScannedProjectResponse>("project_history_scan", {
+    projectPath,
+    rulesText,
+    previousFiles,
+    previousDirectories,
+    snapshotRoot,
+  });
+  return {
+    files: new Map(result.files.map(({ path, hash, size, mtime }) => [path, { hash, size, ...(mtime ? { mtime } : {}) }])),
+    directories: new Set(result.directories),
+    changes: result.changes,
+  };
 }
 
 async function saveIndex(path: string, index: HistoryIndex): Promise<void> {
@@ -228,56 +230,27 @@ async function recordCheckpoint(
   projectPath: string,
   index: HistoryIndex,
   paths: Awaited<ReturnType<typeof getPaths>>,
-  rules: IgnoreRule[],
   phase: HistoryCheckpoint["phase"],
   runId: string | null,
 ): Promise<HistoryCheckpoint | null> {
-  const scanned = await scanProject(projectPath, rules);
-  const changes: Array<FileChange | DirectoryChange> = [];
   const checkpointId = makeId();
   const snapshotRoot = await joinPath(paths.snapshotsPath, checkpointId);
-  const previousFiles = index.currentFiles;
-  const nextFiles = Object.fromEntries(scanned.files.entries());
-  const oldPaths = new Set(Object.keys(previousFiles));
-
-  for (const [relative, state] of scanned.files) {
-    const old = previousFiles[relative];
-    if (!old) changes.push({ path: relative, kind: "file", status: "added", hash: state.hash, size: state.size });
-    else if (old.hash !== state.hash) changes.push({ path: relative, kind: "file", status: "modified", hash: state.hash, size: state.size });
-    oldPaths.delete(relative);
-  }
-  for (const relative of oldPaths) changes.push({ path: relative, kind: "file", status: "deleted" });
-
-  const oldDirectories = new Set(index.currentDirectories);
-  for (const relative of scanned.directories) {
-    if (!oldDirectories.has(relative)) changes.push({ path: relative, kind: "directory", status: "added" });
-    oldDirectories.delete(relative);
-  }
-  for (const relative of oldDirectories) changes.push({ path: relative, kind: "directory", status: "deleted" });
-
-  if (changes.length) {
-    await mkdir(snapshotRoot, { recursive: true });
-    for (const change of changes) {
-      if (change.kind !== "file" || change.status === "deleted") continue;
-      const absolute = await joinPath(projectPath, ...change.path.split("/"));
-      const bytes = await readFile(absolute);
-      if (await sha256(bytes) !== change.hash) throw new Error(`File changed while Mocu was recording it: ${change.path}`);
-      const blobPath = await joinPath(snapshotRoot, ...change.path.split("/"));
-      const parent = await joinPath(snapshotRoot, ...change.path.split("/").slice(0, -1));
-      await mkdir(parent, { recursive: true });
-      await writeFile(blobPath, bytes);
-    }
-  }
-
-  index.currentFiles = nextFiles;
+  const scanned = await scanProject(
+    projectPath,
+    await readTextFile(paths.ignorePath),
+    index.currentFiles,
+    index.currentDirectories,
+    snapshotRoot,
+  );
+  index.currentFiles = Object.fromEntries(scanned.files.entries());
   index.currentDirectories = Array.from(scanned.directories).sort();
-  if (!changes.length) return null;
+  if (!scanned.changes.length) return null;
   const checkpoint: HistoryCheckpoint = {
     id: checkpointId,
     runId,
     phase,
     timestamp: new Date().toISOString(),
-    changes: changes.sort((a, b) => a.path.localeCompare(b.path)),
+    changes: scanned.changes.sort((a, b) => a.path.localeCompare(b.path)),
   };
   index.checkpoints.push(checkpoint);
   await saveIndex(paths.indexPath, index);
@@ -287,11 +260,9 @@ async function initializeBaseline(
   projectPath: string,
   index: HistoryIndex,
   paths: Awaited<ReturnType<typeof getPaths>>,
-  rules: IgnoreRule[],
 ): Promise<void> {
   if (index.checkpoints.length) return;
-  await recordCheckpoint(projectPath, index, paths, rules, "baseline", null);
-  // Keep an explicit empty baseline checkpoint for an empty project.
+  await recordCheckpoint(projectPath, index, paths, "baseline", null);
   if (!index.checkpoints.length) {
     index.checkpoints.push({ id: makeId(), runId: null, phase: "baseline", timestamp: new Date().toISOString(), changes: [] });
     await saveIndex(paths.indexPath, index);
@@ -299,24 +270,23 @@ async function initializeBaseline(
 }
 
 async function beginUnlocked(projectPath: string): Promise<string> {
-  const { index, paths, rules } = await ensureProjectFiles(projectPath);
-  await initializeBaseline(projectPath, index, paths, rules);
+  const { index, paths } = await ensureProjectFiles(projectPath);
+  await initializeBaseline(projectPath, index, paths);
   const runId = makeId();
   index.runs.push({ id: runId, startedAt: new Date().toISOString(), endedAt: null });
-  await recordCheckpoint(projectPath, index, paths, rules, "before", runId);
+  await recordCheckpoint(projectPath, index, paths, "before", runId);
   await saveIndex(paths.indexPath, index);
   return runId;
 }
 
 async function finishUnlocked(projectPath: string, runId: string): Promise<void> {
-  const { index, paths, rules } = await ensureProjectFiles(projectPath);
-  await recordCheckpoint(projectPath, index, paths, rules, "after", runId);
+  const { index, paths } = await ensureProjectFiles(projectPath);
+  await recordCheckpoint(projectPath, index, paths, "after", runId);
   const run = index.runs.find((item) => item.id === runId);
   if (run) run.endedAt = new Date().toISOString();
   await saveIndex(paths.indexPath, index);
 }
 
-/** Serialize complete agent runs per project so start/end attribution cannot interleave. */
 export async function withProjectHistorySession<T>(projectPath: string, run: () => Promise<T>): Promise<T> {
   const normalized = await normalize(projectPath);
   const key = canonicalPath(normalized);
@@ -341,7 +311,7 @@ export async function withProjectHistorySession<T>(projectPath: string, run: () 
 
 async function loadIndex(projectPath: string) {
   const { index, paths } = await ensureProjectFiles(projectPath);
-  if (!index.checkpoints.length) await initializeBaseline(projectPath, index, paths, compileMocuIgnore(await readTextFile(paths.ignorePath)));
+  if (!index.checkpoints.length) await initializeBaseline(projectPath, index, paths);
   return { index, paths };
 }
 
@@ -483,7 +453,6 @@ export async function prepareProjectFileRestore(projectPath: string, input: { pa
   );
   return { relative, target, conflict: conflict || changedSince, currentHash, currentPath, index, paths };
 }
-
 export async function applyProjectFileRestore(plan: Awaited<ReturnType<typeof prepareProjectFileRestore>>): Promise<string> {
   const { target, currentPath, relative, paths, currentHash } = plan;
   const root = await normalize(plan.index.projectPath);
