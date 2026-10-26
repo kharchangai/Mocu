@@ -2,7 +2,7 @@
 import { createExtension } from "@mocu/extension-sdk";
 import { readFileSync, writeFileSync, existsSync, renameSync, statSync } from "node:fs";
 import { createHash } from "node:crypto";
-import { resolve } from "node:path";
+import { dirname, resolve } from "node:path";
 
 const DEFAULT_CODER = "coder";
 const DEFAULT_REVISER = "Implementation Plan Reviser";
@@ -106,7 +106,7 @@ const bounded = (x, max) => {
 const reportText = (step, report) => `### Step ${step.step}: ${step.title ?? step.goal ?? step.step}\n${bounded(report, 4000)}`;
 const coderPrompt = ({ step, plan, history, retry, recovery, projectPath }) => {
   const context = [];
-  if (projectPath) context.push(`Project path:\n${projectPath}\nAll file and terminal work must happen under this path; resolve every relative path against it.`);
+  if (projectPath) context.push(`Project root (authoritative):\n${projectPath}\nWork only inside this project. Use absolute paths rooted here, or explicitly change directory to this path before relative-path commands; do not assume the terminal's current working directory.`);
   if (plan.project_summary) context.push(`Project summary:\n${bounded(plan.project_summary, 2500)}`);
   if (Array.isArray(plan.overall_acceptance_criteria)) context.push(`Acceptance criteria:\n- ${plan.overall_acceptance_criteria.slice(0, 16).join("\n- ")}`);
   const recover = recovery ? "RECOVERY: this step was in progress when execution stopped. Inspect only relevant current files, compare against expected_result, and perform only remaining work; do not blindly repeat non-idempotent actions." : "";
@@ -170,6 +170,13 @@ async function executePlan(input, context, isResume) {
     if (checked.error) return finish({ status: "error", stage: "project_path", error: checked.error, planPath });
     projectPath = checked.path;
     notify(`Project path: ${projectPath}\n`);
+  } else {
+    // Architect plans are saved in the active project but do not always include a project_path field.
+    // Use the plan's containing directory as a conservative fallback; callers can always override it.
+    const checked = resolveProjectPath(dirname(planPath));
+    if (checked.error) return finish({ status: "error", stage: "project_path", error: checked.error, planPath });
+    projectPath = checked.path;
+    notify(`Project path inferred from plan location: ${projectPath}\n`);
   }
 
   if (isResume) {

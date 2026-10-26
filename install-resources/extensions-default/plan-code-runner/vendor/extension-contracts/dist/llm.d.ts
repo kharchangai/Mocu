@@ -1,6 +1,7 @@
 export declare const LLM_GENERATE_METHOD: "mocu.llm.generate";
 export interface LlmGenerateParams {
     prompt: string;
+    model?: string;
     systemPrompt?: string;
     temperature?: number;
     maxTokens?: number;

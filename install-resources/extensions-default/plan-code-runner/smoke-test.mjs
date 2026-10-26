@@ -11,6 +11,7 @@ let pending = new Map();
 let nextId = 1;
 let scenario = "success";
 let coderCalls = 0;
+let lastCoderInput = "";
 let reviserCalls = 0;
 let currentPlan = null;
 let interruptCall = 0;
@@ -65,6 +66,7 @@ function onStdout(chunk) {
         continue;
       }
       coderCalls += 1;
+      lastCoderInput = String(msg.params?.input ?? "");
       if (scenario === "interrupt" && coderCalls === interruptCall && !interruptedOnce) {
         interruptedOnce = true;
         ext.stdin.write(`${JSON.stringify({ jsonrpc: "2.0", id: msg.id, error: { code: -32000, message: "simulated coder interruption" } })}\n`);
@@ -116,6 +118,7 @@ const run = async () => {
   const normalPath = makePlanFile(makePlan([{ step: 1, actions: "First", dependencies: [], expected_result: "first" }, { step: 2, actions: "Second", dependencies: [1], expected_result: "second" }]));
   const normal = await command("run_plan", normalPath);
   assert(normal.output.status === "completed" && coderCalls === 2 && reviserCalls === 0, "one coder call per step");
+  assert(lastCoderInput.includes(`Project root (authoritative):\n${dirname(normalPath)}`), "coder receives the plan-directory project root when the plan omits project_path");
   assert(existsSync(`${normalPath}.run-state.json`), "run state saved beside plan");
 
   console.log("== one report-format retry ==");

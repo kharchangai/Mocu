@@ -16,7 +16,7 @@ Optional `projectPath` tells the coder which project root folder to work in:
 {"planPath":"E:\\path\\to\\implementation-plan.json","projectPath":"E:\\path\\to\\project"}
 ```
 
-If `projectPath` is omitted, the runner falls back to the plan's top-level `project_path` field (written by the Implementation Plan Architect). If neither is present, no project folder is passed to the coder. A `projectPath` or `project_path` that does not exist or is not a directory fails the run with stage `project_path` before any agent is invoked.
+If `projectPath` is omitted, the runner uses the plan's top-level `project_path` field when present; otherwise it uses the directory containing the plan file. This fallback supports Implementation Plan Architect output, which saves the plan in the project but may not include a `project_path` field. A supplied `projectPath` or plan `project_path` that does not exist or is not a directory fails before any agent is invoked.
 
 For each plan, progress is stored beside it at:
 

@@ -16,6 +16,7 @@ import { assertImageModelSupport, buildHumanMessageFromRequest } from '../../ser
 import { z } from 'zod';
 
 import { getAsyncLLM, getAsyncLLMByModel } from '../../services/ai/llm';
+import { buildGlobalDirectoryPrompt } from '../../services/ai/global-directory-prompt';
 import {
   dispatchAgentActivity,
   getTextContent,
@@ -134,6 +135,7 @@ async function runAgentNode(
   const signal = runnableConfig.signal;
   throwIfAborted(signal);
 
+  const globalDirectoryPrompt = await buildGlobalDirectoryPrompt();
   const normalizedProjectPath = input.projectPath.trim();
   const selectedSkills = await resolveSelectedSkills(
     mergeReferences(
@@ -265,6 +267,7 @@ async function runAgentNode(
   const systemPrompt = buildAgentSystemPrompt(
     input.agent,
     normalizedProjectPath,
+    globalDirectoryPrompt,
     selectedSkills.skillsPrompt,
     extensionTools.prompt,
     mcpTools.prompt,
@@ -397,6 +400,7 @@ async function runAgentNode(
 function buildAgentSystemPrompt(
   agent: AvailableAgent,
   projectPath: string,
+  globalDirectoryPrompt: string,
   skillsPrompt: string,
   extensionsPrompt: string,
   mcpToolsPrompt: string,
@@ -412,6 +416,8 @@ function buildAgentSystemPrompt(
     '',
     'PROJECT PATH',
     projectPath || 'No project folder was selected.',
+    '',
+    globalDirectoryPrompt,
     '',
     skillsPrompt.trim(),
     extensionsPrompt.trim(),

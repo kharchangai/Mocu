@@ -3,5 +3,8 @@ export * from "./protocol.js";
 export * from "./llm.js";
 export * from "./decision.js";
 export * from "./embedding.js";
+export * from "./speech.js";
 export * from "./agents.js";
+export * from "./summarize.js";
+export * from "./extract.js";
 //# sourceMappingURL=index.js.map

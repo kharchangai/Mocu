@@ -11,14 +11,14 @@
     {
       "id": "run_plan",
       "title": "Run implementation plan",
-      "description": "Starts or resumes a plan. Input: {\"planPath\":\"absolute plan JSON path\", optional \"projectPath\":\"absolute project root folder passed to the coder agent\", optional agent names/limits/timeouts, \"startNew\":false}. projectPath falls back to the plan's project_path field; when neither is set, the coder gets no project folder. Saves checkpoints in <planPath>.run-state.json after every step and before risky transitions. Use resume_plan after stops/errors; unfinished work cannot restart accidentally. startNew:true archives prior state for an intentional restart.",
+      "description": "Starts or resumes a plan. Input: {\"planPath\":\"absolute plan JSON path\", optional \"projectPath\":\"absolute project root folder passed to the coder agent\", optional agent names/limits/timeouts, \"startNew\":false}. projectPath falls back to the plan's project_path field, then to the directory containing the plan file (for plans saved by Implementation Plan Architect). Saves checkpoints in <planPath>.run-state.json after every step and before risky transitions. Use resume_plan after stops/errors; unfinished work cannot restart accidentally. startNew:true archives prior state for an intentional restart.",
       "streaming": true,
       "timeoutSeconds": 0
     },
     {
       "id": "resume_plan",
       "title": "Resume implementation plan",
-      "description": "Resumes a paused run from <planPath>.run-state.json. Accepts the same optional \"projectPath\" as run_plan (falls back to the plan's project_path). Completed coder steps are skipped. An interrupted coder step is cautiously rechecked; a pending deviation revision resumes by invoking the reviser, without invoking the coder again for that already-reported step.",
+      "description": "Resumes a paused run from <planPath>.run-state.json. Accepts the same optional \"projectPath\" as run_plan (falls back to plan.project_path, then the directory containing the plan file). Completed coder steps are skipped. An interrupted coder step is cautiously rechecked; a pending deviation revision resumes by invoking the reviser, without invoking the coder again for that already-reported step.",
       "streaming": true,
       "timeoutSeconds": 0
     },

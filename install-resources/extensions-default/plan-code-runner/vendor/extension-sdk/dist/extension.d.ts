@@ -2,12 +2,15 @@ import { AgentsApi } from "./agents.js";
 import { DecisionApi } from "./decision.js";
 import { EmbeddingApi } from "./embedding.js";
 import { LlmApi } from "./llm.js";
+import { SummarizeApi } from "./summarize.js";
+import { ExtractApi } from "./extract.js";
+import { SpeechApi } from "./speech.js";
 import type { ExtensionCommandHandler, MocuExtensionDefinition } from "./types.js";
 /**
  * The minimal Mocu extension SDK. An extension registers command handlers and
  * calls `start()`; Mocu invokes commands on demand via `extension.execute`.
  * Extensions may call host AI APIs, interact with the user, and run saved user
- * agents through the host without bundling a model of their own.
+ * agents through the host without bundling their own model.
  */
 export declare class MocuExtension {
     private readonly definition;
@@ -15,10 +18,15 @@ export declare class MocuExtension {
     private readonly commands;
     /** Call the Mocu host LLM from inside a command. */
     readonly llm: LlmApi;
-    /** Ask typed probabilistic questions via the Jev decision model. */
+    /** Summarize text with Mocu's configured Summarize model. */
+    readonly summarize: SummarizeApi;
+    /** Extract named entities with Mocu's configured Extract model. */
+    readonly extract: ExtractApi;
     readonly decision: DecisionApi;
     /** Create embedding vectors with Mocu's configured embedding model. */
     readonly embedding: EmbeddingApi;
+    /** Transcribe audio (STT) and synthesize speech (TTS) with Mocu's configured models. */
+    readonly speech: SpeechApi;
     /** Discover and invoke the current user's saved agents. */
     readonly agents: AgentsApi;
     constructor(definition?: MocuExtensionDefinition);

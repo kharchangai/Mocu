@@ -2,6 +2,8 @@ import { LLM_GENERATE_METHOD } from "./llm.js";
 import { DECISION_ASK_METHOD } from "./decision.js";
 import { EMBEDDING_EMBED_METHOD } from "./embedding.js";
 import { AGENTS_LIST_METHOD, AGENTS_RUN_METHOD } from "./agents.js";
+import { SUMMARIZE_TEXT_METHOD } from "./summarize.js";
+import { EXTRACT_ENTITIES_METHOD } from "./extract.js";
 /**
  * The single JSON-RPC method the extension system understands: run a command
  * with an input payload and return a result. There is no manual activate /
@@ -20,6 +22,8 @@ export const HOST_METHODS = {
     embeddingEmbed: EMBEDDING_EMBED_METHOD,
     agentsList: AGENTS_LIST_METHOD,
     agentsRun: AGENTS_RUN_METHOD,
+    summarizeText: SUMMARIZE_TEXT_METHOD,
+    extractEntities: EXTRACT_ENTITIES_METHOD,
     extensionInteract: "mocu.extension.interact",
     extensionInteractionCancel: "mocu.extension.interaction.cancel",
 };
