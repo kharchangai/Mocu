@@ -691,6 +691,11 @@ type ChatBoxProps = {
     generatedImages?: ChatMessage['generatedImages'],
     generatedAudio?: ChatMessage['generatedAudio'],
   ) => ChatMessage;
+  onUpdateMessageToolActivities: (
+    chatId: string,
+    messageId: string,
+    activities: ChatMessage['toolActivities'],
+  ) => void;
   onReplaceMessage: (
     chatId: string,
     messageId: string,
@@ -718,6 +723,7 @@ export function ChatBox({
   onEnsureChat,
   onAppendMessage,
   onReplaceMessage,
+  onUpdateMessageToolActivities,
 }: ChatBoxProps) {
   const isProjectChat = projectChat || projectPath.trim().length > 0;
 
@@ -1483,7 +1489,12 @@ export function ChatBox({
        * message. Do not save it to short-term memory: it is not a completed
        * user/assistant exchange.
        */
-      toolActivity.commit(requestChatId, assistantMessage.id, true);
+      const toolActivities = toolActivity.commit(
+        requestChatId,
+        assistantMessage.id,
+        true,
+      );
+      onUpdateMessageToolActivities(requestChatId, assistantMessage.id, toolActivities);
     };
 
     try {
@@ -1610,13 +1621,13 @@ export function ChatBox({
       markMessageAsPartOfThread(assistantMessage.id, requestThreadKey);
 
       /*
-       * Attach the tool boxes used for this request to the response
-       * message, so they remain visible above it.
+       * Persist tool cards on the assistant message as part of chat history.
        */
-      toolActivity.commit(
+      const toolActivities = toolActivity.commit(
         requestChatId,
         assistantMessage.id,
       );
+      onUpdateMessageToolActivities(requestChatId, assistantMessage.id, toolActivities);
 
       /* Focus stays isolated from the ordinary short-memory store. */
       const isFocusResponse =
@@ -1684,14 +1695,12 @@ export function ChatBox({
       );
       markMessageAsPartOfThread(errorMessage.id, requestThreadKey);
 
-      /*
-       * Even on failure, keep the tools that already ran attached to
-       * the error message so the user can inspect them.
-       */
-      toolActivity.commit(
+      /* Keep completed activities on the error response in chat history. */
+      const toolActivities = toolActivity.commit(
         requestChatId,
         errorMessage.id,
       );
+      onUpdateMessageToolActivities(requestChatId, errorMessage.id, toolActivities);
     } finally {
       /*
        * Keep the trace of a stopped / failed request visible: only the
@@ -1828,7 +1837,8 @@ export function ChatBox({
         [assistantMessage.id]: { model, reasoningEffort },
       }));
       onReplaceMessage(chatId, assistantMessage.id, response);
-      toolActivity.commit(chatId, assistantMessage.id);
+      const toolActivities = toolActivity.commit(chatId, assistantMessage.id);
+      onUpdateMessageToolActivities(chatId, assistantMessage.id, toolActivities);
     } catch (error) {
       toolActivity.discard(chatId);
       if (!controller.signal.aborted && !isAbortError(error)) {
@@ -2021,7 +2031,7 @@ export function ChatBox({
 
   for (const message of displayMessages) {
     if (message.role === 'assistant') {
-      for (const activity of toolActivity.getForMessage(message.id)) {
+      for (const activity of message.toolActivities ?? toolActivity.getForMessage(message.id)) {
         renderedToolActivityIds.add(activity.id);
       }
     }
@@ -2478,15 +2488,12 @@ export function ChatBox({
                     </>
                   ) : (
                     <>
-                      <ToolActivityFeed activities={toolActivity.getForMessage(message.id)} />
+                      <ToolActivityFeed activities={message.toolActivities ?? toolActivity.getForMessage(message.id)} />
                       {cancelledRun ? (
                         <CancelledRunCard
                           data={cancelledRun}
-                          toolCount={toolActivity
-                            .getForMessage(message.id)
-                            .filter(
-                              (activity) => (activity.kind ?? 'tool') === 'tool',
-                            ).length}
+                          toolCount={(message.toolActivities ?? toolActivity.getForMessage(message.id))
+                            .filter((activity) => (activity.kind ?? 'tool') === 'tool').length}
                         />
                       ) : (
                         <>

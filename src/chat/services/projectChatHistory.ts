@@ -38,6 +38,11 @@ const HISTORY_FILE_VERSION = 1;
 
 const MAX_CHAT_TITLE_LENGTH = 48;
 
+// React state updates and tool activity callbacks can persist the same chat
+// concurrently. Serialize writes per path so overlapping truncate/write handles
+// cannot interleave and leave concatenated or otherwise invalid JSON.
+const pendingHistoryWrites = new Map<string, Promise<void>>();
+
 export type ProjectHistoryFile = {
   version: number;
   chatId: string;
@@ -89,6 +94,30 @@ const getDirectoryOfFilePath = (
   );
 
   return index === -1 ? filePath : filePath.slice(0, index);
+};
+
+const writeHistoryFile = async (
+  filePath: string,
+  content: string,
+): Promise<void> => {
+  const queueKey = normalizeHistoryFilePath(filePath);
+  const previousWrite = pendingHistoryWrites.get(queueKey) ?? Promise.resolve();
+  const currentWrite = previousWrite.catch(() => undefined).then(async () => {
+    await mkdir(getDirectoryOfFilePath(filePath), { recursive: true });
+    // writeTextFile overwrites by default. Keep this call in the per-file queue
+    // because each write opens/truncates the file before writing its contents.
+    await writeTextFile(filePath, content);
+  });
+
+  pendingHistoryWrites.set(queueKey, currentWrite);
+
+  try {
+    await currentWrite;
+  } finally {
+    if (pendingHistoryWrites.get(queueKey) === currentWrite) {
+      pendingHistoryWrites.delete(queueKey);
+    }
+  }
 };
 
 /**
@@ -315,17 +344,12 @@ export async function deleteProjectConversationFile(
   projectPath: string,
 ): Promise<void> {
   const normalizedProjectPath = normalizePath(projectPath);
-
-  if (!normalizedProjectPath) {
-    return;
-  }
+  if (!normalizedProjectPath) return;
 
   const filesToDelete = [
     getProjectHistoryFilePath(normalizedProjectPath),
-    joinAbsolutePath(
-      normalizedProjectPath,
-      LEGACY_SHORT_MEMORY_FILE,
-    ),
+    joinAbsolutePath(normalizedProjectPath, LEGACY_SHORT_MEMORY_FILE),
+    joinAbsolutePath(normalizedProjectPath, '.mocu/memory/tool-activities.json'),
   ];
 
   for (const filePath of filesToDelete) {
@@ -359,20 +383,13 @@ export async function deleteProjectConversationFile(
  */
 export async function saveProjectConversationFile(
   conversation: ChatConversation,
-): Promise<void> {
+): Promise<boolean> {
   if (!conversation.historyFilePath) {
-    console.error(
-      '[Project History] The conversation has no history file path.',
-    );
-
-    return;
+    console.error('[Project History] The conversation has no history file path.');
+    return false;
   }
 
   try {
-    await mkdir(getDirectoryOfFilePath(conversation.historyFilePath), {
-      recursive: true,
-    });
-
     const history: ProjectHistoryFile = {
       version: HISTORY_FILE_VERSION,
       chatId: conversation.id,
@@ -383,7 +400,7 @@ export async function saveProjectConversationFile(
       messages: conversation.messages,
     };
 
-    await writeTextFile(
+    await writeHistoryFile(
       conversation.historyFilePath,
       JSON.stringify(history, null, 2),
     );
@@ -391,12 +408,14 @@ export async function saveProjectConversationFile(
     console.log(
       `[Project History] Saved conversation ${conversation.id} to ${conversation.historyFilePath}`,
     );
+    return true;
   } catch (error) {
     console.error(
       '[Project History] Failed to save the history file:',
       conversation.historyFilePath,
       error,
     );
+    return false;
   }
 }
 

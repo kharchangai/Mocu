@@ -1,222 +1,37 @@
-// src/chat/storage/tool-activity-storage.ts
-//
-// Persistence for chat tool-activity boxes.
-//
-// Maps assistant message ids to the tool activities that were used to
-// produce them, so the collapsible tool boxes survive an app restart
-// (the chat history itself is stored with the same message ids in
-// "mocu-chat-history-v1").
-//
-// Kept intentionally small: only the most recent messages keep their
-// boxes, and very long tool results are truncated so localStorage
-// cannot grow unbounded.
-
 import type { AgentToolActivity } from '../services/toolActivity';
 
-const TOOL_ACTIVITY_STORAGE_KEY = 'mocu-tool-activity-v1';
-
-/*
- * How many messages keep their tool boxes across restarts.
- */
-const MAX_STORED_MESSAGES = 40;
-
-/*
- * Safety caps for a single activity entry.
- */
-const MAX_RESULT_LENGTH = 6000;
-const MAX_INPUT_JSON_LENGTH = 2000;
-const MAX_STREAM_LOG_LENGTH = 20_000;
-const MAX_TEXT_LENGTH = 8000;
-
-function clampText(value: string, maxLength: number): string {
-  return value.length > maxLength
-    ? `${value.slice(0, maxLength)}…`
-    : value;
-}
+const LEGACY_TOOL_ACTIVITY_STORAGE_KEY = 'mocu-tool-activity-v1';
 
 function isAgentToolActivity(value: unknown): value is AgentToolActivity {
-  if (!value || typeof value !== 'object') {
-    return false;
-  }
-
+  if (!value || typeof value !== 'object') return false;
   const activity = value as Partial<AgentToolActivity>;
-
-  return (
-    typeof activity.id === 'string' &&
-    typeof activity.tool === 'string' &&
-    (activity.status === 'running' ||
-      activity.status === 'done' ||
-      activity.status === 'error' ||
-      activity.status === 'cancelled') &&
-    (activity.args === undefined ||
-      (typeof activity.args === 'object' &&
-        activity.args !== null))
-  );
+  return typeof activity.id === 'string' && typeof activity.tool === 'string' &&
+    (activity.status === 'running' || activity.status === 'done' || activity.status === 'error' || activity.status === 'cancelled') &&
+    (activity.args === undefined || (typeof activity.args === 'object' && activity.args !== null));
 }
 
-export function loadToolActivities(): Record<
-  string,
-  AgentToolActivity[]
-> {
+/** Read old browser-stored activity logs only while migrating them into chat files. */
+export function loadLegacyToolActivities(): Record<string, AgentToolActivity[]> {
   try {
-    const storedValue = localStorage.getItem(
-      TOOL_ACTIVITY_STORAGE_KEY,
-    );
-
-    if (!storedValue) {
-      return {};
-    }
-
-    const parsedValue: unknown = JSON.parse(storedValue);
-
-    if (
-      !parsedValue ||
-      typeof parsedValue !== 'object' ||
-      Array.isArray(parsedValue)
-    ) {
-      return {};
-    }
-
-    const activitiesByMessage: Record<
-      string,
-      AgentToolActivity[]
-    > = {};
-
-    for (const [
-      messageId,
-      messageActivities,
-    ] of Object.entries(
-      parsedValue as Record<string, unknown>,
-    )) {
-      if (
-        !Array.isArray(messageActivities)
-      ) {
-        continue;
-      }
-
-      const validActivities =
-        messageActivities
-          .filter(isAgentToolActivity)
-          /*
-           * Entries persisted while still running (app closed mid-turn)
-           * must not render as eternal spinners after a restart.
-           */
-          .map((activity) =>
-            activity.status === 'running'
-              ? { ...activity, status: 'done' as const }
-              : activity,
-          );
-
-      if (validActivities.length > 0) {
-        activitiesByMessage[messageId] =
-          validActivities;
-      }
-    }
-
-    return activitiesByMessage;
+    const raw = localStorage.getItem(LEGACY_TOOL_ACTIVITY_STORAGE_KEY);
+    const parsed: unknown = raw ? JSON.parse(raw) : {};
+    if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) return {};
+    return Object.fromEntries(Object.entries(parsed as Record<string, unknown>)
+      .filter(([, activities]) => Array.isArray(activities))
+      .map(([messageId, activities]) => [messageId, (activities as unknown[])
+        .filter(isAgentToolActivity)
+        .map((activity) => activity.status === 'running' ? { ...activity, status: 'done' as const } : activity)]));
   } catch (error) {
-    console.error(
-      '[Tool Activity Storage] Failed to load tool activities:',
-      error,
-    );
-
+    console.error('[Tool Activity Storage] Failed to read legacy activity logs:', error);
     return {};
   }
 }
 
-export function saveToolActivities(
-  activitiesByMessage: Record<
-    string,
-    AgentToolActivity[]
-  >,
-): void {
+/** Remove the old browser copy once migration to conversation files succeeds. */
+export function clearLegacyToolActivities(): void {
   try {
-    const entries = Object.entries(
-      activitiesByMessage,
-    );
-
-    /*
-     * Keep only the most recent messages' boxes.
-     */
-    const trimmedEntries = entries.slice(
-      Math.max(0, entries.length - MAX_STORED_MESSAGES),
-    );
-
-    const trimmed: Record<
-      string,
-      AgentToolActivity[]
-    > = {};
-
-    for (const [
-      messageId,
-      messageActivities,
-    ] of trimmedEntries) {
-      trimmed[messageId] =
-        messageActivities.map(
-          (activity) => ({
-            ...activity,
-
-            text: activity.text
-              ? clampText(
-                  activity.text,
-                  MAX_TEXT_LENGTH,
-                )
-              : activity.text,
-
-            result: activity.result
-              ? clampText(
-                  activity.result,
-                  MAX_RESULT_LENGTH,
-                )
-              : activity.result,
-
-            streamLog: activity.streamLog
-              ? clampText(
-                  activity.streamLog,
-                  MAX_STREAM_LOG_LENGTH,
-                )
-              : activity.streamLog,
-
-            args: activity.args
-              ? Object.fromEntries(
-                  Object.entries(
-                    activity.args,
-                  ).map(([key, value]) => [
-                    key,
-                    typeof value === 'string'
-                      ? clampText(
-                          value,
-                          MAX_INPUT_JSON_LENGTH,
-                        )
-                      : value,
-                  ]),
-                )
-              : activity.args,
-          }),
-        );
-    }
-
-    localStorage.setItem(
-      TOOL_ACTIVITY_STORAGE_KEY,
-      JSON.stringify(trimmed),
-    );
+    localStorage.removeItem(LEGACY_TOOL_ACTIVITY_STORAGE_KEY);
   } catch (error) {
-    console.error(
-      '[Tool Activity Storage] Failed to save tool activities:',
-      error,
-    );
-  }
-}
-
-export function clearStoredToolActivities(): void {
-  try {
-    localStorage.removeItem(
-      TOOL_ACTIVITY_STORAGE_KEY,
-    );
-  } catch (error) {
-    console.error(
-      '[Tool Activity Storage] Failed to clear tool activities:',
-      error,
-    );
+    console.error('[Tool Activity Storage] Failed to clear legacy activity logs:', error);
   }
 }

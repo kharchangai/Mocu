@@ -5,7 +5,8 @@ import {
   useRef,
   useState,
 } from 'react';
-import { loadChats, saveChats } from '../storage/chat-storage';
+import { clearLegacyChats, loadChats, loadLegacyChats, saveChats } from '../storage/chat-storage';
+import { clearLegacyToolActivities, loadLegacyToolActivities } from '../storage/tool-activity-storage';
 import {
   deleteProjectConversationFile,
   getProjectHistoryFilePath,
@@ -85,51 +86,66 @@ export type EnsureChatResult = {
   wasCreated: boolean;
 };
 
-const ACTIVE_CHAT_SESSION_KEY = 'mocu-active-chat-id-v1';
-
-function readActiveChatId(chats: ChatConversation[]): string | null {
-  try {
-    const savedId = sessionStorage.getItem(ACTIVE_CHAT_SESSION_KEY);
-    return savedId && chats.some((chat) => chat.id === savedId)
-      ? savedId
-      : null;
-  } catch {
-    return null;
-  }
-}
 
 export function useChatHistory() {
-  const [chats, setChats] = useState<ChatConversation[]>(() => loadChats());
-  const [activeChatId, setActiveChatId] = useState<string | null>(() =>
-    readActiveChatId(chats),
-  );
-
-  /*
-   * Keep the selected chat synchronously as well as in React state. A
-   * sidebar click and an Enter press can happen before React renders the
-   * next frame; callbacks created during that frame would otherwise still
-   * see the previous null chat ID and create a new chat.
-   */
+  const [chats, setChats] = useState<ChatConversation[]>([]);
+  const [activeChatId, setActiveChatId] = useState<string | null>(null);
+  const [historyLoaded, setHistoryLoaded] = useState(false);
   const activeChatIdRef = useRef<string | null>(activeChatId);
 
   const setActiveChat = useCallback((chatId: string | null) => {
     activeChatIdRef.current = chatId;
     setActiveChatId(chatId);
-
-    try {
-      if (chatId) {
-        sessionStorage.setItem(ACTIVE_CHAT_SESSION_KEY, chatId);
-      } else {
-        sessionStorage.removeItem(ACTIVE_CHAT_SESSION_KEY);
-      }
-    } catch {
-      // Chat selection still works when session storage is unavailable.
-    }
   }, []);
 
   useEffect(() => {
-    saveChats(chats);
-  }, [chats]);
+    let cancelled = false;
+    void (async () => {
+      const [diskChats, legacyChats] = await Promise.all([loadChats(), Promise.resolve(loadLegacyChats())]);
+      const legacyActivities = loadLegacyToolActivities();
+      const migrated = new Map(diskChats.map((chat) => [chat.id, chat]));
+      for (const oldChat of legacyChats) {
+        let chat = oldChat;
+        if (oldChat.projectPath) {
+          const fromProjectFile = await loadProjectConversationFile(oldChat.projectPath);
+          chat = fromProjectFile ?? {
+            ...oldChat,
+            historyFilePath: oldChat.historyFilePath || getProjectHistoryFilePath(oldChat.projectPath),
+          };
+        }
+        chat = {
+          ...chat,
+          messages: chat.messages.map((message) =>
+            message.toolActivities?.length || !legacyActivities[message.id]?.length
+              ? message
+              : { ...message, toolActivities: legacyActivities[message.id] },
+          ),
+        };
+        if (!migrated.has(chat.id)) migrated.set(chat.id, chat);
+      }
+      const restored = [...migrated.values()];
+      const projectSaveResults = await Promise.all(
+        restored.filter((chat) => Boolean(chat.historyFilePath)).map((chat) => saveProjectConversationFile(chat)),
+      );
+      const globalSaveSucceeded = await saveChats(restored);
+      if (globalSaveSucceeded && projectSaveResults.every(Boolean)) {
+        clearLegacyChats();
+        clearLegacyToolActivities();
+      }
+      if (!cancelled) {
+        setChats(restored);
+        setHistoryLoaded(true);
+      }
+    })().catch((error) => {
+      console.error('[Chat History] Failed to initialize file-based chat history:', error);
+      if (!cancelled) setHistoryLoaded(true);
+    });
+    return () => { cancelled = true; };
+  }, []);
+
+  useEffect(() => {
+    if (historyLoaded) void saveChats(chats);
+  }, [chats, historyLoaded]);
 
   const activeChat = useMemo(() => {
     if (!activeChatId) {
@@ -373,17 +389,12 @@ export function useChatHistory() {
       return;
     }
 
-    setChats((currentChats) =>
-      currentChats.map((chat) =>
-        chat.id === chatId
-          ? {
-              ...chat,
-              title: normalizedTitle,
-              updatedAt: new Date().toISOString(),
-            }
-          : chat,
-      ),
-    );
+    setChats((currentChats) => currentChats.map((chat) => {
+      if (chat.id !== chatId) return chat;
+      const updated = { ...chat, title: normalizedTitle, updatedAt: new Date().toISOString() };
+      if (updated.historyFilePath) void saveProjectConversationFile(updated);
+      return updated;
+    }));
   }, []);
 
   /*
@@ -403,7 +414,7 @@ export function useChatHistory() {
       );
 
       /*
-       * A conversation can already be present in localStorage even when
+       * A conversation can already be present in memory even when
        * its project file is temporarily unavailable (for example while a
        * project folder is being switched or its .mocu directory is being
        * created). Prefer that in-memory conversation over silently opening
@@ -533,6 +544,30 @@ export function useChatHistory() {
     [chats, createChat, loadProjectConversation, setActiveChat],
   );
 
+  const updateMessageToolActivities = useCallback(
+    (chatId: string, messageId: string, toolActivities: ChatMessage['toolActivities']): void => {
+      setChats((currentChats) => {
+        let updatedChat: ChatConversation | undefined;
+        const next = currentChats.map((chat) => {
+          if (chat.id !== chatId) return chat;
+          let found = false;
+          const messages = chat.messages.map((message) => {
+            if (message.id !== messageId) return message;
+            found = true;
+            return { ...message, toolActivities };
+          });
+          if (!found) return chat;
+          updatedChat = { ...chat, messages, updatedAt: new Date().toISOString() };
+          if (updatedChat.historyFilePath) void saveProjectConversationFile(updatedChat);
+          return updatedChat;
+        });
+        return updatedChat ? sortChats(next) : currentChats;
+      });
+    },
+    [],
+  );
+
+
   const appendMessage = useCallback(
     (
       chatId: string,
@@ -548,20 +583,16 @@ export function useChatHistory() {
   const updateChatProjectPath = useCallback(
     (chatId: string, projectPath: string) => {
       const normalizedPath = projectPath.trim();
-
-      setChats((currentChats) =>
-        currentChats.map((chat) =>
-          chat.id === chatId
-            ? {
-                ...chat,
-                projectPath: normalizedPath,
-                historyFilePath: normalizedPath
-                  ? getProjectHistoryFilePath(normalizedPath)
-                  : '',
-              }
-            : chat,
-        ),
-      );
+      setChats((currentChats) => currentChats.map((chat) => {
+        if (chat.id !== chatId) return chat;
+        const updated = {
+          ...chat,
+          projectPath: normalizedPath,
+          historyFilePath: normalizedPath ? getProjectHistoryFilePath(normalizedPath) : '',
+        };
+        if (updated.historyFilePath) void saveProjectConversationFile(updated);
+        return updated;
+      }));
     },
     [],
   );
@@ -611,6 +642,7 @@ export function useChatHistory() {
     ensureChat,
     loadProjectConversation,
     appendMessage,
+    updateMessageToolActivities,
     replaceMessage,
     sendUserMessage,
     addMessage,

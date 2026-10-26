@@ -22,25 +22,13 @@ import type {
 } from '../services/toolActivity';
 import { resolveActivityChatId } from '../services/toolActivity';
 
-import {
-  loadToolActivities,
-  saveToolActivities,
-} from '../storage/tool-activity-storage';
-
 /*
  * Pending (not yet committed) activities of each chat's current request.
  */
 const pendingByChat = new Map<string, AgentToolActivity[]>();
 
-/*
- * Activities already attached to a specific assistant message. Seeded
- * from localStorage so the tool boxes are still visible after the app is
- * closed and reopened. Message ids are globally unique, so one shared
- * record is safe even with many chats.
- */
-let committedActivities: Record<string, AgentToolActivity[]> =
-  loadToolActivities();
-
+/* Completed activities are written with their owning assistant message. */
+let committedActivities: Record<string, AgentToolActivity[]> = {};
 /*
  * Listeners: one set per chat id plus a set for "committed" changes
  * (which can be observed from any chat view via getForMessage).
@@ -211,7 +199,7 @@ export function commitToolActivities(
   chatId: string,
   messageId: string,
   cancelled = false,
-): void {
+): AgentToolActivity[] {
   const activities = finalizeActivities(
     pendingByChat.get(chatId) ?? [],
     cancelled ? 'cancelled' : 'done',
@@ -230,7 +218,7 @@ export function commitToolActivities(
     messageId,
   );
   if (activities.length === 0 && !hadCommittedActivities) {
-    return;
+    return activities;
   }
 
   const nextCommittedActivities = { ...committedActivities };
@@ -243,8 +231,8 @@ export function commitToolActivities(
   }
 
   committedActivities = nextCommittedActivities;
-  saveToolActivities(committedActivities);
   notifyCommitted();
+  return activities;
 }
 
 /*
@@ -412,8 +400,9 @@ export function useToolActivity(chatId: string | null) {
       requestChatId: string,
       messageId: string,
       cancelled = false,
-    ) => {
-      commitToolActivities(requestChatId, messageId, cancelled);
+    ): AgentToolActivity[] => {
+      setActivityChatId(requestChatId);
+      return commitToolActivities(requestChatId, messageId, cancelled);
     }, []),
     discard: useCallback((requestChatId: string) => {
       discardToolActivityRequest(requestChatId);
