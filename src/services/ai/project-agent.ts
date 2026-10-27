@@ -406,71 +406,44 @@ const getCurrentUserText = (
 };
 
 /*
- * Extracts the immediately previous live conversation turn.
+ * Extracts completed live conversation turns in chronological order.
+ * Tool messages stay attached to the pending user turn; the last textual
+ * assistant response before the next user message completes that turn.
  */
-const getPreviousConversationTurn = (
+const getPreviousConversationTurns = (
   messages: BaseMessage[],
-): PreviousConversationTurn | null => {
-  for (
-    let index = messages.length - 1;
-    index >= 0;
-    index -= 1
-  ) {
-    const message =
-      messages[index];
+): PreviousConversationTurn[] => {
+  const turns: PreviousConversationTurn[] = [];
+  let pendingUserMessage: string | null = null;
+  let pendingAgentResponse = "";
 
-    if (
-      message.getType() !==
-      "ai"
-    ) {
+  const savePendingTurn = () => {
+    if (pendingUserMessage && pendingAgentResponse) {
+      turns.push({
+        userMessage: pendingUserMessage,
+        agentResponse: pendingAgentResponse,
+      });
+    }
+  };
+
+  for (const message of messages) {
+    if (message.getType() === "human") {
+      savePendingTurn();
+      pendingUserMessage = getTextContent(message.content).trim() || null;
+      pendingAgentResponse = "";
       continue;
     }
 
-    const agentResponse =
-      getTextContent(
-        message.content,
-      ).trim();
-
-    for (
-      let previousIndex = index - 1;
-      previousIndex >= 0;
-      previousIndex -= 1
-    ) {
-      const previousMessage =
-        messages[
-          previousIndex
-        ];
-
-      if (
-        previousMessage.getType() !==
-        "human"
-      ) {
-        continue;
-      }
-
-      const userMessage =
-        getTextContent(
-          previousMessage.content,
-        ).trim();
-
-      if (
-        !userMessage ||
-        !agentResponse
-      ) {
-        return null;
-      }
-
-      return {
-        userMessage,
-        agentResponse,
-      };
+    if (message.getType() === "ai" && pendingUserMessage) {
+      const response = getTextContent(message.content).trim();
+      if (response) pendingAgentResponse = response;
     }
-
-    return null;
   }
 
-  return null;
+  savePendingTurn();
+  return turns.slice(-15);
 };
+
 
 const getResumableProgress = (
   previousTurn: PreviousConversationTurn | null,
@@ -759,6 +732,11 @@ const buildProjectAgentSystemPrompt = (
   promptParts.push(
     "",
     FILE_TOOLS_SYSTEM_PROMPT,
+    "PROGRAMMING TASK FILE ACCESS RULES",
+    "For programming or coding tasks, do not use filesystem tools (read_file, find_file, write_file, or edit_file) to inspect, search, create, modify, update, or delete project files.",
+    "Use terminal_executor for all project-file access and changes required by programming tasks, including reading and searching files and creating, editing, updating, or deleting them.",
+    "These rules apply only to programming/coding work; for other user requests, follow the normal file-tool instructions.",
+
   );
 
   /*
@@ -1873,7 +1851,8 @@ const callProjectAgentWithHistorySession =
 
     const userText =
       rawUserText;
-    const previousTurn = getPreviousConversationTurn(state.messages);
+    const previousTurns = getPreviousConversationTurns(state.messages);
+    const previousTurn = previousTurns[previousTurns.length - 1] ?? null;
     const resumableProgress = getResumableProgress(
       previousTurn,
       userText,
@@ -1911,6 +1890,8 @@ const callProjectAgentWithHistorySession =
           userMessage: userText,
           projectPath: normalizedProjectPath,
           previousTurn,
+          previousTurns,
+          signal,
         });
       } catch (error: unknown) {
         console.warn(
@@ -2265,11 +2246,20 @@ const callProjectAgentWithHistorySession =
     ].join("\n\n");
     let messagesToRun: BaseMessage[] = [
       new SystemMessage(systemPromptWithGlobalDirectory),
-      ...(memoryResult?.memoryRequired === false && previousTurn
-        ? [
-            new HumanMessage(previousTurn.userMessage),
-            new AIMessage(previousTurn.agentResponse),
-          ]
+      ...(memoryResult?.memoryRequired === false
+        ? (memoryResult.relatedTurns.length > 0
+            ? [...memoryResult.relatedTurns]
+                .reverse()
+                .flatMap((turn) => [
+                  new HumanMessage(turn.userMessage),
+                  new AIMessage(turn.agentResponse),
+                ])
+            : previousTurn
+              ? [
+                  new HumanMessage(previousTurn.userMessage),
+                  new AIMessage(previousTurn.agentResponse),
+                ]
+              : [])
         : []),
       buildHumanMessageFromRequest(userText, currentUserMessage),
     ];

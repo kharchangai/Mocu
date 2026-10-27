@@ -576,6 +576,11 @@ const addFileManagerRulesToSystemPrompt = (
     systemPrompt.trim(),
     "",
     FILE_TOOLS_SYSTEM_PROMPT,
+    "PROGRAMMING TASK FILE ACCESS RULES",
+    "For programming or coding tasks, do not use filesystem tools (read_file, find_file, write_file, or edit_file) to inspect, search, create, modify, update, or delete project files.",
+    "Use terminal_executor for all project-file access and changes required by programming tasks, including reading and searching files and creating, editing, updating, or deleting them.",
+    "These rules apply only to programming/coding work; for other user requests, follow the normal file-tool instructions.",
+
   ].join(
     "\n",
   );
