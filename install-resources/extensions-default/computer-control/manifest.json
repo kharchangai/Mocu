@@ -2,7 +2,7 @@
     "id": "com.mocu.windows-app-status",
     "name": "Computer Control",
     "description": "Controls Windows applications and the desktop using app discovery, window management, screenshots, and mouse/keyboard input. For accurate visual target coordinates, use find_screen_coordinates, which delegates to the saved Screen Coordinate Finder agent and Mocu's full-monitor vision workflow; screenshot_app is window-only and must not be used to derive desktop coordinates.",
-    "version": "0.5.1",
+    "version": "0.5.3",
     "runtime": "python",
     "entry": "index.py",
     "permissions": [

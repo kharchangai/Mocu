@@ -3,6 +3,7 @@ from __future__ import annotations
 import ctypes
 import os
 import random
+import subprocess
 import sys
 import time
 import unicodedata
@@ -100,39 +101,120 @@ def _get_visible_window_titles() -> dict[int, list[str]]:
     titles: dict[int, list[str]] = {}
     proc = ctypes.WINFUNCTYPE(wintypes.BOOL, wintypes.HWND, wintypes.LPARAM)
     user32.IsWindowVisible.argtypes = [wintypes.HWND]
-    user32.GetWindowTextLengthW.argtypes = [wintypes.HWND]; user32.GetWindowTextLengthW.restype = ctypes.c_int
+    user32.IsWindowVisible.restype = wintypes.BOOL
+    user32.GetWindowTextLengthW.argtypes = [wintypes.HWND]
+    user32.GetWindowTextLengthW.restype = ctypes.c_int
     user32.GetWindowTextW.argtypes = [wintypes.HWND, wintypes.LPWSTR, ctypes.c_int]
+    user32.GetWindowTextW.restype = ctypes.c_int
     user32.GetWindowThreadProcessId.argtypes = [wintypes.HWND, ctypes.POINTER(wintypes.DWORD)]
+    user32.GetWindowThreadProcessId.restype = wintypes.DWORD
+
     def collect(hwnd: int, _param: int) -> bool:
-        if not user32.IsWindowVisible(hwnd): return True
+        if not user32.IsWindowVisible(hwnd):
+            return True
         size = user32.GetWindowTextLengthW(hwnd)
-        if size <= 0: return True
+        if size <= 0:
+            return True
         text = ctypes.create_unicode_buffer(size + 1)
         if user32.GetWindowTextW(hwnd, text, len(text)):
-            pid = wintypes.DWORD(); user32.GetWindowThreadProcessId(hwnd, ctypes.byref(pid))
-            titles.setdefault(pid.value, []).append(text.value.strip())
+            pid = wintypes.DWORD()
+            user32.GetWindowThreadProcessId(hwnd, ctypes.byref(pid))
+            title = text.value.strip()
+            if title:
+                titles.setdefault(pid.value, []).append(title)
         return True
-    callback = proc(collect); user32.EnumWindows.argtypes = [proc, wintypes.LPARAM]; user32.EnumWindows.restype = wintypes.BOOL
-    if not user32.EnumWindows(callback, 0): raise ctypes.WinError(ctypes.get_last_error())
+
+    callback = proc(collect)
+    user32.EnumWindows.argtypes = [proc, wintypes.LPARAM]
+    user32.EnumWindows.restype = wintypes.BOOL
+    if not user32.EnumWindows(callback, 0):
+        raise ctypes.WinError(ctypes.get_last_error())
     return titles
+
+
+def _installed_process_aliases(query: str) -> set[str]:
+    """Map an exact Windows uninstall display name to its executable name."""
+    try:
+        import winreg
+    except ImportError:
+        return set()
+
+    aliases: set[str] = set()
+    uninstall_key = r"SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall"
+    views = (0, winreg.KEY_WOW64_64KEY, winreg.KEY_WOW64_32KEY)
+    for hive in (winreg.HKEY_CURRENT_USER, winreg.HKEY_LOCAL_MACHINE):
+        for view in views:
+            try:
+                root = winreg.OpenKey(hive, uninstall_key, 0, winreg.KEY_READ | view)
+            except OSError:
+                continue
+            with root:
+                index = 0
+                while True:
+                    try:
+                        subkey = winreg.EnumKey(root, index)
+                    except OSError:
+                        break
+                    index += 1
+                    try:
+                        with winreg.OpenKey(root, subkey) as app_key:
+                            display_name = winreg.QueryValueEx(app_key, "DisplayName")[0]
+                            display_icon = winreg.QueryValueEx(app_key, "DisplayIcon")[0]
+                    except OSError:
+                        continue
+                    if not isinstance(display_name, str) or not isinstance(display_icon, str):
+                        continue
+                    if _normalize(display_name) != query:
+                        continue
+                    icon_path = display_icon.strip()
+                    if icon_path.startswith('"'):
+                        icon_path = icon_path[1:].split('"', 1)[0]
+                    elif "," in icon_path:
+                        icon_path = icon_path.rsplit(",", 1)[0].strip()
+                    if os.path.isfile(icon_path):
+                        aliases.add(_normalize(os.path.splitext(os.path.basename(icon_path))[0]))
+    return aliases
 
 
 def _find_matching_processes(query: str) -> list[dict[str, Any]]:
     kernel = ctypes.WinDLL("kernel32", use_last_error=True)
-    kernel.CreateToolhelp32Snapshot.argtypes = [wintypes.DWORD, wintypes.DWORD]; kernel.CreateToolhelp32Snapshot.restype = wintypes.HANDLE
-    kernel.Process32FirstW.argtypes = [wintypes.HANDLE, ctypes.POINTER(PROCESSENTRY32W)]; kernel.Process32NextW.argtypes = [wintypes.HANDLE, ctypes.POINTER(PROCESSENTRY32W)]
+    kernel.CreateToolhelp32Snapshot.argtypes = [wintypes.DWORD, wintypes.DWORD]
+    kernel.CreateToolhelp32Snapshot.restype = wintypes.HANDLE
+    kernel.Process32FirstW.argtypes = [wintypes.HANDLE, ctypes.POINTER(PROCESSENTRY32W)]
+    kernel.Process32FirstW.restype = wintypes.BOOL
+    kernel.Process32NextW.argtypes = [wintypes.HANDLE, ctypes.POINTER(PROCESSENTRY32W)]
+    kernel.Process32NextW.restype = wintypes.BOOL
     kernel.CloseHandle.argtypes = [wintypes.HANDLE]
+    kernel.CloseHandle.restype = wintypes.BOOL
+
     snapshot = kernel.CreateToolhelp32Snapshot(2, 0)
-    if snapshot == ctypes.c_void_p(-1).value: raise ctypes.WinError(ctypes.get_last_error())
-    by_pid = _get_visible_window_titles(); result=[]; entry=PROCESSENTRY32W(); entry.dwSize=ctypes.sizeof(entry)
+    if snapshot == ctypes.c_void_p(-1).value:
+        raise ctypes.WinError(ctypes.get_last_error())
+
     try:
-        has = kernel.Process32FirstW(snapshot, ctypes.byref(entry))
-        while has:
-            name=entry.szExeFile; matches=[t for t in by_pid.get(entry.th32ProcessID,[]) if query in _normalize(t)]
-            if query in _normalize(os.path.splitext(name)[0]) or matches: result.append({"processName":name,"pid":entry.th32ProcessID,"windowTitles":matches})
-            has=kernel.Process32NextW(snapshot,ctypes.byref(entry))
-    finally: kernel.CloseHandle(snapshot)
-    return result
+        by_pid = _get_visible_window_titles()
+        queries = {query, *_installed_process_aliases(query)}
+        result: list[dict[str, Any]] = []
+        entry = PROCESSENTRY32W()
+        entry.dwSize = ctypes.sizeof(entry)
+        has_process = kernel.Process32FirstW(snapshot, ctypes.byref(entry))
+        while has_process:
+            name = entry.szExeFile
+            process_name = _normalize(os.path.splitext(name)[0])
+            matching_titles = [
+                title for title in by_pid.get(entry.th32ProcessID, [])
+                if any(alias in _normalize(title) for alias in queries)
+            ]
+            if any(alias in process_name for alias in queries) or matching_titles:
+                result.append({
+                    "processName": name,
+                    "pid": entry.th32ProcessID,
+                    "windowTitles": matching_titles,
+                })
+            has_process = kernel.Process32NextW(snapshot, ctypes.byref(entry))
+        return result
+    finally:
+        kernel.CloseHandle(snapshot)
 
 
 def _enumerate_visible_windows() -> list[dict[str, Any]]:
@@ -355,9 +437,53 @@ def _screenshot_path(requested:Any)->str:
     else:raise ValueError("outputPath must be a non-empty path string.")
     os.makedirs(os.path.dirname(path),exist_ok=True);return path
 
-def _shell_execute(target:str)->int:
-    shell=ctypes.WinDLL("shell32",use_last_error=True);shell.ShellExecuteW.argtypes=[wintypes.HWND,wintypes.LPCWSTR,wintypes.LPCWSTR,wintypes.LPCWSTR,wintypes.LPCWSTR,ctypes.c_int];shell.ShellExecuteW.restype=ctypes.c_void_p
-    return int(shell.ShellExecuteW(None,"open",target,None,None,1) or 0)
+def _shell_execute(target: str) -> int:
+    """Launch executable files directly; use a bounded shell helper for shortcuts and shell targets."""
+    if os.name == "nt" and os.path.isfile(target) and os.path.splitext(target)[1].casefold() in {".exe", ".com"}:
+        try:
+            subprocess.Popen(
+                [target],
+                stdin=subprocess.DEVNULL,
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+                close_fds=True,
+                creationflags=(
+                    getattr(subprocess, "DETACHED_PROCESS", 0)
+                    | getattr(subprocess, "CREATE_NEW_PROCESS_GROUP", 0)
+                ),
+            )
+        except OSError as error:
+            raise OSError(f"Could not start application executable {target!r}: {error}") from error
+        return 33
+
+    helper = r"""
+import ctypes
+import sys
+from ctypes import wintypes
+shell = ctypes.WinDLL("shell32", use_last_error=True)
+shell.ShellExecuteW.argtypes = [wintypes.HWND, wintypes.LPCWSTR, wintypes.LPCWSTR, wintypes.LPCWSTR, wintypes.LPCWSTR, ctypes.c_int]
+shell.ShellExecuteW.restype = ctypes.c_void_p
+result = shell.ShellExecuteW(None, "open", sys.argv[1], None, None, 1)
+print(int(result or 0))
+"""
+    try:
+        completed = subprocess.run(
+            [sys.executable, "-c", helper, target],
+            capture_output=True,
+            text=True,
+            timeout=8,
+            check=False,
+            creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
+        )
+    except subprocess.TimeoutExpired as error:
+        raise TimeoutError("Windows shell did not respond within 8 seconds while opening the application.") from error
+    if completed.returncode != 0:
+        detail = completed.stderr.strip()
+        raise OSError(f"Windows shell helper failed (exit code {completed.returncode})" + (f": {detail}" if detail else "."))
+    try:
+        return int(completed.stdout.strip())
+    except ValueError as error:
+        raise OSError("Windows shell helper returned an invalid launch status.") from error
 
 def _find_application_launch_targets(app:str)->list[str]:
     query=_normalize(app);ranked=[];roots=(os.path.join(os.environ.get("APPDATA",""),"Microsoft","Windows","Start Menu","Programs"),os.path.join(os.environ.get("PROGRAMDATA",""),"Microsoft","Windows","Start Menu","Programs"))
@@ -411,7 +537,7 @@ def control_app(input:Any,context:dict[str,Any],config:dict[str,Any])->dict[str,
     if sys.platform!="win32":return{"supported":False,"action":action,"query":app,"message":"This command is supported on Windows only."}
     if action=="open":
         tried=set();last=0
-        for target in(([app]if os.path.exists(app)else[])+_find_application_launch_targets(app)+[app]):
+        for target in (([app] if os.path.exists(app) else []) + _find_application_launch_targets(app)[:2] + [app]):
             key=os.path.normcase(os.path.abspath(target))if os.path.exists(target)else target.casefold()
             if key in tried:continue
             tried.add(key);code=_shell_execute(target)
