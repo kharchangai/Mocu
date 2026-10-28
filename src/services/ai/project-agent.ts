@@ -165,6 +165,13 @@ import {
   saveProjectMemory,
 } from "../../chat/project/memory/saveProjectMemory";
 import {
+  processProjectPersonalMemoryMessage,
+} from "../../chat/project/memory/personal-memory/processProjectPersonalMemoryMessage";
+import {
+  buildProjectPersonalMemoryPrompt,
+  retrieveProjectPersonalMemories,
+} from "../../chat/project/memory/personal-memory/retrieveProjectPersonalMemories";
+import {
   buildProjectMemoryPrompt,
   retrieveProjectMemory,
   type PreviousConversationTurn,
@@ -560,6 +567,29 @@ const saveProjectMemoryInBackground = (
         );
       },
     );
+};
+
+/*
+ * Classifies and persists personal memories from the user's message without
+ * delaying the project-agent response. The pipeline itself skips persistence
+ * when no reusable personal memory is found.
+ */
+const saveProjectPersonalMemoryInBackground = (
+  userMessage: string,
+  projectPath: string,
+): void => {
+  void processProjectPersonalMemoryMessage(userMessage, projectPath)
+    .then((result) => {
+      if (!result.saveResult) return;
+
+      console.log("[Project Personal Memory] Message processed:", {
+        databasePath: result.saveResult.databasePath,
+        actions: result.saveResult.items.map((item) => item.action),
+      });
+    })
+    .catch((error: unknown) => {
+      console.error("[Project Personal Memory] Failed to process message:", error);
+    });
 };
 
 /*
@@ -1764,6 +1794,11 @@ const callProjectAgentWithHistorySession =
       );
     }
 
+    // Comparison/secondary runs are not new user turns and must not write memory.
+    if (runnableConfig.configurable?.suppressMemorySave !== true) {
+      saveProjectPersonalMemoryInBackground(rawUserText, normalizedProjectPath);
+    }
+
     throwIfAborted(
       signal,
     );
@@ -1883,6 +1918,7 @@ const callProjectAgentWithHistorySession =
       | null = null;
 
     let relatedMemoryPrompt = "";
+    let personalMemoryPrompt = "";
     dispatchAgentActivity("checking_project_history");
     try {
       try {
@@ -1911,6 +1947,25 @@ const callProjectAgentWithHistorySession =
     } finally {
       dispatchAgentActivity(null);
     }
+
+    /*
+     * Retrieve the active project-scoped personal memories for this request.
+     * Retrieval is best-effort and does not block the project agent.
+     */
+    try {
+      const personalMemories = await retrieveProjectPersonalMemories(
+        userText,
+        normalizedProjectPath,
+        { signal },
+      );
+      personalMemoryPrompt = buildProjectPersonalMemoryPrompt(personalMemories);
+    } catch (error: unknown) {
+      if (isAbortError(error) || signal?.aborted) throw error;
+      console.warn("[Project Agent] Personal-memory retrieval failed:", error);
+    }
+    relatedMemoryPrompt = [relatedMemoryPrompt, personalMemoryPrompt]
+      .filter((prompt) => prompt.trim())
+      .join("\n\n");
 
     /*
      * Search the user's saved docs and notes for this message and inject

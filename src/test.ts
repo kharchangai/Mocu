@@ -1,103 +1,75 @@
-// import { readTextFile } from "@tauri-apps/plugin-fs";
-// import type { ConversationTurn } from "./chat/project/memory/memory-retrieval/continuityAnalyzer";
-// import { findRecentRelatedTurns } from "./chat/project/memory/memory-retrieval/recentRelatedTurns";
+// import { classifyPersonalMemories } from "./chat/project/memory/personal-memory/classifyPersonalMemories";
+// import { createProjectPersonalMemoryEntries } from "./chat/project/memory/personal-memory/createPersonalMemoryEntries";
 
-// const CHAT_JSON_PATH = "E:/mocube/mocu/.mocu/memory/chat.json";
-// const MAX_INPUT_TURNS = 10;
+// const PERSONAL_MEMORY_TEST_MESSAGES = [
+//   {
+//     name: "No personal memory",
+//     message: "What is the capital of Japan?",
+//   },
+//   {
+//     name: "One personal memory",
+//     message: "I prefer concise answers.",
+//   },
+//   {
+//     name: "Multiple personal memories",
+//     message:
+//       "I live in Tehran. I prefer concise answers. For this project, use TypeScript.",
+//   },
+// ] as const;
 
-// interface StoredChatMessage {
-//   role?: unknown;
-//   content?: unknown;
-// }
-
-// interface StoredChat {
-//   chatId?: unknown;
-//   messages?: unknown;
-// }
-
-/** Runs against the latest user/assistant pairs saved in this project's chat. */
+/** Runs classification and entry preparation examples, printing results and basic checks. */
 export async function runTest(): Promise<void> {
-  // console.group("[findRecentRelatedTurns test]");
+  // console.group("[personal memory pipeline test]");
 
   // try {
-  //   console.log("Reading chat history:", CHAT_JSON_PATH);
-  //   const chatJson = await readTextFile(CHAT_JSON_PATH);
-  //   const chat = JSON.parse(chatJson) as StoredChat;
+  //   for (const testCase of PERSONAL_MEMORY_TEST_MESSAGES) {
+  //     console.group(testCase.name);
+  //     console.log("Input message:", testCase.message);
 
-  //   if (!Array.isArray(chat.messages)) {
-  //     throw new Error('The chat history does not contain a "messages" array.');
+  //     try {
+  //       const classification = await classifyPersonalMemories(testCase.message);
+  //       console.log("Classification result:", classification);
+
+  //       try {
+  //         // Empty classifications return [] without calling the generation or embedding models.
+  //         const entries = await createProjectPersonalMemoryEntries(classification);
+  //         const checks = {
+  //           entryCountMatchesClassifiedMemories:
+  //             entries.length === classification.memories.length,
+  //           allEntriesAreProjectScoped: entries.every(
+  //             (entry) => entry.storageScope === "project",
+  //           ),
+  //           allEntriesHavePromptsAndSearchText: entries.every(
+  //             (entry) => Boolean(entry.prompt.trim() && entry.searchText.trim()),
+  //           ),
+  //           allEntriesHaveNonEmptyFiniteEmbeddings: entries.every(
+  //             (entry) =>
+  //               entry.embedding.length > 0 &&
+  //               entry.embedding.every(Number.isFinite),
+  //           ),
+  //         };
+
+  //         console.log("Prepared personal-memory entries:", entries);
+  //         console.log("Entry validation checks:", checks);
+  //         console.log(
+  //           "Entries JSON:\n" + JSON.stringify(entries, null, 2),
+  //         );
+
+  //         if (Object.values(checks).some((passed) => !passed)) {
+  //           console.error("One or more personal-memory entry checks failed.");
+  //         } else {
+  //           console.log("Personal-memory entry checks passed.");
+  //         }
+  //       } catch (error) {
+  //         console.error("createProjectPersonalMemoryEntries failed:", error);
+  //       }
+  //     } catch (error) {
+  //       console.error("classifyPersonalMemories failed:", error);
+  //     } finally {
+  //       console.groupEnd();
+  //     }
   //   }
-
-  //   const allTurns = toConversationTurns(chat.messages as StoredChatMessage[]);
-  //   const turns = allTurns.slice(-MAX_INPUT_TURNS);
-
-  //   if (turns.length === 0) {
-  //     console.warn("No complete user/assistant turn pairs were found.");
-  //     return;
-  //   }
-
-  //   console.log(
-  //     `Chat ${typeof chat.chatId === "string" ? chat.chatId : "(unknown ID)"}: ` +
-  //       `${allTurns.length} complete pair(s); passing the latest ${turns.length} ` +
-  //       "to findRecentRelatedTurns in chronological order.",
-  //   );
-  //   console.table(
-  //     turns.map((turn, index) => ({
-  //       inputOrder: index + 1,
-  //       userMessage: turn.userMessage,
-  //       agentResponse: turn.agentResponse,
-  //     })),
-  //   );
-
-  //   const relatedTurns = await findRecentRelatedTurns(turns);
-
-  //   console.log(
-  //     `Related result: ${relatedTurns.length} turn(s), ordered newest to oldest.`,
-  //   );
-  //   relatedTurns.forEach((turn, index) => {
-  //     console.log(`Result ${index + 1}:`, {
-  //       userMessage: turn.userMessage,
-  //       agentResponse: turn.agentResponse,
-  //     });
-  //   });
-  //   console.log("Full result JSON:\n" + JSON.stringify(relatedTurns, null, 2));
-  // } catch (error) {
-  //   console.error("[findRecentRelatedTurns test] Failed:", error);
-  //   throw error;
   // } finally {
   //   console.groupEnd();
   // }
 }
-
-/** Pairs each assistant reply with the most recent unanswered user message. */
-// function toConversationTurns(messages: StoredChatMessage[]): ConversationTurn[] {
-//   const turns: ConversationTurn[] = [];
-//   let pendingUserMessage: string | null = null;
-
-//   for (const message of messages) {
-//     if (message?.role === "user") {
-//       pendingUserMessage =
-//         typeof message.content === "string" && message.content.trim()
-//           ? message.content.trim()
-//           : null;
-//       continue;
-//     }
-
-//     if (message?.role === "assistant") {
-//       const agentResponse =
-//         typeof message.content === "string" ? message.content.trim() : "";
-
-//       if (pendingUserMessage && agentResponse) {
-//         turns.push({
-//           userMessage: pendingUserMessage,
-//           agentResponse,
-//         });
-//       }
-
-//       // Don't accidentally pair an unanswered user message with a later reply.
-//       pendingUserMessage = null;
-//     }
-//   }
-
-//   return turns;
-// }
