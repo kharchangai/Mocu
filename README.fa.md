@@ -298,6 +298,9 @@ npm run tauri build
 - [زمان‌بندی](install-resources/docs/mocu-schedule.md) · [پروژه‌ها و حافظه](install-resources/docs/mocu-projects.md)
 - [Focus و Step-by-Step](install-resources/docs/mocu-chat-commands.md) · [MCP](install-resources/docs/mocu-mcp.md)
 
+- [سیاست حریم خصوصی](PRIVACY.md)
+- [سیاست امضای کد](CODE_SIGNING.md)
+
 ## مجوز
 
 مکو تحت [مجوز Apache 2.0](LICENSE) منتشر می‌شود.

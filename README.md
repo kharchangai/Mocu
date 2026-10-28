@@ -297,6 +297,8 @@ A useful bug report includes:
 - [Knowledge docs](install-resources/docs/mocu-knowledge-docs.md) · [Notes](install-resources/docs/mocu-notes.md)
 - [Scheduling](install-resources/docs/mocu-schedule.md) · [Projects and memory](install-resources/docs/mocu-projects.md)
 - [Focus and Step-by-Step](install-resources/docs/mocu-chat-commands.md) · [MCP](install-resources/docs/mocu-mcp.md)
+- [Privacy policy](PRIVACY.md)
+- [Code signing policy](CODE_SIGNING.md)
 
 ## License
 
