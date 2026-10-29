@@ -47,12 +47,16 @@ describe("createProjectPersonalMemoryEntries", () => {
       memories: [
         {
           id: 1,
+          isPersonalMemory: true,
+          memoryText: "For this project, use TypeScript.",
           searchText: "TypeScript project language preference",
           prompt: "Use TypeScript for work in this project.",
           scope: "global",
         },
         {
           id: 0,
+          isPersonalMemory: true,
+          memoryText: "I prefer concise answers.",
           searchText: "Concise, brief responses; avoid unnecessary detail",
           prompt: "Keep answers concise unless detail is needed.",
           scope: "global",
@@ -105,9 +109,49 @@ describe("createProjectPersonalMemoryEntries", () => {
     expect(mocks.embedTexts).not.toHaveBeenCalled();
   });
 
+  it("does not embed or retain a one-off file task rejected by the personalization gate", async () => {
+    mocks.invoke.mockResolvedValue({
+      memories: [
+        { id: 0, isPersonalMemory: false, memoryText: "", searchText: "Fix a file", prompt: "Inspect the file.", scope: "task" },
+        { id: 1, isPersonalMemory: true, memoryText: "I prefer concise answers.", searchText: "Prefers concise answers", prompt: "Keep answers concise.", scope: "global" },
+      ],
+    });
+    mocks.embedTexts.mockResolvedValue([[0.1, 0.2]]);
+
+    const result = await createProjectPersonalMemoryEntries({
+      ...classification,
+      memories: [
+        { text: "Please edit this file for me.", tags: ["instruction", "task", "explicit"] },
+        { text: "I prefer concise answers.", tags: ["preference", "global", "explicit"] },
+      ],
+    });
+
+    expect(result).toHaveLength(1);
+    expect(result[0].memoryText).toBe("I prefer concise answers.");
+    expect(mocks.embedTexts).toHaveBeenCalledWith([
+      "Prefers concise answers\nI prefer concise answers.",
+    ]);
+  });
+
+  it("returns no entries and skips embeddings when every candidate fails the personalization gate", async () => {
+    mocks.invoke.mockResolvedValue({
+      memories: classification.memories.map((_, id) => ({
+        id,
+        isPersonalMemory: false,
+        memoryText: "",
+        searchText: "One-off task request",
+        prompt: "This belongs to the current task only.",
+        scope: "task",
+      })),
+    });
+
+    await expect(createProjectPersonalMemoryEntries(classification)).resolves.toEqual([]);
+    expect(mocks.embedTexts).not.toHaveBeenCalled();
+  });
+
   it("rejects missing or duplicated generated IDs", async () => {
     mocks.invoke.mockResolvedValue({
-      memories: [{ id: 0, searchText: "Answer brevity", prompt: "Be concise.", scope: "global" }],
+      memories: [{ id: 0, isPersonalMemory: true, memoryText: "I prefer concise answers.", searchText: "Answer brevity", prompt: "Be concise.", scope: "global" }],
     });
 
     await expect(createProjectPersonalMemoryEntries(classification))
