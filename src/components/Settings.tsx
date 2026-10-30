@@ -6,9 +6,11 @@ import {
   OPENROUTER_GATEWAY_URL, OPENROUTER_DEFAULT_LLM_MODEL,
   OPENROUTER_CHEAP_DEFAULT_MODEL, OPENROUTER_MEDIUM_DEFAULT_MODEL, OPENROUTER_EXPENSIVE_DEFAULT_MODEL,
   OPENROUTER_SUMMARIZE_DEFAULT_MODEL, OPENROUTER_EXTRACT_DEFAULT_MODEL, OPENROUTER_IMAGE_DEFAULT_MODEL,
+  OPENROUTER_VIDEO_DEFAULT_MODEL,
   OPENROUTER_STT_DEFAULT_MODEL, OPENROUTER_TTS_DEFAULT_MODEL, OPENROUTER_TTS_DEFAULT_VOICE,
   OPENROUTER_VISION_DEFAULT_MODEL, OPENROUTER_EMBEDDING_DEFAULT_MODEL, OPENROUTER_PERPLEXITY_DEFAULT_MODEL,
   OPENROUTER_DECISION_DEFAULT_ENDPOINT, OPENROUTER_DECISION_DEFAULT_MODEL,
+  OPENROUTER_CLAIRIC_DEFAULT_MODEL, getExtractionEndpointForGateway,
   getDecisionEndpointForGateway, readSettings, saveSettings,
 } from "../store";
 import { DOCS_RETRIEVAL_DEFAULTS } from "../chat/docs/docs-retrieval-config";
@@ -40,7 +42,10 @@ export const Settings: React.FC<SettingsProps> = ({
   const [expensiveModel, setExpensiveModel] = useState(OPENROUTER_EXPENSIVE_DEFAULT_MODEL);
   const [summarizeModel, setSummarizeModel] = useState(OPENROUTER_SUMMARIZE_DEFAULT_MODEL);
   const [extractModel, setExtractModel] = useState(OPENROUTER_EXTRACT_DEFAULT_MODEL);
+  const [clairicModel, setClairicModel] = useState(OPENROUTER_CLAIRIC_DEFAULT_MODEL);
+  const [extractionEndpointUrl, setExtractionEndpointUrl] = useState(getExtractionEndpointForGateway(OPENROUTER_GATEWAY_URL));
   const [imageModel, setImageModel] = useState(OPENROUTER_IMAGE_DEFAULT_MODEL);
+  const [videoModel, setVideoModel] = useState(OPENROUTER_VIDEO_DEFAULT_MODEL);
 
   // Speech settings
   const [sttModel, setSttModel] = useState(OPENROUTER_STT_DEFAULT_MODEL);
@@ -130,7 +135,10 @@ export const Settings: React.FC<SettingsProps> = ({
         setExpensiveModel(settings.expensiveModel);
         setSummarizeModel(settings.summarizeModel);
         setExtractModel(settings.extractModel);
+        setClairicModel(settings.clairicModel);
+        setExtractionEndpointUrl(settings.extractionEndpointUrl);
         setImageModel(settings.imageModel);
+        setVideoModel(settings.videoModel);
         setSttModel(settings.sttModel);
         setTtsModel(settings.ttsModel);
         setTtsVoice(settings.ttsVoice);
@@ -169,9 +177,12 @@ export const Settings: React.FC<SettingsProps> = ({
   }, []);
 
   const changeGatewayBaseUrl = (nextBaseUrl: string) => {
-    // Follow the shared URL unless the user customized the Decision endpoint.
+    // Follow the shared URL unless the user customized an API endpoint.
     if (!decisionEndpointUrl || decisionEndpointUrl === getDecisionEndpointForGateway(gatewayBaseUrl)) {
       setDecisionEndpointUrl(getDecisionEndpointForGateway(nextBaseUrl));
+    }
+    if (!extractionEndpointUrl || extractionEndpointUrl === getExtractionEndpointForGateway(gatewayBaseUrl)) {
+      setExtractionEndpointUrl(getExtractionEndpointForGateway(nextBaseUrl));
     }
     setGatewayBaseUrl(nextBaseUrl);
     setGatewayError("");
@@ -185,6 +196,7 @@ export const Settings: React.FC<SettingsProps> = ({
     const nextBaseUrl = provider === "openrouter" ? OPENROUTER_GATEWAY_URL : "";
     setGatewayBaseUrl(nextBaseUrl);
     setDecisionEndpointUrl(getDecisionEndpointForGateway(nextBaseUrl));
+    setExtractionEndpointUrl(getExtractionEndpointForGateway(nextBaseUrl));
     setGatewayError("");
     // Deliberately leave all model selections unchanged.
   };
@@ -212,6 +224,8 @@ export const Settings: React.FC<SettingsProps> = ({
         cheapModel,
         summarizeModel,
         extractModel,
+        clairicModel,
+        extractionEndpointUrl,
 
         mediumBaseUrl: gatewayBaseUrl,
         mediumModel,
@@ -232,6 +246,7 @@ export const Settings: React.FC<SettingsProps> = ({
         visionBaseUrl: gatewayBaseUrl,
         visionModel,
         imageModel,
+        videoModel,
 
         perplexityApiKey: dedicatedKeys.perplexity,
         perplexityBaseUrl: gatewayBaseUrl,
@@ -441,13 +456,22 @@ export const Settings: React.FC<SettingsProps> = ({
             <LlmTierCard title="Expensive LLM" description="Complex requests." model={expensiveModel} disabled={isSaving} onModelChange={setExpensiveModel} />
             <LlmTierCard title="Summarize LLM" description="Model for summarizing text." model={summarizeModel} disabled={isSaving} onModelChange={setSummarizeModel} />
             <LlmTierCard title="Extract LLM" description="Model for extracting named entities from text." model={extractModel} disabled={isSaving} onModelChange={setExtractModel} />
+            <LlmTierCard title="Clairic Typed Extraction" description="Typed extraction, computation, estimates and forecasts through OpenRouter's Extractions API." model={clairicModel} disabled={isSaving} onModelChange={setClairicModel} />
+            <div className="settings-card">
+              <div className="settings-field">
+                <label className="settings-label">Clairic Extractions API Endpoint</label>
+                <input type="text" value={extractionEndpointUrl} disabled={isSaving}
+                  onChange={(event) => setExtractionEndpointUrl(event.target.value)}
+                  placeholder="https://openrouter.ai/api/alpha/extractions" className="settings-input" />
+              </div>
+            </div>
           </details>
           </div>
 
           <div className="settings-card settings-model-summary">
             <p className="settings-card-description">Preconfigured models — change any model below if needed. A custom gateway must support the selected models and APIs.</p>
             <div className="settings-model-list">
-              {[ ["Main chat", llmModel], ["Cheap", cheapModel], ["Medium", mediumModel], ["Expensive", expensiveModel], ["Summarize", summarizeModel], ["Extract", extractModel], ["STT", sttModel], ["TTS", ttsModel], ["Vision", visionModel], ["Image generation", imageModel], ["Embedding", embeddingModel], ["Perplexity", perplexityModel], ["Decision", decisionModel] ].map(([name, model]) => <div className="settings-model-row" key={name}><span className="settings-model-tier">{name}</span><span className="settings-model-id">{model}</span></div>)}
+              {[ ["Main chat", llmModel], ["Cheap", cheapModel], ["Medium", mediumModel], ["Expensive", expensiveModel], ["Summarize", summarizeModel], ["Extract", extractModel], ["Clairic extraction", clairicModel], ["STT", sttModel], ["TTS", ttsModel], ["Vision", visionModel], ["Image generation", imageModel], ["Video generation", videoModel], ["Embedding", embeddingModel], ["Perplexity", perplexityModel], ["Decision", decisionModel] ].map(([name, model]) => <div className="settings-model-row" key={name}><span className="settings-model-tier">{name}</span><span className="settings-model-id">{model}</span></div>)}
             </div>
           </div>
         </section>
@@ -505,6 +529,8 @@ export const Settings: React.FC<SettingsProps> = ({
 
         {/* ---------- Image generation ---------- */}
         <section className="settings-section"><h5 className="settings-section-label">Image Generation</h5><div className="settings-card"><p className="settings-card-description">Uses the shared gateway URL and API key configured above to generate and save images.</p><div className="settings-field"><label className="settings-label">Image Generation Model</label><input value={imageModel} disabled={isSaving} onChange={(event) => setImageModel(event.target.value)} className="settings-input" placeholder="qwen/qwen-image-2.1-turbo" /></div></div></section>
+
+        <section className="settings-section"><h5 className="settings-section-label">Video Generation</h5><div className="settings-card"><p className="settings-card-description">Uses the shared gateway URL and API key configured above to generate, play, and save videos.</p><div className="settings-field"><label className="settings-label">Video Generation Model</label><input value={videoModel} disabled={isSaving} onChange={(event) => setVideoModel(event.target.value)} className="settings-input" placeholder="tbc/mischief-1" /></div></div></section>
 
         {/* ---------- Perplexity ---------- */}
         <section className="settings-section"><h5 className="settings-section-label">Perplexity (Research Engine)</h5><div className="settings-card"><p className="settings-card-description">Uses the shared gateway URL and API key configured above.</p><div className="settings-grid-2"><div className="settings-field"><label className="settings-label">Model</label><input value={perplexityModel} disabled={isSaving} onChange={(event)=>setPerplexityModel(event.target.value)} className="settings-input"/></div><div className="settings-field"><label className="settings-label">Search Depth</label><input type="number" min="1" max="10" value={searchDepth} disabled={isSaving} onChange={(event)=>setSearchDepth(Number(event.target.value)||3)} className="settings-input"/></div></div></div></section>

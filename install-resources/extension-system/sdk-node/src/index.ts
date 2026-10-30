@@ -6,6 +6,7 @@ export {
 export { LlmApi } from "./llm.js";
 export { SummarizeApi } from "./summarize.js";
 export { ExtractApi } from "./extract.js";
+export { TypedFieldsApi } from "./extract-typed-fields.js";
 export { DecisionApi } from "./decision.js";
 export { EmbeddingApi } from "./embedding.js";
 export { SpeechApi } from "./speech.js";
@@ -29,6 +30,10 @@ export type {
   SummarizeTextParams,
   SummarizeTextResult,
   ExtractEntitiesParams,
+  ExtractTypedFieldType,
+  ExtractTypedFieldDefinition,
+  ExtractTypedFieldsParams,
+  ExtractTypedFieldsResult,
   ExtractEntitiesResult,
   ExtractedEntity,
   EmbeddingEmbedParams,

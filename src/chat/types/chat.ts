@@ -1,6 +1,7 @@
 import type { ChatImageAttachment } from './imageAttachment';
 import type { GeneratedChatImage } from './generatedImage';
 import type { GeneratedChatAudio } from './generatedAudio';
+import type { GeneratedChatVideo } from './generatedVideo';
 import type { AgentToolActivity } from '../services/toolActivity';
 
 export type ChatRole = 'user' | 'assistant' | 'system';
@@ -13,6 +14,7 @@ export type ChatMessage = {
   attachments?: ChatImageAttachment[];
   generatedImages?: GeneratedChatImage[];
   generatedAudio?: GeneratedChatAudio[];
+  generatedVideos?: GeneratedChatVideo[];
   toolActivities?: AgentToolActivity[];
 };
 export type ChatConversation = {

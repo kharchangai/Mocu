@@ -7,6 +7,7 @@ import {
 export const OPENROUTER_GATEWAY_URL = "https://openrouter.ai/api/v1";
 export const OPENROUTER_DECISION_BASE_URL = "https://openrouter.ai/api";
 export const OPENROUTER_DECISION_DEFAULT_ENDPOINT = `${OPENROUTER_DECISION_BASE_URL}/alpha/decisions`;
+export const OPENROUTER_EXTRACTION_DEFAULT_ENDPOINT = `${OPENROUTER_DECISION_BASE_URL}/alpha/extractions`;
 export const OPENROUTER_DEFAULT_LLM_MODEL = "gpt-5.6-luna";
 export const OPENROUTER_CHEAP_DEFAULT_MODEL = "openai/gpt-6-luna";
 export const OPENROUTER_MEDIUM_DEFAULT_MODEL = "z-ai/glm-5.3-flash";
@@ -20,12 +21,20 @@ export const OPENROUTER_PERPLEXITY_DEFAULT_MODEL = "sonar";
 export const OPENROUTER_DECISION_DEFAULT_MODEL = "~typesafe/jev-latest";
 export const OPENROUTER_SUMMARIZE_DEFAULT_MODEL = "scaledown/summarize";
 export const OPENROUTER_EXTRACT_DEFAULT_MODEL = "scaledown/extract";
+export const OPENROUTER_CLAIRIC_DEFAULT_MODEL = "cloudflare/clairic";
 export const OPENROUTER_IMAGE_DEFAULT_MODEL = "qwen/qwen-image-2.1-turbo";
+export const OPENROUTER_VIDEO_DEFAULT_MODEL = "tbc/mischief-1";
 
 /** Decisions uses the gateway's API root, without the chat /v1 suffix. */
 export function getDecisionEndpointForGateway(baseUrl: string): string {
   const base = baseUrl.trim().replace(/\/+$/, "");
   return base ? `${base.replace(/\/v1$/, "")}/alpha/decisions` : "";
+}
+
+/** Typed extractions use a distinct alpha endpoint from chat and decisions. */
+export function getExtractionEndpointForGateway(baseUrl: string): string {
+  const base = baseUrl.trim().replace(/\/+$/, "");
+  return base ? `${base.replace(/\/v1$/, "")}/alpha/extractions` : "";
 }
 
 function modelOrDefault(saved: string | null | undefined, fallback: string): string {
@@ -48,7 +57,10 @@ export type AppSettings = {
 
   summarizeModel: string;
   extractModel: string;
+  clairicModel: string;
+  extractionEndpointUrl: string;
   imageModel: string;
+  videoModel: string;
 
   // Speech settings
   sttModel: string;
@@ -165,6 +177,8 @@ export async function readSettings(): Promise<AppSettings> {
   const savedExpensiveModel = await store.get<string>("MOCU_EXPENSIVE_MODEL");
   const savedSummarizeModel = await store.get<string>("MOCU_SUMMARIZE_MODEL");
   const savedExtractModel = await store.get<string>("MOCU_EXTRACT_MODEL");
+  const savedClairicModel = await store.get<string>("MOCU_CLAIRIC_MODEL");
+  const savedExtractionEndpointUrl = await store.get<string>("MOCU_EXTRACTION_ENDPOINT_URL");
   return {
     apiKey, gatewayBaseUrl,
     llmModel: modelOrDefault(legacyLlmModel, OPENROUTER_DEFAULT_LLM_MODEL),
@@ -176,6 +190,8 @@ export async function readSettings(): Promise<AppSettings> {
     expensiveModel: modelOrDefault(savedExpensiveModel, OPENROUTER_EXPENSIVE_DEFAULT_MODEL),
     summarizeModel: modelOrDefault(savedSummarizeModel, OPENROUTER_SUMMARIZE_DEFAULT_MODEL),
     extractModel: modelOrDefault(savedExtractModel, OPENROUTER_EXTRACT_DEFAULT_MODEL),
+    clairicModel: modelOrDefault(savedClairicModel, OPENROUTER_CLAIRIC_DEFAULT_MODEL),
+    extractionEndpointUrl: savedExtractionEndpointUrl?.trim() || getExtractionEndpointForGateway(gatewayBaseUrl),
     sttModel: modelOrDefault(await store.get<string>("MOCU_STT_MODEL"), OPENROUTER_STT_DEFAULT_MODEL),
     ttsModel: modelOrDefault(await store.get<string>("MOCU_TTS_MODEL"), OPENROUTER_TTS_DEFAULT_MODEL),
     ttsVoice: modelOrDefault(await store.get<string>("MOCU_TTS_VOICE"), OPENROUTER_TTS_DEFAULT_VOICE),
@@ -186,6 +202,7 @@ export async function readSettings(): Promise<AppSettings> {
     visionBaseUrl: legacyBaseUrl || savedVisionBaseUrl || gatewayBaseUrl,
     visionModel: modelOrDefault(await store.get<string>("MOCU_VISION_MODEL"), OPENROUTER_VISION_DEFAULT_MODEL),
     imageModel: modelOrDefault(await store.get<string>("MOCU_IMAGE_MODEL"), OPENROUTER_IMAGE_DEFAULT_MODEL),
+    videoModel: modelOrDefault(await store.get<string>("MOCU_VIDEO_MODEL"), OPENROUTER_VIDEO_DEFAULT_MODEL),
     perplexityApiKey: ((await store.get<string>("MOCU_PERPLEXITY_API_KEY")) || "").trim() || apiKey,
     perplexityBaseUrl: legacyBaseUrl || savedPerplexityBaseUrl || gatewayBaseUrl,
     perplexityModel: modelOrDefault(await store.get<string>("MOCU_PERPLEXITY_MODEL"), OPENROUTER_PERPLEXITY_DEFAULT_MODEL),
@@ -241,7 +258,11 @@ export async function saveSettings(settings: AppSettings): Promise<void> {
   );
   await store.set("MOCU_SUMMARIZE_MODEL", modelOrDefault(settings.summarizeModel, OPENROUTER_SUMMARIZE_DEFAULT_MODEL));
   await store.set("MOCU_EXTRACT_MODEL", modelOrDefault(settings.extractModel, OPENROUTER_EXTRACT_DEFAULT_MODEL));
+  await store.set("MOCU_CLAIRIC_MODEL", modelOrDefault(settings.clairicModel, OPENROUTER_CLAIRIC_DEFAULT_MODEL));
+  const extractionEndpointUrl = settings.extractionEndpointUrl?.trim() || getExtractionEndpointForGateway(sharedGatewayBaseUrl);
+  await store.set("MOCU_EXTRACTION_ENDPOINT_URL", extractionEndpointUrl);
   await store.set("MOCU_IMAGE_MODEL", modelOrDefault(settings.imageModel, OPENROUTER_IMAGE_DEFAULT_MODEL));
+  await store.set("MOCU_VIDEO_MODEL", modelOrDefault(settings.videoModel, OPENROUTER_VIDEO_DEFAULT_MODEL));
   // Speech settings
   await store.set("MOCU_STT_MODEL", modelOrDefault(settings.sttModel, OPENROUTER_STT_DEFAULT_MODEL));
   await store.set("MOCU_TTS_MODEL", modelOrDefault(settings.ttsModel, OPENROUTER_TTS_DEFAULT_MODEL));

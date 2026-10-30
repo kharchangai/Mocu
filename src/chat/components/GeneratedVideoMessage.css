@@ -1,0 +1,43 @@
+.generated-video-card {
+  position: relative;
+  display: inline-block;
+  width: min(100%, 640px);
+  overflow: hidden;
+  vertical-align: top;
+  border: 1px solid #e8e8e6;
+  border-radius: 14px;
+  background: #111;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.08);
+}
+.generated-video-card video {
+  display: block;
+  width: 100%;
+  max-height: 640px;
+  background: #111;
+}
+.generated-video-loading {
+  display: grid;
+  min-height: 180px;
+  place-items: center;
+  padding: 18px;
+  color: #ddd;
+  font-size: 13px;
+}
+.generated-video-open {
+  position: absolute;
+  top: 10px;
+  right: 10px;
+  z-index: 1;
+  display: grid;
+  width: 36px;
+  height: 36px;
+  place-items: center;
+  border: 1px solid rgba(255, 255, 255, 0.7);
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.9);
+  color: #292825;
+  cursor: pointer;
+  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.14);
+}
+.generated-video-open:hover { background: #fff; }
+.generated-video-open:focus-visible { outline: 3px solid rgba(37, 99, 235, 0.3); }

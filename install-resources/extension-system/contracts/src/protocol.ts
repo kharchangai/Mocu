@@ -4,6 +4,7 @@ import { EMBEDDING_EMBED_METHOD } from "./embedding.js";
 import { AGENTS_LIST_METHOD, AGENTS_RUN_METHOD } from "./agents.js";
 import { SUMMARIZE_TEXT_METHOD } from "./summarize.js";
 import { EXTRACT_ENTITIES_METHOD } from "./extract.js";
+import { EXTRACT_TYPED_FIELDS_METHOD } from "./extract-typed-fields.js";
 
 export type JsonRpcId = string | number;
 
@@ -93,6 +94,7 @@ export const HOST_METHODS = {
   agentsRun: AGENTS_RUN_METHOD,
   summarizeText: SUMMARIZE_TEXT_METHOD,
   extractEntities: EXTRACT_ENTITIES_METHOD,
+  extractTypedFields: EXTRACT_TYPED_FIELDS_METHOD,
   extensionInteract: "mocu.extension.interact",
   extensionInteractionCancel: "mocu.extension.interaction.cancel",
 } as const;

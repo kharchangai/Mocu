@@ -17,7 +17,7 @@ import {
   isAbortError,
   throwIfAborted,
 } from "./agent/abort";
-import { assertImageModelSupport, buildHumanMessageFromRequest, getImageInputReferences, getImageRequestText, hasImageInput } from './agent/image-content';
+import { assertImageModelSupport, buildHumanMessageFromRequest, getImageInputReferences, getVideoFrameImages, getImageRequestText, hasImageInput } from './agent/image-content';
 import { isFileToolError } from "./agent/file-tool-recovery";
 import {
   dispatchAgentActivity,
@@ -110,6 +110,7 @@ import {
 } from "./tools/perplexity_search_tool";
 import { summarizeTextTool } from "./tools/summarize-text-tool";
 import { generateImageTool } from "./tools/generate-image-tool";
+import { generateVideoTool } from "./tools/generate-video-tool";
 import { extractEntitiesTool } from "./tools/extract-entities-tool";
 
 import {
@@ -703,6 +704,17 @@ const createToolExecutor = (
 ): ToolExecutor => {
   const toolExecutor =
     new ToolExecutor();
+
+  toolExecutor.registerTool({
+    name: generateVideoTool.name,
+    description: generateVideoTool.description,
+    execute: async (args) => {
+      const toolArgs = args as Record<string, unknown>;
+      const attachedFrames = getVideoFrameImages(currentUserMessage);
+      const inputFrames = Array.isArray(toolArgs.frame_images) && toolArgs.frame_images.length ? toolArgs.frame_images : attachedFrames;
+      return generateVideoTool.invoke({ ...toolArgs, ...(inputFrames.length ? { frame_images: inputFrames } : {}) } as never, config);
+    },
+  });
 
   toolExecutor.registerTool({
     name: generateImageTool.name,
@@ -1747,6 +1759,7 @@ export const callChatAgent =
     const llmWithTools = llm.bindTools([
       askUserTool,
       generateImageTool,
+      generateVideoTool,
       scheduleTool,
       desktopVisionTool,
       terminalTool,

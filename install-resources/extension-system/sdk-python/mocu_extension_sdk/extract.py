@@ -3,6 +3,7 @@ from __future__ import annotations
 from typing import Any
 
 from .protocol import JsonRpcProtocol
+from .extract_typed_fields import TypedFieldsApi
 
 
 class ExtractApi:
@@ -10,6 +11,7 @@ class ExtractApi:
 
     def __init__(self, protocol: JsonRpcProtocol) -> None:
         self._protocol = protocol
+        self.typed_fields = TypedFieldsApi(protocol)
 
     def entities(
         self,

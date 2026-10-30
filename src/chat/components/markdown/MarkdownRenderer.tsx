@@ -14,8 +14,10 @@ import rehypeHighlight from "rehype-highlight";
 import { defaultUrlTransform } from "react-markdown";
 import type { GeneratedChatImage } from "../../types/generatedImage";
 import type { GeneratedChatAudio } from "../../types/generatedAudio";
+import type { GeneratedChatVideo } from "../../types/generatedVideo";
 import { GeneratedAudioPlayer } from "../GeneratedAudioPlayer";
 import { GeneratedImageCard } from "../GeneratedImageMessage";
+import { GeneratedVideoCard } from "../GeneratedVideoMessage";
 
 import { getTextDirection } from "../textDirection";
 import "./MarkdownRenderer.css";
@@ -31,6 +33,7 @@ export type MarkdownRendererProps = {
   direction?: MarkdownDirection;
   generatedImages?: GeneratedChatImage[];
   generatedAudio?: GeneratedChatAudio[];
+  generatedVideos?: GeneratedChatVideo[];
 };
 
 type CodeElementProps = {
@@ -289,6 +292,7 @@ function MarkdownRendererImpl({
   direction = "auto",
   generatedImages = [],
   generatedAudio = [],
+  generatedVideos = [],
 }: MarkdownRendererProps) {
   if (!content || !content.trim()) {
     return null;
@@ -322,7 +326,7 @@ function MarkdownRendererImpl({
             },
           ],
         ]}
-        urlTransform={(url) => url.startsWith("mocu-generated-image:") || url.startsWith("mocu-generated-audio:") ? url : defaultUrlTransform(url)}
+        urlTransform={(url) => url.startsWith("mocu-generated-image:") || url.startsWith("mocu-generated-audio:") || url.startsWith("mocu-generated-video:") ? url : defaultUrlTransform(url)}
         components={{
           pre: CodeBlock,
 
@@ -358,6 +362,9 @@ function MarkdownRendererImpl({
             alt,
             ...props
           }) => {
+            const generatedVideoId = src?.startsWith("mocu-generated-video:") ? src.slice("mocu-generated-video:".length) : "";
+            const generatedVideo = generatedVideoId ? generatedVideos.find((video) => video.id === generatedVideoId) : undefined;
+            if (generatedVideo) return <GeneratedVideoCard video={generatedVideo} />;
             const generatedImageId = src?.startsWith("mocu-generated-image:")
               ? src.slice("mocu-generated-image:".length)
               : "";

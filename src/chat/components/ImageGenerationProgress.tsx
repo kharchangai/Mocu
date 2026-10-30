@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import './ImageGenerationProgress.css';
 
-export function ImageGenerationProgress({ active }: { active: boolean }) {
+export function ImageGenerationProgress({ active, label = 'Creating image' }: { active: boolean; label?: string }) {
   const [seconds, setSeconds] = useState(0);
   const [expanded, setExpanded] = useState(false);
   useEffect(() => {
@@ -25,13 +25,13 @@ export function ImageGenerationProgress({ active }: { active: boolean }) {
       >
         <span className="image-generation-progress__status" role="status" aria-live="polite">
           <span className="image-generation-progress__status-dot" aria-hidden="true" />
-          Creating image - {seconds}s - {Math.round(progress)}%
+          {label} - {seconds}s - {Math.round(progress)}%
         </span>
         <span className="image-generation-progress__chevron" aria-hidden="true">{expanded ? '-' : '+'}</span>
       </button>
       {expanded ? (
         <div className="image-generation-progress__body" aria-hidden="true">
-          <strong>Creating image</strong>
+          <strong>{label}</strong>
           <div className="image-generation-progress__dots" />
           <span className="image-generation-progress__percent">{Math.round(progress)}%</span>
         </div>

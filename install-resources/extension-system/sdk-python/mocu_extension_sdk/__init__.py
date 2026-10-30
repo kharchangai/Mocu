@@ -8,6 +8,7 @@ from .extension import (
 from .llm import LlmApi
 from .summarize import SummarizeApi
 from .extract import ExtractApi
+from .extract_typed_fields import TypedFieldsApi
 from .speech import SpeechApi
 from .ui import ExtensionUiApi
 __all__ = [
@@ -17,6 +18,7 @@ __all__ = [
     "DecisionApi",
     "SummarizeApi",
     "ExtractApi",
+    "TypedFieldsApi",
     "EmbeddingApi",
     "SpeechApi",
     "AgentsApi",

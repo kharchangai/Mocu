@@ -8,6 +8,7 @@ import { getJevDecision } from "../../services/ai/tools/decision/Jev_model";
 import { TextSimilarity } from "../../services/ai/tools/textSimilarity";
 import { summarizeTextTool } from "../../services/ai/tools/summarize-text-tool";
 import { extractEntitiesTool } from "../../services/ai/tools/extract-entities-tool";
+import { extractTypedFieldsTool } from "../../services/ai/tools/extract-typed-fields-tool";
 import { dispatchAgentToolActivity } from "../../chat/services/toolActivity";
 import { cancelExtensionAgentRun, handleAgentRun, handleAgentsList } from "./extension-agent-host";
 import { respondExtension } from "./extension-client";
@@ -138,6 +139,11 @@ async function handleHostMessage(
 
   if (method === "mocu.extract.entities") {
     await handleExtractEntities(extensionId, requestId, params);
+    return;
+  }
+
+  if (method === "mocu.extract.typed_fields") {
+    await handleExtractTypedFields(extensionId, requestId, params);
     return;
   }
 
@@ -489,6 +495,40 @@ async function handleExtractEntities(
     }
   }
 }
+
+/** Handle `mocu.extract.typed_fields` using the configured Extractions API model. */
+async function handleExtractTypedFields(
+  extensionId: string,
+  requestId: string | number | null,
+  params: Record<string, unknown>,
+): Promise<void> {
+  try {
+    const result = await extractTypedFieldsTool.invoke({
+      state: params.state,
+      fields: params.fields,
+      ...(params.reference_date === undefined
+        ? {}
+        : { reference_date: params.reference_date }),
+    } as Parameters<typeof extractTypedFieldsTool.invoke>[0]);
+    if (requestId !== null) {
+      await respondExtension(extensionId, requestId, result, null);
+    }
+  } catch (error) {
+    const errorMessage = error instanceof Error ? error.message : String(error);
+    console.error(
+      `[Mocu Extension] mocu.extract.typed_fields failed for '${extensionId}':`,
+      error,
+    );
+    if (requestId !== null) {
+      await respondExtension(extensionId, requestId, null, {
+        code: -32603,
+        message: errorMessage,
+        data: null,
+      });
+    }
+  }
+}
+
 /**
  * Handle `mocu.decision.ask`: forward a typed question set to Mocu's
  * configured Jev decision model (OpenRouter Decisions API) and pass the

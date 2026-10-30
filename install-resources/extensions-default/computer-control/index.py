@@ -10,6 +10,19 @@ import unicodedata
 from ctypes import wintypes
 from typing import Any
 
+
+def _configure_protocol_streams_utf8() -> None:
+    """Use UTF-8 for Mocu's JSON-RPC pipes, independent of the Windows code page."""
+    for name in ("stdin", "stdout"):
+        stream = getattr(sys, name)
+        reconfigure = getattr(stream, "reconfigure", None)
+        if reconfigure is None:
+            raise RuntimeError(f"Mocu extension {name} stream cannot be configured for UTF-8.")
+        reconfigure(encoding="utf-8", errors="strict")
+
+
+_configure_protocol_streams_utf8()
+
 _EXTENSION_DIR = os.path.dirname(os.path.abspath(__file__))
 _VENDOR_DIR = os.path.join(_EXTENSION_DIR, "vendor")
 if _VENDOR_DIR not in sys.path:
@@ -252,6 +265,20 @@ def _mouse_event(dx:int=0,dy:int=0,data:int=0,flags:int=0)->_INPUT:
 def _keyboard_event(vk:int,flags:int=0,scan:int=0)->_INPUT:
     event=_INPUT();event.type=1;event.payload.ki=_KEYBDINPUT(vk,scan,flags,0,0);return event
 
+
+def _unicode_text_events(text:str)->list[_INPUT]:
+    """Build layout-independent Unicode keyboard events, preserving UTF-16 surrogate pairs."""
+    try:
+        encoded=text.encode("utf-16-le")
+    except UnicodeEncodeError as exc:
+        raise ValueError("text contains an invalid Unicode surrogate and cannot be typed safely.") from exc
+
+    events=[]
+    for offset in range(0,len(encoded),2):
+        unit=int.from_bytes(encoded[offset:offset+2],"little")
+        events.extend((_keyboard_event(0,4,unit),_keyboard_event(0,6,unit)))
+    return events
+
 def _send_desktop_inputs(events:list[_INPUT])->None:
     if not events:return
     user=ctypes.WinDLL("user32",use_last_error=True);user.SendInput.argtypes=[wintypes.UINT,ctypes.POINTER(_INPUT),ctypes.c_int];user.SendInput.restype=wintypes.UINT
@@ -353,15 +380,9 @@ def desktop_input(input:Any,context:dict[str,Any],config:dict[str,Any])->dict[st
     text=input.get("text")
     if not isinstance(text,str) or not text:raise ValueError("text must be a non-empty string.")
     if len(text)>5000:raise ValueError("text is limited to 5000 characters per request.")
-    for i,char in enumerate(text):
-        encoded=char.encode("utf-16-le");units=[int.from_bytes(encoded[j:j+2],"little") for j in range(0,len(encoded),2)];events=[]
-        for unit in units:events.extend((_keyboard_event(0,4,unit),_keyboard_event(0,6,unit)))
-        _send_desktop_inputs(events)
-        if i+1<len(text):
-            delay=random.uniform(0.045,0.105)
-            if char in ".,!?:;\n":delay+=random.uniform(0.12,0.28)
-            elif char.isspace():delay+=random.uniform(0.015,0.045)
-            time.sleep(delay)
+    # Inject the complete text in one ordered batch. Per-character delays made long
+    # multilingual input slow and allowed other keyboard activity to split the text.
+    _send_desktop_inputs(_unicode_text_events(text))
     return {"supported":True,"success":True,"action":action,"characters":len(text),"message":f"Typed {len(text)} character(s) into the focused application."}
 
 

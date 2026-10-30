@@ -45,6 +45,9 @@ export const getImageInputReferences = (message?: BaseMessage) =>
 export const hasImageInput = (message?: BaseMessage): boolean =>
   getImageBlocks(message).length > 0;
 
+export const getVideoFrameImages = (message?: BaseMessage) =>
+  getImageInputReferences(message).map((image) => ({ ...image, frame_type: 'first_frame' as const }));
+
 /** Text stays separate for memory/routing; image-only requests still have a goal. */
 export const getImageRequestText = (message?: BaseMessage): string => {
   if (message?.getType() !== 'human') return '';

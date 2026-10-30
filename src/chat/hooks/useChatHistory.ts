@@ -56,6 +56,7 @@ function createMessage(
   attachments: ChatMessage['attachments'] = [],
   generatedImages: ChatMessage['generatedImages'] = [],
   generatedAudio: ChatMessage['generatedAudio'] = [],
+  generatedVideos: ChatMessage['generatedVideos'] = [],
 ): ChatMessage {
   return {
     id: createId('message'),
@@ -65,6 +66,7 @@ function createMessage(
     ...(attachments.length ? { attachments } : {}),
     ...(generatedImages.length ? { generatedImages } : {}),
     ...(generatedAudio.length ? { generatedAudio } : {}),
+    ...(generatedVideos.length ? { generatedVideos } : {}),
   };
 }
 
@@ -247,14 +249,15 @@ export function useChatHistory() {
       attachments: ChatMessage['attachments'] = [],
       generatedImages: ChatMessage['generatedImages'] = [],
       generatedAudio: ChatMessage['generatedAudio'] = [],
+      generatedVideos: ChatMessage['generatedVideos'] = [],
     ): ChatMessage => {
       const normalizedContent = content.trim();
 
-      if (!normalizedContent && attachments.length === 0 && generatedImages.length === 0 && generatedAudio.length === 0) {
+      if (!normalizedContent && attachments.length === 0 && generatedImages.length === 0 && generatedAudio.length === 0 && generatedVideos.length === 0) {
         throw new Error('The message cannot be empty.');
       }
 
-      const message = createMessage(role, normalizedContent, attachments, generatedImages, generatedAudio);
+      const message = createMessage(role, normalizedContent, attachments, generatedImages, generatedAudio, generatedVideos);
       const updatedAt = new Date().toISOString();
       /*
        * Resolve the target conversation from the latest chats state
@@ -576,7 +579,8 @@ export function useChatHistory() {
       attachments?: ChatMessage['attachments'],
       generatedImages?: ChatMessage['generatedImages'],
       generatedAudio?: ChatMessage['generatedAudio'],
-    ): ChatMessage => addMessage(chatId, role, content, attachments, generatedImages, generatedAudio),
+      generatedVideos?: ChatMessage['generatedVideos'],
+    ): ChatMessage => addMessage(chatId, role, content, attachments, generatedImages, generatedAudio, generatedVideos),
     [addMessage],
   );
 

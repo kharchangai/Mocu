@@ -5,10 +5,15 @@ import type {
 import { EXTRACT_ENTITIES_METHOD } from "@mocu/extension-contracts";
 
 import { JsonRpcProtocolClient } from "./protocol-client.js";
+import { TypedFieldsApi } from "./extract-typed-fields.js";
 
 /** Extract named entities using Mocu's configured Extract model. */
 export class ExtractApi {
-  constructor(private readonly client: JsonRpcProtocolClient) {}
+  public readonly typedFields: TypedFieldsApi;
+
+  constructor(private readonly client: JsonRpcProtocolClient) {
+    this.typedFields = new TypedFieldsApi(client);
+  }
 
   async entities(params: ExtractEntitiesParams): Promise<ExtractEntitiesResult> {
     if (!params || typeof params.text !== "string" || !params.text.trim()) {

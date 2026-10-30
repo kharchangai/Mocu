@@ -20,6 +20,7 @@ import { memo } from "react";
 import { MarkdownRenderer } from "./MarkdownRenderer";
 import type { GeneratedChatImage } from "../../types/generatedImage";
 import type { GeneratedChatAudio } from "../../types/generatedAudio";
+import type { GeneratedChatVideo } from "../../types/generatedVideo";
 
 /*
  * Rough size cap for one chunk. Only the last chunk (the growing tail)
@@ -157,13 +158,15 @@ const MarkdownChunk = memo(function MarkdownChunk({
   text,
   generatedImages,
   generatedAudio,
+  generatedVideos,
 }: {
   text: string;
   generatedImages: GeneratedChatImage[];
   generatedAudio: GeneratedChatAudio[];
+  generatedVideos: GeneratedChatVideo[];
 }) {
   return (
-    <MarkdownRenderer content={text} direction="auto" generatedImages={generatedImages} generatedAudio={generatedAudio} />
+    <MarkdownRenderer content={text} direction="auto" generatedImages={generatedImages} generatedAudio={generatedAudio} generatedVideos={generatedVideos} />
   );
 });
 
@@ -176,11 +179,13 @@ const CodeChunk = memo(function CodeChunk({
   body,
   generatedImages,
   generatedAudio,
+  generatedVideos,
 }: {
   language: string;
   body: string;
   generatedImages: GeneratedChatImage[];
   generatedAudio: GeneratedChatAudio[];
+  generatedVideos: GeneratedChatVideo[];
 }) {
   return (
     <MarkdownRenderer
@@ -188,6 +193,7 @@ const CodeChunk = memo(function CodeChunk({
       direction="auto"
       generatedImages={generatedImages}
       generatedAudio={generatedAudio}
+      generatedVideos={generatedVideos}
     />
   );
 });
@@ -196,6 +202,7 @@ export type StreamingMarkdownProps = {
   content: string;
   generatedImages?: GeneratedChatImage[];
   generatedAudio?: GeneratedChatAudio[];
+  generatedVideos?: GeneratedChatVideo[];
 };
 
 export const StreamingMarkdown = memo(
@@ -203,6 +210,7 @@ export const StreamingMarkdown = memo(
     content,
     generatedImages = [],
     generatedAudio = [],
+    generatedVideos = [],
   }: StreamingMarkdownProps) {
     if (!content || !content.trim()) {
       return null;
@@ -220,6 +228,7 @@ export const StreamingMarkdown = memo(
               body={chunk.text}
               generatedImages={generatedImages}
               generatedAudio={generatedAudio}
+              generatedVideos={generatedVideos}
             />
           ) : (
             <MarkdownChunk
@@ -227,6 +236,7 @@ export const StreamingMarkdown = memo(
               text={chunk.text}
               generatedImages={generatedImages}
               generatedAudio={generatedAudio}
+              generatedVideos={generatedVideos}
             />
           ),
         )}

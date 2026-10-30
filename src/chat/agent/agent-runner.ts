@@ -42,6 +42,7 @@ import { perplexitySearchTool } from '../../services/ai/tools/perplexity_search_
 import { summarizeTextTool } from '../../services/ai/tools/summarize-text-tool';
 import { skillLoaderTool } from '../../services/ai/tools/skill_loader_tool';
 import { extractEntitiesTool } from '../../services/ai/tools/extract-entities-tool';
+import { extractTypedFieldsTool } from '../../services/ai/tools/extract-typed-fields-tool';
 import { findRelevantSkillsTool } from '../../services/ai/tools/find-relevant-skills-tool';
 import { AGENT_TOOL_CATALOG, type AgentToolName } from './agent-tool-catalog';
 import { desktopVisionTool } from '../../services/ai/tools/desktop-vision-tool';
@@ -188,6 +189,7 @@ async function runAgentNode(
     ...(includeTool('find_relevant_skills') ? [findRelevantSkillsTool] : []),
     ...(includeTool('desktop_vision_action') ? [desktopVisionTool] : []),
     ...(includeTool('extract_entities') ? [extractEntitiesTool] : []),
+    ...(includeTool('extract_typed_fields') ? [extractTypedFieldsTool] : []),
     ...(includeTool('schedule_action') ? [scheduleTool] : []),
     ...extensionTools.tools,
     ...mcpTools.tools,
@@ -222,6 +224,13 @@ async function runAgentNode(
         args as { text: string; entities: Record<string, string>; threshold?: number; top_n?: number },
         runnableConfig,
       ),
+    });
+  }
+  if (includeTool('extract_typed_fields')) {
+    executor.registerTool({
+      name: extractTypedFieldsTool.name,
+      description: extractTypedFieldsTool.description,
+      execute: (args) => extractTypedFieldsTool.invoke(args as never, runnableConfig),
     });
   }
   if (includeTool('load_skill')) {

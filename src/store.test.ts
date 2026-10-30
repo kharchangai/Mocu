@@ -14,7 +14,7 @@ const { values, mockStore } = vi.hoisted(() => {
 });
 vi.mock("@tauri-apps/plugin-store", () => ({ load: vi.fn(async () => mockStore) }));
 
-import { getDecisionEndpointForGateway, readSettings, saveSettings } from "./store";
+import { getDecisionEndpointForGateway, getExtractionEndpointForGateway, readSettings, saveSettings } from "./store";
 
 const expectedModels = {
   llmModel: "gpt-5.6-luna",
@@ -30,7 +30,9 @@ const expectedModels = {
   decisionModel: "~typesafe/jev-latest",
   summarizeModel: "scaledown/summarize",
   extractModel: "scaledown/extract",
+  clairicModel: "cloudflare/clairic",
   imageModel: "qwen/qwen-image-2.1-turbo",
+  videoModel: "tbc/mischief-1",
   searchDepth: 3,
 };
 const urlFields = ["gatewayBaseUrl", "cheapBaseUrl", "mediumBaseUrl", "expensiveBaseUrl", "visionBaseUrl", "embeddingBaseUrl", "perplexityBaseUrl"] as const;
@@ -49,6 +51,7 @@ describe("gateway defaults", () => {
       expect(settings[field]).toBe("");
     }
     expect(settings.decisionEndpointUrl).toBe("https://openrouter.ai/api/alpha/decisions");
+    expect(settings.extractionEndpointUrl).toBe("https://openrouter.ai/api/alpha/extractions");
     expect(mockStore.set).not.toHaveBeenCalled();
   });
 
@@ -72,6 +75,7 @@ describe("gateway defaults", () => {
     expect(settings).toMatchObject(expectedModels);
     for (const field of urlFields) expect(settings[field]).toBe("https://gateway.example/api/v1");
     expect(settings.decisionEndpointUrl).toBe("https://gateway.example/api/alpha/decisions");
+    expect(settings.extractionEndpointUrl).toBe("https://gateway.example/api/alpha/extractions");
     await saveSettings(settings);
     expect(await readSettings()).toMatchObject(settings);
     expect(values.get("MOCU_DECISION_BASE_URL")).toBe("https://gateway.example/api");
@@ -132,5 +136,14 @@ describe("gateway defaults", () => {
     ["", ""],
   ])("derives the Decision endpoint from %s", (base, expected) => {
     expect(getDecisionEndpointForGateway(base)).toBe(expected);
+  });
+
+  it.each([
+    ["https://openrouter.ai/api/v1/", "https://openrouter.ai/api/alpha/extractions"],
+    ["https://other.example/v1", "https://other.example/alpha/extractions"],
+    ["https://other.example/api", "https://other.example/api/alpha/extractions"],
+    ["", ""],
+  ])("derives the Extractions endpoint from %s", (base, expected) => {
+    expect(getExtractionEndpointForGateway(base)).toBe(expected);
   });
 });

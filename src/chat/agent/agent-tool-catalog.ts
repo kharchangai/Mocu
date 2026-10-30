@@ -40,6 +40,11 @@ export const AGENT_TOOL_CATALOG = [
       "Extract named entities from text using the configured Extract LLM; specify entity types and descriptions, and optionally confidence threshold and result limit.",
   },
   {
+    name: "extract_typed_fields",
+    description:
+      "Extract, compute, estimate, or forecast user-defined typed fields from text or state using cloudflare/clairic and the Extractions API; returns values with confidence and null probability.",
+  },
+  {
     name: "load_skill",
     description:
       "Load the full instructions of a selected skill by its exact name.",

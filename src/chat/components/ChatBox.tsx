@@ -118,8 +118,10 @@ import {
 
 import type { ChatMessage } from '../types/chat';
 import { getGeneratedImages, subscribeGeneratedImages, takeGeneratedImages } from '../services/generatedImages';
+import { getGeneratedVideos, subscribeGeneratedVideos, takeGeneratedVideos } from '../services/generatedVideos';
 import { getGeneratedAudio, subscribeGeneratedAudio, takeGeneratedAudio } from '../services/generatedAudio';
 import { ImageGenerationProgress } from './ImageGenerationProgress';
+import { VideoGenerationProgress } from './VideoGenerationProgress';
 
 import type { SelectedSkill } from './skillTypes';
 import type { SelectedExtension } from './extensionTypes';
@@ -690,6 +692,7 @@ type ChatBoxProps = {
     attachments?: ChatMessage['attachments'],
     generatedImages?: ChatMessage['generatedImages'],
     generatedAudio?: ChatMessage['generatedAudio'],
+    generatedVideos?: ChatMessage['generatedVideos'],
   ) => ChatMessage;
   onUpdateMessageToolActivities: (
     chatId: string,
@@ -952,6 +955,11 @@ export function ChatBox({
   const generatedAudio = useSyncExternalStore(
     subscribeGeneratedAudio,
     () => getGeneratedAudio(chatId),
+    () => [],
+  );
+  const generatedVideos = useSyncExternalStore(
+    subscribeGeneratedVideos,
+    () => getGeneratedVideos(chatId),
     () => [],
   );
   const [stepWorkflowLogEntries, setStepWorkflowLogEntries] =
@@ -1403,6 +1411,7 @@ export function ChatBox({
     toolActivity.beginRequest(requestChatId);
     takeGeneratedImages(requestChatId);
     takeGeneratedAudio(requestChatId);
+    takeGeneratedVideos(requestChatId);
 
     /*
      * Use the messages belonging to the selected chat directly. The ref may
@@ -1610,6 +1619,7 @@ export function ChatBox({
 
       const completedImages = takeGeneratedImages(requestChatId);
       const completedAudio = takeGeneratedAudio(requestChatId);
+      const completedVideos = takeGeneratedVideos(requestChatId);
       const assistantMessage = onAppendMessage(
         requestChatId,
         'assistant',
@@ -1617,6 +1627,7 @@ export function ChatBox({
         undefined,
         completedImages,
         completedAudio,
+        completedVideos,
       );
       markMessageAsPartOfThread(assistantMessage.id, requestThreadKey);
 
@@ -1686,12 +1697,16 @@ export function ChatBox({
             ? `The step-by-step model request failed after ${error.attempts} attempts: ${error.originalError instanceof Error ? error.originalError.message : String(error.originalError)}`
             : 'Sorry, I encountered an error while processing that request.';
       const failedImages = takeGeneratedImages(requestChatId);
+      const failedAudio = takeGeneratedAudio(requestChatId);
+      const failedVideos = takeGeneratedVideos(requestChatId);
       const errorMessage = onAppendMessage(
         requestChatId,
         'assistant',
         failureContent,
         undefined,
         failedImages,
+        failedAudio,
+        failedVideos,
       );
       markMessageAsPartOfThread(errorMessage.id, requestThreadKey);
 
@@ -1709,6 +1724,7 @@ export function ChatBox({
       finishToolActivities(requestChatId);
       takeGeneratedImages(requestChatId);
       takeGeneratedAudio(requestChatId);
+      takeGeneratedVideos(requestChatId);
       setLiveSectionThreadKey(null);
 
       /*
@@ -2478,8 +2494,9 @@ export function ChatBox({
                         <>
                           <ToolActivityFeed activities={toolActivity.pendingActivities} />
                           <ImageGenerationProgress active={toolActivity.pendingActivities.some((activity) => activity.tool === 'generate_image' && activity.status === 'running')} />
+                          <VideoGenerationProgress active={toolActivity.pendingActivities.some((activity) => activity.tool === 'generate_video' && activity.status === 'running')} />
                           {toolActivity.liveAnswer ? (
-                            <AssistantMessage content={toolActivity.liveAnswer} streaming generatedImages={generatedImages} generatedAudio={generatedAudio} />
+                            <AssistantMessage content={toolActivity.liveAnswer} streaming generatedImages={generatedImages} generatedAudio={generatedAudio} generatedVideos={generatedVideos} />
                           ) : (
                             <ChatStatusBubble agentName={agentName} isLoading />
                           )}
@@ -2501,6 +2518,7 @@ export function ChatBox({
                             content={message.content}
                             generatedImages={message.generatedImages}
                             generatedAudio={message.generatedAudio}
+                            generatedVideos={message.generatedVideos}
                             footer={messageIndex === lastAssistantIndex ? memoryFooter : undefined}
                             failureDetails={getProjectAgentFailureDetails(message.content)}
                             workflowToolCallFailure={parseStepToolCallFailureMessage(message.content)}

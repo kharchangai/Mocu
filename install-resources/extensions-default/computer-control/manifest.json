@@ -2,7 +2,7 @@
     "id": "com.mocu.windows-app-status",
     "name": "Computer Control",
     "description": "Controls Windows applications and the desktop using app discovery, window management, screenshots, and mouse/keyboard input. For accurate visual target coordinates, use find_screen_coordinates, which delegates to the saved Screen Coordinate Finder agent and Mocu's full-monitor vision workflow; screenshot_app is window-only and must not be used to derive desktop coordinates.",
-    "version": "0.5.3",
+    "version": "0.5.4",
     "runtime": "python",
     "entry": "index.py",
     "permissions": [
@@ -32,7 +32,7 @@
         {
             "id": "desktop_input",
             "title": "Control desktop mouse and keyboard",
-            "description": "Move/click/scroll the Windows desktop mouse or send keyboard input. Coordinates x/y must be physical virtual-desktop screen pixels (including negative monitor origins); use the exact coordinate origin and dimensions from the full-monitor screenshot metadata. Examples: {\"action\":\"move\",\"x\":500,\"y\":300}, {\"action\":\"click\",\"button\":\"left\",\"x\":500,\"y\":300}, {\"action\":\"scroll\",\"delta\":-240,\"x\":500,\"y\":300}, {\"action\":\"type_text\",\"text\":\"Hello\"}. For a click, include x and y. Supports move, click, scroll, press_key, hotkey, and type_text."
+            "description": "Move/click/scroll the Windows desktop mouse or send keyboard input. Coordinates x/y must be physical virtual-desktop screen pixels (including negative monitor origins); use the exact coordinate origin and dimensions from the full-monitor screenshot metadata. Supports move, click, scroll, press_key, hotkey, and type_text. The extension explicitly reads and writes Mocu JSON-RPC streams as UTF-8, so type_text receives exact Unicode input regardless of the Windows system code page. It sends text as ordered UTF-16 Unicode keyboard events, independent of the active keyboard layout."
         }
     ]
 }

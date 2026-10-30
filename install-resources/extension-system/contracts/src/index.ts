@@ -7,3 +7,4 @@ export * from "./speech.js";
 export * from "./agents.js";
 export * from "./summarize.js";
 export * from "./extract.js";
+export * from "./extract-typed-fields.js";

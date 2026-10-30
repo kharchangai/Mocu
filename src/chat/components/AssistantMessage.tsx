@@ -9,6 +9,7 @@ import type { ReactNode } from "react";
 import { MarkdownRenderer, StreamingMarkdown } from "./markdown";
 import type { GeneratedChatImage } from "../types/generatedImage";
 import type { GeneratedChatAudio } from "../types/generatedAudio";
+import type { GeneratedChatVideo } from "../types/generatedVideo";
 
 import "./AssistantMessage.css";
 
@@ -16,6 +17,7 @@ type AssistantMessageProps = {
   content: string;
   generatedImages?: GeneratedChatImage[];
   generatedAudio?: GeneratedChatAudio[];
+  generatedVideos?: GeneratedChatVideo[];
 
   /*
    * Set while the response is still streaming in: renders the content
@@ -107,6 +109,7 @@ function AssistantMessageImpl({
   content,
   generatedImages = [],
   generatedAudio = [],
+  generatedVideos = [],
   streaming = false,
   footer,
   failureDetails,
@@ -249,13 +252,14 @@ function AssistantMessageImpl({
       ) : (
         <div className="assistant-message__body">
           {streaming ? (
-            <StreamingMarkdown content={content} generatedImages={generatedImages} generatedAudio={generatedAudio} />
+            <StreamingMarkdown content={content} generatedImages={generatedImages} generatedAudio={generatedAudio} generatedVideos={generatedVideos} />
           ) : (
             <MarkdownRenderer
               content={content}
               direction="auto"
               generatedImages={generatedImages}
               generatedAudio={generatedAudio}
+              generatedVideos={generatedVideos}
             />
           )}
         </div>
