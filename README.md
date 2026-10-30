@@ -14,13 +14,13 @@
 
 > **Mocu wasn't built to replace you. It was built to amplify what you can do.**
 
-Mocu is a desktop AI workspace where you build a team of personal agents around the way **you** already work. Teach them your methods, give them your tools and current knowledge, then work with them in one place—from a quick task to a project that runs for months.
+Mocu is an **open-source desktop AI workspace** for building personal AI agents, carrying project context across sessions, and automating real workflows. Create specialists, give them tools and current knowledge, and work with them in one place—from a quick task to a project that runs for months.
 
 - **No programming required.** Describe what you need in plain language; Mocu helps you create the agent, the skill, or the tool.
 - **Your judgment stays in charge.** Ideas, decisions, and goals remain yours. The agents do the lifting, not the deciding.
 - **Nothing resets between sessions.** Projects, memory, notes, and schedules keep your context alive.
 
-**[Download for Windows](https://github.com/kharchangai/Mocu/releases) · [Build from source](#build-from-source) · [Report a bug](https://github.com/kharchangai/Mocu/issues)**
+**[Download for Windows](https://github.com/kharchangai/Mocu/releases) · [Explore the 0.3.0 discussion](https://github.com/kharchangai/Mocu/discussions/19) · [Report a bug or share feedback](https://github.com/kharchangai/Mocu/issues)**
 
 <!-- Marketing note: a 10–20s screen recording (Focus → agent creating a doc → schedule) placed here converts better than any copy. Add it as public/demo.gif and uncomment:
 <p align="center"><img src="public/demo.gif" alt="Mocu in action" width="100%" /></p>
@@ -72,6 +72,19 @@ A content workflow, for example, could combine a research agent, a writer, and a
 Mocu Apps let you create custom apps with their own interfaces and open them right inside Mocu. Describe the interface you want for a recurring job—and get a purpose-built panel instead of another chat thread.
 
 Apps connect to Mocu through extensions and, with the permissions you approve, can use supported capabilities such as invoking your saved agents or working with selected files. Access to Mocu features and files is always governed by extension permissions.
+
+## In progress for Mocu 0.3.0
+
+Mocu 0.3.0 is in preparation. The project is still an **alpha**, and these additions are evolving—not production-stable promises:
+
+- **Image generation** in the workspace, available through the configured model provider.
+- **Browser Use and computer control** for agents. Both are experimental; supervise actions and be ready to take over.
+- **Project History**, a Git-inspired way to review project changes inside Mocu.
+- **More useful memory**, including personalization for user preferences and tools that help agents create and retrieve relevant memories.
+- **Agent and app improvements**, with new apps such as a PDF reader and a language-learning app.
+- **A terminal-first coding workflow.** For coding tasks, agents can use terminal tools to inspect and update files instead of separate filesystem-tool calls. In my own use, this has reduced costs and improved results, especially with smaller models. This is the developer's experience, not an independent benchmark or a guarantee.
+
+The release is still being prepared, so details may change. Provider/model usage may incur costs, and experimental computer and browser actions should be reviewed.
 
 ## Give your agents current knowledge—not just training data
 
