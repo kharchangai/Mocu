@@ -15,7 +15,7 @@ type LlmConfig = {
   model: string;
 };
 
-type AudioFormat = "mp3" | "wav" | "opus" | "aac" | "flac";
+type AudioFormat = "mp3" | "wav" | "opus" | "aac" | "flac" | "pcm";
 
 const MAX_HISTORY_MESSAGES = 12;
 const DEFAULT_TTS_FORMAT: AudioFormat = "mp3";
@@ -65,6 +65,9 @@ const getAudioMimeType = (
 
     case "flac":
       return "audio/flac";
+
+    case "pcm":
+      return "audio/pcm";
   }
 };
 
@@ -86,7 +89,63 @@ const getAudioExtension = (
 
     case "flac":
       return "flac";
+
+    case "pcm":
+      // Raw PCM is wrapped in a WAV container before returning to callers.
+      return "wav";
   }
+};
+
+const ALL_TTS_FORMATS: AudioFormat[] = ["mp3", "wav", "opus", "aac", "flac", "pcm"];
+
+/** Retry only when the provider explicitly rejects the requested audio format. */
+const getTtsFormatFallbacks = (
+  errorText: string,
+  attemptedFormat: AudioFormat,
+): AudioFormat[] => {
+  if (!/format/i.test(errorText) || !/(?:support|unsupported|invalid|must be|only|valid|allowed)/i.test(errorText)) {
+    return [];
+  }
+
+  const mentionedFormats = Array.from(
+    errorText.matchAll(/\b(mp3|wav|opus|aac|flac|pcm)\b/gi),
+    (match) => match[1].toLowerCase() as AudioFormat,
+  );
+  return [...new Set([...mentionedFormats, ...ALL_TTS_FORMATS])]
+    .filter((format) => format !== attemptedFormat);
+};
+
+/** Wrap signed 16-bit PCM in a WAV header for browser playback. */
+const pcmToWav = (
+  pcm: ArrayBuffer,
+  sampleRate = 24000,
+  channels = 1,
+): ArrayBuffer => {
+  const blockAlign = channels * 2;
+  const dataLength = pcm.byteLength - (pcm.byteLength % blockAlign);
+  const wav = new ArrayBuffer(44 + dataLength);
+  const view = new DataView(wav);
+  const bytes = new Uint8Array(wav);
+  const writeString = (offset: number, value: string) => {
+    for (let index = 0; index < value.length; index += 1) {
+      view.setUint8(offset + index, value.charCodeAt(index));
+    }
+  };
+  writeString(0, "RIFF");
+  view.setUint32(4, 36 + dataLength, true);
+  writeString(8, "WAVE");
+  writeString(12, "fmt ");
+  view.setUint32(16, 16, true);
+  view.setUint16(20, 1, true);
+  view.setUint16(22, channels, true);
+  view.setUint32(24, sampleRate, true);
+  view.setUint32(28, sampleRate * blockAlign, true);
+  view.setUint16(32, blockAlign, true);
+  view.setUint16(34, 16, true);
+  writeString(36, "data");
+  view.setUint32(40, dataLength, true);
+  bytes.set(new Uint8Array(pcm, 0, dataLength), 44);
+  return wav;
 };
 
 const throwIfAborted = (
@@ -382,52 +441,67 @@ export async function generateSpeech(
   }
 
   const baseUrl = speechBaseUrl;
-  const format = DEFAULT_TTS_FORMAT;
+  let format = DEFAULT_TTS_FORMAT;
+  let response: Response | undefined;
+  let lastErrorText = "";
 
-  const payload = {
-    model: config.ttsModel.trim(),
-    input: cleanText,
-    voice: config.ttsVoice.trim(),
-    response_format: format,
-  };
+  // Providers support different output formats. Start with mp3, then honor
+  // explicit format constraints from a model (e.g. HeyGen requires pcm).
+  for (let attempt = 0; attempt < ALL_TTS_FORMATS.length; attempt += 1) {
+    const payload = {
+      model: config.ttsModel.trim(),
+      input: cleanText,
+      voice: config.ttsVoice.trim(),
+      response_format: format,
+    };
 
-  console.log("Sending OpenRouter TTS request:", {
-    url: `${baseUrl}/audio/speech`,
-    model: payload.model,
-    voice: payload.voice,
-    responseFormat: payload.response_format,
-    textLength: payload.input.length,
-  });
+    console.log("Sending OpenRouter TTS request:", {
+      url: `${baseUrl}/audio/speech`,
+      model: payload.model,
+      voice: payload.voice,
+      responseFormat: payload.response_format,
+      textLength: payload.input.length,
+    });
 
-  const response = await fetch(
-    `${baseUrl}/audio/speech`,
-    {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${config.apiKey.trim()}`,
-        "Content-Type": "application/json",
-        Accept: getAudioMimeType(format),
+    response = await fetch(
+      `${baseUrl}/audio/speech`,
+      {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${config.apiKey.trim()}`,
+          "Content-Type": "application/json",
+          Accept: getAudioMimeType(format),
+        },
+        body: JSON.stringify(payload),
+        signal,
       },
-      body: JSON.stringify(payload),
-      signal,
-    },
-  );
+    );
 
-  throwIfAborted(signal);
+    throwIfAborted(signal);
+    if (response.ok) break;
 
-  if (!response.ok) {
-    const errorText = await response.text();
-
+    lastErrorText = await response.text();
+    const fallbacks = getTtsFormatFallbacks(lastErrorText, format);
     console.error("OpenRouter TTS request failed:", {
       status: response.status,
       statusText: response.statusText,
       contentType: response.headers.get("content-type"),
-      errorText,
+      responseFormat: format,
+      errorText: lastErrorText,
     });
 
-    throw new Error(
-      `TTS Error (${response.status}): ${errorText}`,
-    );
+    if (response.status !== 400 || fallbacks.length === 0) {
+      throw new Error(`TTS Error (${response.status}): ${lastErrorText}`);
+    }
+    const nextFormat = fallbacks[0];
+    if (!nextFormat) {
+      throw new Error(`TTS Error (${response.status}): ${lastErrorText}`);
+    }
+    format = nextFormat;
+  }
+
+  if (!response?.ok) {
+    throw new Error(`TTS Error: No compatible audio response format was accepted. ${lastErrorText}`);
   }
 
   const responseContentType = response.headers.get("content-type") || "";
@@ -462,10 +536,23 @@ export async function generateSpeech(
     );
   }
 
-  const audioMimeType = getAudioMimeType(format);
+  const isWavResponse = responseContentType.includes("wav")
+    || (responseBuffer.byteLength >= 4 && new TextDecoder().decode(responseBuffer.slice(0, 4)) === "RIFF");
+  const audioMimeType = format === "pcm" && !isWavResponse
+    ? "audio/wav"
+    : (isWavResponse ? "audio/wav" : getAudioMimeType(format));
+  const pcmRate = responseContentType.match(/(?:^|;)\s*rate=(\d+)/i);
+  const pcmChannelCount = responseContentType.match(/(?:^|;)\s*channels=(\d+)/i);
+  const audioBuffer = format === "pcm" && !isWavResponse
+    ? pcmToWav(
+        responseBuffer,
+        Number(pcmRate?.[1]) || (/heygen/i.test(config.ttsModel) ? 44100 : 24000),
+        Number(pcmChannelCount?.[1]) || 1,
+      )
+    : responseBuffer;
 
   const speechBlob = new Blob(
-    [responseBuffer],
+    [audioBuffer],
     {
       type: audioMimeType,
     },

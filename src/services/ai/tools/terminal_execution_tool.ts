@@ -25,7 +25,7 @@ export interface TerminalExecutionToolOptions {
 
 type OperatingSystemName = "windows" | "macos" | "linux" | "unknown";
 
-type OperatingSystemInfo = {
+export type OperatingSystemInfo = {
   name: OperatingSystemName;
   displayName: string;
   commandEnvironment: string;
@@ -205,7 +205,7 @@ function formatUnknownError(error: unknown): string {
  * This is a defense-in-depth check that runs entirely locally, without any
  * model involvement, before a command is executed.
  */
-function getHardBlockReason(
+export function getHardBlockReason(
   command: string,
   operatingSystem: OperatingSystemInfo
 ): string | null {
@@ -230,7 +230,7 @@ function getHardBlockReason(
     }> = [
       {
         pattern:
-          /\b(format|format-volume|clear-disk|initialize-disk)\b/i,
+          /(?:^|[;&|]\s*)(?:&\s*)?(?:format(?:\.com)?|format-volume|clear-disk|initialize-disk)(?=\s|$)/i,
         reason:
           "Formatting, clearing, or reinitializing a physical disk is blocked.",
       },
@@ -263,7 +263,7 @@ function getHardBlockReason(
       },
       {
         pattern:
-          /\b(shutdown|restart-computer|stop-computer)\b/i,
+          /(?:^|[;&|]\s*)(?:&\s*)?(?:shutdown|restart-computer|stop-computer)(?=\s|$)/i,
         reason:
           "Shutting down or restarting the operating system is blocked.",
       },
@@ -347,7 +347,7 @@ function getHardBlockReason(
         "Changing permissions or ownership of critical system files is blocked.",
     },
     {
-      pattern: /\b(?:shutdown|reboot|halt|poweroff)\b/i,
+      pattern: /(?:^|[;&|]\s*)(?:&\s*)?(?:shutdown|reboot|halt|poweroff)(?=\s|$)/i,
       reason:
         "Shutting down or restarting the operating system is blocked.",
     },

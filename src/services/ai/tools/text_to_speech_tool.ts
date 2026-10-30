@@ -207,6 +207,7 @@ const playSpeechBlob = (
 
 export type SpeakTextInput = {
   text: string;
+  autoPlay?: boolean;
   wait?: boolean;
   interrupt?: boolean;
 };
@@ -238,15 +239,17 @@ const speakText = async (
       await playSpeechBlob(new Blob([new Uint8Array(bytes)], { type: audio.mimeType }));
     }
   };
-  if (input.wait ?? true) {
-    try {
-      await playAll();
-    } catch (error: unknown) {
-      const message = error instanceof Error ? error.message : String(error);
-      return JSON.stringify({ error: message, audios: generated, display_markdown: generated.map(encodeAudioReference).join(" ") });
+  if (input.autoPlay ?? false) {
+    if (input.wait ?? true) {
+      try {
+        await playAll();
+      } catch (error: unknown) {
+        const message = error instanceof Error ? error.message : String(error);
+        return JSON.stringify({ error: message, audios: generated, display_markdown: generated.map(encodeAudioReference).join(" ") });
+      }
+    } else {
+      void playAll().catch((error: unknown) => console.warn("[TTS] Background playback failed:", error));
     }
-  } else {
-    void playAll().catch((error: unknown) => console.warn("[TTS] Background playback failed:", error));
   }
 
   return JSON.stringify({
@@ -270,14 +273,18 @@ export const textToSpeechTool = tool(
     description:
       "Generate speech with the TTS model and voice configured in Settings. Each clip is saved and returned with an audio ID. " +
       "Use a Markdown link with href mocu-generated-audio:<ID> and the matching audios.text as the link label beside the word or phrase in your final answer. " +
-      "For multiple clips, use each matching ID beside its own pronunciation; omit links when not useful. Generated speech is also played once by default.",
+      "For multiple clips, use each matching ID beside its own pronunciation; omit links when not useful. Audio is not played by default. Set autoPlay to true only when the user should hear it immediately.",
     schema: z.object({
-      text: z.string().min(1).describe("The text to speak out loud."),
+      text: z.string().min(1).describe("The text to synthesize into speech."),
+      autoPlay: z
+        .boolean()
+        .optional()
+        .describe("If true, play generated audio immediately. Defaults to false; when false, only generate and save audio for optional replay."),
       wait: z
         .boolean()
         .optional()
         .describe(
-          "If true (default), wait until the speech finishes before continuing. If false, start speech and continue immediately.",
+          "When autoPlay is true: if true (default), wait until playback finishes before continuing. If false, play in the background and continue immediately. Has no effect when autoPlay is false.",
         ),
       interrupt: z
         .boolean()

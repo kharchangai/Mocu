@@ -63,7 +63,7 @@ File-tool rules the agent follows: read the target region before editing; never 
 
 | Tool | What it does | Key parameters |
 |------|--------------|----------------|
-| `text_to_speech` | Speaks text aloud using the TTS model and voice configured in Settings (the Mocu avatar voice). | `text`, `wait` (default true), `interrupt` (default true) |
+| `text_to_speech` | Generates speech using the TTS model and voice configured in Settings (the Mocu avatar voice); playback is optional. | `text`, `autoPlay` (default false), `wait` (default true when autoPlay is enabled), `interrupt` (default true) |
 | `speech_control` | Controls speech playback: `stop` cancels current speech, `status` shows the configured TTS model and voice. | `action`: `stop` \| `status` |
 
 ## Skills
