@@ -32,6 +32,18 @@ jobs:
       - name: Install frontend dependencies
         run: npm ci
 
+      - name: Install extension contracts dependencies
+        run: npm ci
+        working-directory: install-resources/extension-system/contracts
+
+      - name: Build extension contracts
+        run: npm run build
+        working-directory: install-resources/extension-system/contracts
+
+      - name: Install Node.js extension SDK dependencies
+        run: npm ci
+        working-directory: install-resources/extension-system/sdk-node
+
       - name: Verify release tag matches app versions
         shell: pwsh
         env:
