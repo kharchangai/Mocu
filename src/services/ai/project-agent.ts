@@ -694,6 +694,7 @@ const buildProjectAgentSystemPrompt = (
     "Before doing anything, make sure you understand exactly what the user wants. Ask them for clarification if needed. Then plan how to fulfill their request using as few tokens as possibleâ€”doing exactly what they asked, no more and no less.",
     "If clarification is needed, call ask_user with one concise question; use its tool result (the user's answer) to continue the task.",
     "When the user asks about something related to Mocu, use the document tools to check whether a relevant saved document exists. If one exists, read it and use its contents to answer the user.",
+    "When tools are used, report important results, errors, and incomplete work accurately. Do not hide tool failures; distinguish a recovered failure from work that remains incomplete.",
     // "- Finish the user's request completely in this run. There is no step limit: keep calling tools for as many steps as the job needs.",
     // "- Never stop after a few steps and promise to continue later. Read, write, edit, run commands, and verify results until the job is actually done.",
     // "- If a tool call fails or returns an error, fix the problem and keep going; do not abandon the task.",
@@ -1520,7 +1521,8 @@ const executeProjectToolCall = async ({
       toolResult ||
       CHAT_EMPTY_TOOL_RESULT;
 
-    executionFailed ||= isFileToolError(normalizedToolResult);
+    const reportedToolFailure = /^(?:SYSTEM_ERROR:|EXECUTION_FAILED(?:\s|$)|SECURITY_BLOCKED:)/m.test(normalizedToolResult);
+    executionFailed ||= isFileToolError(normalizedToolResult) || reportedToolFailure;
     dispatchAgentToolActivity({
       id: toolCallId,
       tool: toolName,
@@ -1563,37 +1565,6 @@ const buildProjectToolLimitPrompt = (
     "",
     "REQUEST",
     userRequest,
-  ].join(
-    "\n",
-  );
-};
-
-/*
- * Builds a compact final-answer prompt from the request and tool results.
- */
-const buildProjectToolResultSummaryPrompt = ({
-  originalUserRequest,
-  projectPath,
-  toolResultsSummary,
-}: {
-  originalUserRequest: string;
-  projectPath: string;
-  toolResultsSummary: string[];
-}): string => {
-  return [
-    "Answer the request using the results below.",
-    "Report important results, errors, and incomplete work accurately.",
-    "",
-    "PROJECT PATH",
-    projectPath,
-    "",
-    "REQUEST",
-    originalUserRequest,
-    "",
-    "RESULTS",
-    toolResultsSummary.join(
-      "\n\n",
-    ),
   ].join(
     "\n",
   );
@@ -2689,80 +2660,12 @@ const callProjectAgentWithHistorySession =
       );
     }
 
-    let finalAssistantContent = "";
-
-    if (toolResultsSummary.length > 0) {
-      const summaryPrompt = buildProjectToolResultSummaryPrompt({
-        originalUserRequest: userText,
-        projectPath: normalizedProjectPath,
-        toolResultsSummary,
-      });
-
-      const cleanMessages:
-        BaseMessage[] = [
-          new SystemMessage(
-            systemPrompt,
-          ),
-
-          buildHumanMessageFromRequest(summaryPrompt, currentUserMessage),
-        ];
-
-      const plainLlm =
-        await getMainAgentLlm(
-          selectedModel,
-          {},
-          hasImageInput(currentUserMessage) ? "expensive" : "medium",
-        );
-
-      throwIfAborted(
-        signal,
-      );
-
-      const finalTrace = createAgentModelTrace(
-        getChatIdFromConfig(runnableConfig),
-        { mode: "answer" },
-      );
-
-      const finalResponse = await invokeProjectModel(
-        () =>
-          streamChatModelWithTrace({
-            model: plainLlm,
-            messages: cleanMessages,
-            config: runnableConfig,
-            handlers: {
-              onStart:
-                finalTrace.begin,
-              onThinking:
-                finalTrace.onThinking,
-              onText:
-                finalTrace.onText,
-            },
-          }),
-        signal,
-        () => toolResultsSummary,
-      );
-
-      finalTrace.finish({
-        hasToolCalls: false,
-      });
-
-      throwIfAborted(
-        signal,
-      );
-
-      finalAssistantContent =
-        getTextContent(
-          finalResponse.content,
-        ).trim();
-
-      response =
-        finalResponse;
-    } else {
-      finalAssistantContent =
-        getTextContent(
-          response.content,
-        ).trim();
-    }
+    // The last regular agent response already has the full system prompt
+    // (including retrieved memory) and the complete assistant/tool exchange.
+    // Do not replace it with a second, flattened summary-only model call: that
+    // discarded earlier assistant text and could fail after the task itself
+    // had already completed.
+    let finalAssistantContent = getTextContent(response.content).trim();
 
     if (
       !finalAssistantContent

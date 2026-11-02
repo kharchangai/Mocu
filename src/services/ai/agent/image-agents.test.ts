@@ -100,10 +100,13 @@ describe.each(['chat', 'project'] as const)('%s agent image input', (kind) => {
     const result = kind === 'chat'
       ? await callChatAgent(state, config)
       : await callProjectAgent(state, 'E:\\demo', config);
-    expect(result.messages[0].content).toBe('Final image answer.');
-    expect(mocks.stream).toHaveBeenCalledTimes(3);
-    const finalMessages = mocks.stream.mock.calls[2][0].messages as BaseMessage[];
-    const content = finalMessages[finalMessages.length - 1].content as Array<{ type: string }>;
+    expect(result.messages[0].content).toBe(kind === 'chat' ? 'Final image answer.' : 'Tool handled.');
+    expect(mocks.stream).toHaveBeenCalledTimes(kind === 'chat' ? 3 : 2);
+    const finalMessages = mocks.stream.mock.calls[kind === 'chat' ? 2 : 1][0].messages as BaseMessage[];
+    const imageMessage = kind === 'chat'
+      ? finalMessages[finalMessages.length - 1]
+      : finalMessages.find((message) => message.getType() === 'human');
+    const content = imageMessage?.content as Array<{ type: string }>;
     expect(content.filter((part) => part.type === 'image_url')).toHaveLength(3);
   });
   it('forwards text and attached images through the shared specialist message builder', () => {

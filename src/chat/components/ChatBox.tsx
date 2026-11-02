@@ -1691,6 +1691,7 @@ export function ChatBox({
         error instanceof ProjectAgentModelError
           ? [
               `The model request failed after ${error.attempts} attempt${error.attempts === 1 ? '' : 's'}.`,
+              `Model error: ${error.originalError instanceof Error ? error.originalError.message : String(error.originalError)}`,
               '',
               PROJECT_AGENT_PARTIAL_PROGRESS_MARKER,
               error.progressSummary.length > 0
