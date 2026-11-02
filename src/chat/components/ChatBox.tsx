@@ -709,11 +709,15 @@ type ChatBoxProps = {
 function convertToLangChainMessages(
   messages: ChatMessage[],
 ): BaseMessage[] {
-  return messages.map((message) =>
-    message.role === 'user'
-      ? new HumanMessage(message.content)
-      : new AIMessage(message.content),
-  );
+  return messages.map((message) => {
+    const fields = {
+      content: message.content,
+      additional_kwargs: { createdAt: message.createdAt },
+    };
+    return message.role === 'user'
+      ? new HumanMessage(fields)
+      : new AIMessage(fields);
+  });
 }
 
 export function ChatBox({

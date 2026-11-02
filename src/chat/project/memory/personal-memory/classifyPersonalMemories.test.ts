@@ -73,6 +73,27 @@ describe("classifyPersonalMemories", () => {
     expect(mockedGetJevDecision).toHaveBeenCalledOnce();
   });
 
+  it("processes more than 24 candidates in sequential batches of four", async () => {
+    mockedGetJevDecision.mockImplementation(async ({ questions }) => ({
+      answers: Object.fromEntries(
+        Object.keys(questions).map((key) => [key, { noul: 0 }]),
+      ),
+    }));
+
+    const message = Array.from({ length: 25 }, (_, index) => `Line ${index + 1}.`).join("\n");
+    const result = await classifyPersonalMemories(message);
+
+    expect(result.sourceText).toBe(message);
+    expect(result.memories).toEqual([]);
+    expect(mockedGetJevDecision).toHaveBeenCalledTimes(7);
+
+    const batchSizes = mockedGetJevDecision.mock.calls.map(([input]) =>
+      (input.state as { candidate_spans: unknown[] }).candidate_spans.length,
+    );
+    expect(batchSizes).toEqual([4, 4, 4, 4, 4, 4, 1]);
+    expect(mockedGetJevDecision.mock.calls[0]?.[0].state).not.toHaveProperty("complete_user_message");
+  });
+
   it("returns an empty memory list when no span qualifies", async () => {
     mockedGetJevDecision.mockImplementation(async ({ questions }) => ({
       answers: Object.fromEntries(
