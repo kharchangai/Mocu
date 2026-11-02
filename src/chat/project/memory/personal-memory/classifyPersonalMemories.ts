@@ -51,7 +51,6 @@ type JevResponse = {
 
 const DECISION_THRESHOLD = 0.55;
 const MAX_MESSAGE_CHARS = 20_000;
-const MAX_CANDIDATES = 24;
 const CANDIDATES_PER_DECISION = 4;
 
 // A project fact alone is not a personal memory. Instructions and workflows
@@ -149,10 +148,6 @@ export async function classifyPersonalMemories(
   }
 
   const sourceCandidates = splitPersonalMemoryCandidates(userMessage);
-  if (sourceCandidates.length > MAX_CANDIDATES) {
-    throw new Error(`userMessage must contain no more than ${MAX_CANDIDATES} sentence-sized candidates.`);
-  }
-
   const memories: PersonalMemoryCandidate[] = [];
 
   for (
@@ -196,7 +191,6 @@ export async function classifyPersonalMemories(
 
     const response = (await getJevDecision({
       state: {
-        complete_user_message: userMessage,
         candidate_spans: batch.map((text, index) => ({
           id: `candidate_${index}`,
           exact_source_text: text,

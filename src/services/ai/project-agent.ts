@@ -430,12 +430,16 @@ const getPreviousConversationTurns = (
   const turns: PreviousConversationTurn[] = [];
   let pendingUserMessage: string | null = null;
   let pendingAgentResponse = "";
+  let pendingUserTimestamp: string | undefined;
+  let pendingAgentTimestamp: string | undefined;
 
   const savePendingTurn = () => {
     if (pendingUserMessage && pendingAgentResponse) {
       turns.push({
         userMessage: pendingUserMessage,
         agentResponse: pendingAgentResponse,
+        userMessageTimestamp: pendingUserTimestamp,
+        agentResponseTimestamp: pendingAgentTimestamp,
       });
     }
   };
@@ -444,18 +448,27 @@ const getPreviousConversationTurns = (
     if (message.getType() === "human") {
       savePendingTurn();
       pendingUserMessage = getTextContent(message.content).trim() || null;
+      pendingUserTimestamp = typeof message.additional_kwargs?.createdAt === "string"
+        ? message.additional_kwargs.createdAt
+        : undefined;
       pendingAgentResponse = "";
+      pendingAgentTimestamp = undefined;
       continue;
     }
 
     if (message.getType() === "ai" && pendingUserMessage) {
       const response = getTextContent(message.content).trim();
-      if (response) pendingAgentResponse = response;
+      if (response) {
+        pendingAgentResponse = response;
+        pendingAgentTimestamp = typeof message.additional_kwargs?.createdAt === "string"
+          ? message.additional_kwargs.createdAt
+          : undefined;
+      }
     }
   }
 
   savePendingTurn();
-  return turns.slice(-15);
+  return turns;
 };
 
 
@@ -2373,7 +2386,7 @@ const callProjectAgentWithHistorySession =
                   new HumanMessage(turn.userMessage),
                   new AIMessage(turn.agentResponse),
                 ])
-            : previousTurn
+            : previousTurn && !memoryResult.memoryContext.trim()
               ? [
                   new HumanMessage(previousTurn.userMessage),
                   new AIMessage(previousTurn.agentResponse),

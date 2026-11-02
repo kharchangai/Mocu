@@ -65,6 +65,8 @@ function normalizeDatabasePath(
 export interface ConversationTurn {
   userMessage: string;
   agentResponse: string;
+  userMessageTimestamp?: string;
+  agentResponseTimestamp?: string;
 }
 
 export interface ContinuityAnalysis {

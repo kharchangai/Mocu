@@ -1,7 +1,7 @@
 import type { ConversationTurn } from "./continuityAnalyzer";
 import { getJevDecision } from "../../../../services/ai/tools/decision/Jev_model";
 
-const MAX_RELATED_TURNS = 15;
+
 
 /**
  * Returns the newest conversation turn and the contiguous run of related
@@ -9,7 +9,7 @@ const MAX_RELATED_TURNS = 15;
  *
  * `turns` must be ordered chronologically (oldest first, newest last). Each
  * older turn is compared with its immediately newer neighbor; scanning stops
- * at the first unrelated pair. The result never contains more than 10 turns.
+ * at the first unrelated pair. The result includes every contiguous related turn available in the supplied live history.
  */
 export async function findRecentRelatedTurns(
   turns: ConversationTurn[],
@@ -34,12 +34,7 @@ export async function findRecentRelatedTurns(
 
   const newestIndex = turns.length - 1;
   const selected: ConversationTurn[] = [turns[newestIndex]];
-  const oldestIndexToCheck = Math.max(
-    0,
-    newestIndex - (MAX_RELATED_TURNS - 1),
-  );
-
-  for (let olderIndex = newestIndex - 1; olderIndex >= oldestIndexToCheck; olderIndex -= 1) {
+  for (let olderIndex = newestIndex - 1; olderIndex >= 0; olderIndex -= 1) {
     const related = await areAdjacentTurnsRelated(
       turns[olderIndex + 1],
       turns[olderIndex],
