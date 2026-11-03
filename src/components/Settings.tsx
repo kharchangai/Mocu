@@ -36,6 +36,7 @@ export const Settings: React.FC<SettingsProps> = ({
   const [llmModel, setLlmModel] = useState(OPENROUTER_DEFAULT_LLM_MODEL);
   // Keep legacy dedicated keys until the user explicitly switches gateways.
   const [dedicatedKeys, setDedicatedKeys] = useState({ embedding: "", vision: "", perplexity: "" });
+  const [embeddingBaseUrl, setEmbeddingBaseUrl] = useState(OPENROUTER_GATEWAY_URL);
 
   const [cheapModel, setCheapModel] = useState(OPENROUTER_CHEAP_DEFAULT_MODEL);
   const [mediumModel, setMediumModel] = useState(OPENROUTER_MEDIUM_DEFAULT_MODEL);
@@ -122,6 +123,7 @@ export const Settings: React.FC<SettingsProps> = ({
 
         setApiKey(settings.apiKey);
         setGatewayBaseUrl(settings.gatewayBaseUrl || OPENROUTER_GATEWAY_URL);
+        setEmbeddingBaseUrl(settings.embeddingBaseUrl || settings.gatewayBaseUrl || OPENROUTER_GATEWAY_URL);
         const isDefaultOpenRouter = settings.gatewayBaseUrl.replace(/\/+$/, "") === OPENROUTER_GATEWAY_URL;
         setGatewayProvider(isDefaultOpenRouter ? "openrouter" : "custom");
         setLlmModel(settings.llmModel);
@@ -185,6 +187,9 @@ export const Settings: React.FC<SettingsProps> = ({
       setExtractionEndpointUrl(getExtractionEndpointForGateway(nextBaseUrl));
     }
     setGatewayBaseUrl(nextBaseUrl);
+    if (!embeddingBaseUrl || embeddingBaseUrl === gatewayBaseUrl) {
+      setEmbeddingBaseUrl(nextBaseUrl);
+    }
     setGatewayError("");
   };
 
@@ -195,6 +200,7 @@ export const Settings: React.FC<SettingsProps> = ({
     setDecisionApiKey("");
     const nextBaseUrl = provider === "openrouter" ? OPENROUTER_GATEWAY_URL : "";
     setGatewayBaseUrl(nextBaseUrl);
+    setEmbeddingBaseUrl(nextBaseUrl);
     setDecisionEndpointUrl(getDecisionEndpointForGateway(nextBaseUrl));
     setExtractionEndpointUrl(getExtractionEndpointForGateway(nextBaseUrl));
     setGatewayError("");
@@ -239,7 +245,7 @@ export const Settings: React.FC<SettingsProps> = ({
         ttsVoice,
 
         embeddingApiKey: dedicatedKeys.embedding,
-        embeddingBaseUrl: gatewayBaseUrl,
+        embeddingBaseUrl,
         embeddingModel,
 
         visionApiKey: dedicatedKeys.vision,
@@ -522,7 +528,24 @@ export const Settings: React.FC<SettingsProps> = ({
         </section>
 
         {/* ---------- Embedding ---------- */}
-        <section className="settings-section"><h5 className="settings-section-label">Embedding Model</h5><div className="settings-card"><p className="settings-card-description">Uses the shared gateway URL and API key configured above.</p><div className="settings-field"><label className="settings-label">Model</label><input value={embeddingModel} disabled={isSaving} onChange={(event)=>setEmbeddingModel(event.target.value)} className="settings-input"/></div></div></section>
+        <section className="settings-section">
+          <h5 className="settings-section-label">Embedding Model</h5>
+          <div className="settings-card">
+            <p className="settings-card-description">Use any embedding model supported by your provider's OpenAI-compatible embeddings API. Enter a base URL (for example, https://openrouter.ai/api/v1) or the full /embeddings endpoint.</p>
+            <div className="settings-field">
+              <label className="settings-label">Model</label>
+              <input value={embeddingModel} disabled={isSaving} onChange={(event) => setEmbeddingModel(event.target.value)} className="settings-input" placeholder="amazon/titan-embed-text-v1" />
+            </div>
+            <div className="settings-field">
+              <label className="settings-label">Embeddings API Base URL</label>
+              <input type="text" value={embeddingBaseUrl} disabled={isSaving} onChange={(event) => setEmbeddingBaseUrl(event.target.value)} className="settings-input" placeholder="https://openrouter.ai/api/v1" />
+            </div>
+            <div className="settings-field">
+              <label className="settings-label">Embeddings API Key (optional)</label>
+              <input type="password" value={dedicatedKeys.embedding} disabled={isSaving} onChange={(event) => setDedicatedKeys((current) => ({ ...current, embedding: event.target.value }))} className="settings-input" placeholder="Leave blank to use the shared API key" />
+            </div>
+          </div>
+        </section>
 
         {/* ---------- Vision ---------- */}
         <section className="settings-section"><h5 className="settings-section-label">Vision Model</h5><div className="settings-card"><p className="settings-card-description">Uses the shared gateway URL and API key configured above.</p><div className="settings-field"><label className="settings-label">Model</label><input value={visionModel} disabled={isSaving} onChange={(event)=>setVisionModel(event.target.value)} className="settings-input"/></div></div></section>

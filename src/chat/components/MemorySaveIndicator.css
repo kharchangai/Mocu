@@ -32,6 +32,14 @@
   transition: color 0.25s ease;
 }
 
+.memory-save-indicator__error {
+  margin-inline-start: 4px;
+  color: #8a5149;
+  font-size: 11px;
+  line-height: 1.4;
+  overflow-wrap: anywhere;
+}
+
 /* Saving: soft blink */
 .memory-save-indicator--saving
   .memory-save-indicator__icon {

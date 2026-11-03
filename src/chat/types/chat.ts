@@ -16,6 +16,8 @@ export type ChatMessage = {
   generatedAudio?: GeneratedChatAudio[];
   generatedVideos?: GeneratedChatVideo[];
   toolActivities?: AgentToolActivity[];
+  /** Non-fatal follow-up issues; the assistant response is still valid. */
+  postResponseWarnings?: string[];
 };
 export type ChatConversation = {
   id: string;

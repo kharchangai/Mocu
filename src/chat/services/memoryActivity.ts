@@ -19,6 +19,7 @@ export type MemorySaveActivity = {
   status: MemorySaveStatus;
   chatId?: string;
   projectPath?: string;
+  error?: string;
 };
 
 export function createMemorySaveId(): string {

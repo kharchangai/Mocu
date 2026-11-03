@@ -18,6 +18,7 @@ type AssistantMessageProps = {
   generatedImages?: GeneratedChatImage[];
   generatedAudio?: GeneratedChatAudio[];
   generatedVideos?: GeneratedChatVideo[];
+  postResponseWarnings?: string[];
 
   /*
    * Set while the response is still streaming in: renders the content
@@ -110,6 +111,7 @@ function AssistantMessageImpl({
   generatedImages = [],
   generatedAudio = [],
   generatedVideos = [],
+  postResponseWarnings = [],
   streaming = false,
   footer,
   failureDetails,
@@ -264,6 +266,14 @@ function AssistantMessageImpl({
           )}
         </div>
       )}
+
+      {postResponseWarnings.length > 0 ? (
+        <div className="assistant-post-response-warnings" role="status" aria-label="Follow-up warnings">
+          {postResponseWarnings.map((warning, index) => (
+            <p key={`${index}-${warning}`}>{warning}</p>
+          ))}
+        </div>
+      ) : null}
 
       {footer}
 

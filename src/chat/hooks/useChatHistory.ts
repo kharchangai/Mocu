@@ -57,6 +57,7 @@ function createMessage(
   generatedImages: ChatMessage['generatedImages'] = [],
   generatedAudio: ChatMessage['generatedAudio'] = [],
   generatedVideos: ChatMessage['generatedVideos'] = [],
+  postResponseWarnings: ChatMessage['postResponseWarnings'] = [],
 ): ChatMessage {
   return {
     id: createId('message'),
@@ -67,6 +68,7 @@ function createMessage(
     ...(generatedImages.length ? { generatedImages } : {}),
     ...(generatedAudio.length ? { generatedAudio } : {}),
     ...(generatedVideos.length ? { generatedVideos } : {}),
+    ...(postResponseWarnings.length ? { postResponseWarnings } : {}),
   };
 }
 
@@ -250,6 +252,7 @@ export function useChatHistory() {
       generatedImages: ChatMessage['generatedImages'] = [],
       generatedAudio: ChatMessage['generatedAudio'] = [],
       generatedVideos: ChatMessage['generatedVideos'] = [],
+      postResponseWarnings: ChatMessage['postResponseWarnings'] = [],
     ): ChatMessage => {
       const normalizedContent = content.trim();
 
@@ -257,7 +260,15 @@ export function useChatHistory() {
         throw new Error('The message cannot be empty.');
       }
 
-      const message = createMessage(role, normalizedContent, attachments, generatedImages, generatedAudio, generatedVideos);
+      const message = createMessage(
+        role,
+        normalizedContent,
+        attachments,
+        generatedImages,
+        generatedAudio,
+        generatedVideos,
+        postResponseWarnings,
+      );
       const updatedAt = new Date().toISOString();
       /*
        * Resolve the target conversation from the latest chats state
@@ -571,6 +582,33 @@ export function useChatHistory() {
   );
 
 
+  const updateMessagePostResponseWarnings = useCallback(
+    (chatId: string, messageId: string, warnings: string[]): void => {
+      const normalizedWarnings = [...new Set(warnings.map((warning) => warning.trim()).filter(Boolean))];
+      setChats((currentChats) => {
+        let updatedChat: ChatConversation | undefined;
+        const next = currentChats.map((chat) => {
+          if (chat.id !== chatId) return chat;
+          let found = false;
+          const messages = chat.messages.map((message) => {
+            if (message.id !== messageId) return message;
+            found = true;
+            const { postResponseWarnings: _oldWarnings, ...rest } = message;
+            return normalizedWarnings.length > 0
+              ? { ...rest, postResponseWarnings: normalizedWarnings }
+              : rest;
+          });
+          if (!found) return chat;
+          updatedChat = { ...chat, messages, updatedAt: new Date().toISOString() };
+          if (updatedChat.historyFilePath) void saveProjectConversationFile(updatedChat);
+          return updatedChat;
+        });
+        return updatedChat ? sortChats(next) : currentChats;
+      });
+    },
+    [],
+  );
+
   const appendMessage = useCallback(
     (
       chatId: string,
@@ -580,7 +618,8 @@ export function useChatHistory() {
       generatedImages?: ChatMessage['generatedImages'],
       generatedAudio?: ChatMessage['generatedAudio'],
       generatedVideos?: ChatMessage['generatedVideos'],
-    ): ChatMessage => addMessage(chatId, role, content, attachments, generatedImages, generatedAudio, generatedVideos),
+      postResponseWarnings?: ChatMessage['postResponseWarnings'],
+    ): ChatMessage => addMessage(chatId, role, content, attachments, generatedImages, generatedAudio, generatedVideos, postResponseWarnings),
     [addMessage],
   );
 
@@ -647,6 +686,7 @@ export function useChatHistory() {
     loadProjectConversation,
     appendMessage,
     updateMessageToolActivities,
+    updateMessagePostResponseWarnings,
     replaceMessage,
     sendUserMessage,
     addMessage,

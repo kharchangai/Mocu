@@ -51,16 +51,31 @@ export function MemorySaveIndicator({ status }: MemorySaveIndicatorProps) {
 
   return (
     <div className="memory-save-list" role="status" aria-label={`${status.length} memory save${status.length === 1 ? '' : 's'} in progress or requiring attention`}>
-      {status.map((item) => (
-        <div
-          key={item.saveId}
-          className={`memory-save-indicator memory-save-indicator--${item.status}`}
-          aria-label={STATUS_LABELS[item.status]}
-          title={STATUS_LABELS[item.status]}
-        >
-          <span className="memory-save-indicator__icon"><MindIcon /></span>
-        </div>
-      ))}
+      {status.map((item) => {
+        const errorDetail = item.error?.trim();
+        const visibleError = errorDetail
+          ? `${errorDetail.slice(0, 180)}${errorDetail.length > 180 ? '…' : ''}`
+          : 'Unknown error';
+        const label = item.status === 'error'
+          ? `${STATUS_LABELS[item.status]}: ${errorDetail ?? 'Unknown error'}`
+          : STATUS_LABELS[item.status];
+
+        return (
+          <div
+            key={item.saveId}
+            className={`memory-save-indicator memory-save-indicator--${item.status}`}
+            aria-label={label}
+            title={label}
+          >
+            <span className="memory-save-indicator__icon"><MindIcon /></span>
+            {item.status === 'error' ? (
+              <span className="memory-save-indicator__error">
+                Project memory was not saved: {visibleError}
+              </span>
+            ) : null}
+          </div>
+        );
+      })}
     </div>
   );
 }

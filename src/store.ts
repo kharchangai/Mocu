@@ -16,7 +16,7 @@ export const OPENROUTER_STT_DEFAULT_MODEL = "openai/gpt-transcribe";
 export const OPENROUTER_TTS_DEFAULT_MODEL = "x-ai/grok-voice-tts-1.0";
 export const OPENROUTER_TTS_DEFAULT_VOICE = "ara";
 export const OPENROUTER_VISION_DEFAULT_MODEL = "openai/gpt-6-luna";
-export const OPENROUTER_EMBEDDING_DEFAULT_MODEL = "openai/text-embedding-3-large";
+export const OPENROUTER_EMBEDDING_DEFAULT_MODEL = "amazon/titan-embed-text-v1";
 export const OPENROUTER_PERPLEXITY_DEFAULT_MODEL = "sonar";
 export const OPENROUTER_DECISION_DEFAULT_MODEL = "~typesafe/jev-latest";
 export const OPENROUTER_SUMMARIZE_DEFAULT_MODEL = "scaledown/summarize";
@@ -196,7 +196,7 @@ export async function readSettings(): Promise<AppSettings> {
     ttsModel: modelOrDefault(await store.get<string>("MOCU_TTS_MODEL"), OPENROUTER_TTS_DEFAULT_MODEL),
     ttsVoice: modelOrDefault(await store.get<string>("MOCU_TTS_VOICE"), OPENROUTER_TTS_DEFAULT_VOICE),
     embeddingApiKey: ((await store.get<string>("MOCU_EMBEDDING_API_KEY")) || "").trim() || apiKey,
-    embeddingBaseUrl: legacyBaseUrl || savedEmbeddingBaseUrl || gatewayBaseUrl,
+    embeddingBaseUrl: savedEmbeddingBaseUrl || legacyBaseUrl || gatewayBaseUrl,
     embeddingModel: modelOrDefault(await store.get<string>("MOCU_EMBEDDING_MODEL"), OPENROUTER_EMBEDDING_DEFAULT_MODEL),
     visionApiKey: ((await store.get<string>("MOCU_VISION_API_KEY")) || "").trim() || apiKey,
     visionBaseUrl: legacyBaseUrl || savedVisionBaseUrl || gatewayBaseUrl,
@@ -275,7 +275,7 @@ export async function saveSettings(settings: AppSettings): Promise<void> {
   );
   await store.set(
     "MOCU_EMBEDDING_BASE_URL",
-    sharedGatewayBaseUrl
+    settings.embeddingBaseUrl?.trim() || sharedGatewayBaseUrl
   );
   await store.set(
     "MOCU_EMBEDDING_MODEL",

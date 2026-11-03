@@ -290,6 +290,7 @@ function ChatPage() {
     appendMessage,
     replaceMessage,
     updateMessageToolActivities,
+    updateMessagePostResponseWarnings,
     renameChat,
     deleteChat,
   } = useChatHistory();
@@ -762,6 +763,7 @@ function ChatPage() {
           }
           onReplaceMessage={replaceMessage}
           onUpdateMessageToolActivities={updateMessageToolActivities}
+          onUpdateMessagePostResponseWarnings={updateMessagePostResponseWarnings}
         />
       </div>
 

@@ -1,4 +1,3 @@
-import { OpenAIEmbeddings } from "@langchain/openai";
 import { readSettings } from "../../../store";
 
 export type TextSimilarityResult = {
@@ -149,7 +148,7 @@ export const isEmbeddingInputTooLongError = (
       ? error.message
       : String(error);
 
-  return /maximum input length|context length|too many tokens|input.{0,30}too long|reduce the length/i.test(
+  return /maximum input length|context length|too many tokens|token limit|input.{0,30}too long|reduce the length/i.test(
     message,
   );
 };
@@ -169,6 +168,20 @@ export const shrinkEmbeddingText = (text: string): string => {
 };
 
 const MAX_EMBEDDING_LENGTH_RETRIES = 3;
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null;
+}
+
+function getEmbeddingEndpoint(baseUrl: string): string {
+  const base = baseUrl.trim().replace(/\/+$/, "");
+  return /\/embeddings$/i.test(base) ? base : `${base}/embeddings`;
+}
+
+function isBatchUnsupportedError(error: unknown): boolean {
+  const message = error instanceof Error ? error.message : String(error);
+  return /batch.{0,30}(not supported|unsupported|maximum|limit)|array.{0,30}(not supported|unsupported)|input.{0,30}(must be|expected|requires)\s+a?\s*string|expected.{0,20}string.{0,20}input/i.test(message);
+}
 
 function assertValidEmbedding(
   embedding: number[],
@@ -206,13 +219,11 @@ function createMemoryEmbeddingText({
 }
 
 export class TextSimilarity {
-  private embeddings: OpenAIEmbeddings | null = null;
-
-  private async getEmbeddings(): Promise<OpenAIEmbeddings> {
-    if (this.embeddings) {
-      return this.embeddings;
-    }
-
+  private async getEmbeddingConfiguration(): Promise<{
+    endpoint: string;
+    model: string;
+    apiKey: string;
+  }> {
     const settings = await readSettings();
 
     if (!settings.embeddingModel) {
@@ -227,46 +238,137 @@ export class TextSimilarity {
       );
     }
 
-    this.embeddings = new OpenAIEmbeddings({
+    return {
+      endpoint: getEmbeddingEndpoint(settings.embeddingBaseUrl),
       model: settings.embeddingModel,
       apiKey: settings.embeddingApiKey || settings.apiKey || "not-required",
-      configuration: {
-        baseURL: settings.embeddingBaseUrl,
-      },
-    });
+    };
+  }
 
-    return this.embeddings;
+  /** Sends the minimal OpenAI-compatible embeddings payload. */
+  private async requestEmbeddingBatch(
+    texts: string[],
+    config: { endpoint: string; model: string; apiKey: string },
+  ): Promise<number[][]> {
+    let response: Response;
+    try {
+      response = await fetch(config.endpoint, {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${config.apiKey}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          model: config.model,
+          input: texts.length === 1 ? texts[0] : texts,
+          encoding_format: "float",
+        }),
+      });
+    } catch (error) {
+      throw new Error(
+        `Embedding request to ${config.endpoint} failed: ${error instanceof Error ? error.message : String(error)}`,
+      );
+    }
+
+    const responseText = await response.text();
+    let payload: unknown;
+    try {
+      payload = responseText ? JSON.parse(responseText) : null;
+    } catch {
+      payload = responseText;
+    }
+
+    if (!response.ok) {
+      const detail = typeof payload === "string"
+        ? payload
+        : isRecord(payload) && isRecord(payload.error) && typeof payload.error.message === "string"
+          ? payload.error.message
+          : JSON.stringify(payload);
+      throw new Error(
+        `Embedding request failed (${response.status}${response.statusText ? ` ${response.statusText}` : ""}) at ${config.endpoint}: ${detail || "empty response"}`,
+      );
+    }
+
+    const data = Array.isArray(payload)
+      ? payload
+      : isRecord(payload)
+        ? (payload.data ?? payload.embeddings ?? (isRecord(payload.result) ? payload.result.data : undefined))
+        : undefined;
+
+    if (!Array.isArray(data)) {
+      throw new Error("Embedding provider response did not contain a data/embeddings array.");
+    }
+
+    const indexedVectors = data.map((item, index) => {
+      const vector = Array.isArray(item)
+        ? item
+        : isRecord(item)
+          ? (item.embedding ?? item.vector)
+          : undefined;
+      if (
+        !Array.isArray(vector) ||
+        vector.length === 0 ||
+        !vector.every((value) => typeof value === "number" && Number.isFinite(value))
+      ) {
+        throw new Error(`Embedding provider returned an invalid vector at index ${index}.`);
+      }
+      return {
+        index: isRecord(item) && typeof item.index === "number" ? item.index : index,
+        embedding: [...vector] as number[],
+      };
+    });
+    indexedVectors.sort((first, second) => first.index - second.index);
+    const vectors = indexedVectors.map((item) => item.embedding);
+
+    if (vectors.length !== texts.length) {
+      throw new Error(
+        `Embedding provider returned ${vectors.length} vectors for ${texts.length} texts.`,
+      );
+    }
+
+    return vectors;
+  }
+
+  private async requestEmbeddings(
+    texts: string[],
+    config: { endpoint: string; model: string; apiKey: string },
+  ): Promise<number[][]> {
+    try {
+      return await this.requestEmbeddingBatch(texts, config);
+    } catch (error) {
+      if (!isBatchUnsupportedError(error) || texts.length < 2) {
+        throw error;
+      }
+
+      // Some otherwise compatible providers only accept a single string per call.
+      const vectors: number[][] = [];
+      for (let offset = 0; offset < texts.length; offset += 5) {
+        const batch = texts.slice(offset, offset + 5);
+        const individual = await Promise.all(
+          batch.map((text) => this.requestEmbeddingBatch([text], config)),
+        );
+        vectors.push(...individual.map((result) => result[0]));
+      }
+      return vectors;
+    }
   }
 
   /**
-   * Embeds a batch of texts with one provider call, preserving order.
-   * Texts are truncated to a safe estimated token size first; if the
-   * provider still rejects the batch as too long, the texts are halved
-   * and retried so one long turn can never fail the whole memory save.
+   * Embeds a batch using the configured model and any OpenAI-compatible
+   * embeddings endpoint. The request deliberately includes only the standard
+   * model/input/encoding_format fields, for broad provider compatibility.
    */
   public async embedTexts(texts: string[]): Promise<number[][]> {
     if (texts.length === 0) {
       return [];
     }
 
-    const embeddings = await this.getEmbeddings();
-
-    let safeTexts = texts.map(
-      truncateEmbeddingText,
-    );
+    const config = await this.getEmbeddingConfiguration();
+    let safeTexts = texts.map(truncateEmbeddingText);
 
     for (let attempt = 0; ; attempt += 1) {
       try {
-        const result =
-          await embeddings.embedDocuments(safeTexts);
-
-        if (result.length !== texts.length) {
-          throw new Error(
-            `Embedding provider returned ${result.length} vectors for ${texts.length} texts.`,
-          );
-        }
-
-        return result;
+        return await this.requestEmbeddings(safeTexts, config);
       } catch (error: unknown) {
         if (
           attempt >= MAX_EMBEDDING_LENGTH_RETRIES ||
@@ -275,9 +377,7 @@ export class TextSimilarity {
           throw error;
         }
 
-        safeTexts = safeTexts.map(
-          shrinkEmbeddingText,
-        );
+        safeTexts = safeTexts.map(shrinkEmbeddingText);
       }
     }
   }

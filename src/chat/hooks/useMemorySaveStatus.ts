@@ -7,6 +7,7 @@ export type MemorySaveItem = {
   status: MemorySaveStatus;
   projectPath?: string;
   updatedAt: number;
+  error?: string;
 };
 
 const UNSCOPED_KEY = '__unscoped__';
@@ -43,7 +44,7 @@ function applyActivity(activity: MemorySaveActivity): void {
     });
   } else if (current) {
     if (activity.status === 'done') saves.delete(activity.saveId);
-    else saves.set(activity.saveId, { ...current, status: 'error', updatedAt: Date.now() });
+    else saves.set(activity.saveId, { ...current, status: 'error', error: activity.error, updatedAt: Date.now() });
   } else {
     return;
   }

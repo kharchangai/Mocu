@@ -287,7 +287,11 @@ async function finishUnlocked(projectPath: string, runId: string): Promise<void>
   await saveIndex(paths.indexPath, index);
 }
 
-export async function withProjectHistorySession<T>(projectPath: string, run: () => Promise<T>): Promise<T> {
+export async function withProjectHistorySession<T>(
+  projectPath: string,
+  run: () => Promise<T>,
+  onFinishError?: (error: unknown) => void,
+): Promise<T> {
   const normalized = await normalize(projectPath);
   const key = canonicalPath(normalized);
   const previous = projectLocks.get(key) ?? Promise.resolve();
@@ -301,7 +305,23 @@ export async function withProjectHistorySession<T>(projectPath: string, run: () 
     return await run();
   } finally {
     try {
-      if (runId) await finishUnlocked(normalized, runId);
+      if (runId) {
+        try {
+          await finishUnlocked(normalized, runId);
+        } catch (error) {
+          // Final checkpointing is best-effort: it must not replace a valid
+          // agent result (or mask the error thrown by the agent itself).
+          if (onFinishError) {
+            try {
+              onFinishError(error);
+            } catch (callbackError) {
+              console.warn("[Project History] Finish-error callback failed:", callbackError);
+            }
+          } else {
+            console.warn("[Project History] Could not save the final project checkpoint:", error);
+          }
+        }
+      }
     } finally {
       release();
       if (projectLocks.get(key) === current) projectLocks.delete(key);

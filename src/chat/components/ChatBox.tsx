@@ -693,11 +693,17 @@ type ChatBoxProps = {
     generatedImages?: ChatMessage['generatedImages'],
     generatedAudio?: ChatMessage['generatedAudio'],
     generatedVideos?: ChatMessage['generatedVideos'],
+    postResponseWarnings?: ChatMessage['postResponseWarnings'],
   ) => ChatMessage;
   onUpdateMessageToolActivities: (
     chatId: string,
     messageId: string,
     activities: ChatMessage['toolActivities'],
+  ) => void;
+  onUpdateMessagePostResponseWarnings: (
+    chatId: string,
+    messageId: string,
+    warnings: string[],
   ) => void;
   onReplaceMessage: (
     chatId: string,
@@ -731,6 +737,7 @@ export function ChatBox({
   onAppendMessage,
   onReplaceMessage,
   onUpdateMessageToolActivities,
+  onUpdateMessagePostResponseWarnings,
 }: ChatBoxProps) {
   const isProjectChat = projectChat || projectPath.trim().length > 0;
 
@@ -1475,6 +1482,9 @@ export function ChatBox({
       agentUserMessage,
     ];
 
+    let completedResponseContent: string | null = null;
+    let completedAssistantMessage: ChatMessage | null = null;
+    let completedPostResponseWarnings: string[] = [];
     let cancelledRunRecorded = false;
     const recordCancelledRun = (): void => {
       if (cancelledRunRecorded) {
@@ -1584,11 +1594,8 @@ export function ChatBox({
             agentConfig,
           );
 
-      if (controller.signal.aborted) {
-        recordCancelledRun();
-        return;
-      }
-
+      // Once the agent has resolved successfully, its final response wins
+      // over a stop click that raced with post-response bookkeeping.
       const lastAssistantMessage =
         agentResult.messages[
           agentResult.messages.length - 1
@@ -1615,6 +1622,7 @@ export function ChatBox({
             : 'The chat agent returned an empty response.',
         );
       }
+      completedResponseContent = response;
 
       messagesRef.current = [
         ...nextMessages,
@@ -1624,6 +1632,11 @@ export function ChatBox({
       const completedImages = takeGeneratedImages(requestChatId);
       const completedAudio = takeGeneratedAudio(requestChatId);
       const completedVideos = takeGeneratedVideos(requestChatId);
+      const rawPostResponseWarnings = lastAssistantMessage.additional_kwargs?.mocuPostResponseWarnings;
+      const postResponseWarnings = Array.isArray(rawPostResponseWarnings)
+        ? rawPostResponseWarnings.filter((warning): warning is string => typeof warning === 'string')
+        : [];
+      completedPostResponseWarnings = postResponseWarnings;
       const assistantMessage = onAppendMessage(
         requestChatId,
         'assistant',
@@ -1632,7 +1645,9 @@ export function ChatBox({
         completedImages,
         completedAudio,
         completedVideos,
+        postResponseWarnings,
       );
+      completedAssistantMessage = assistantMessage;
       markMessageAsPartOfThread(assistantMessage.id, requestThreadKey);
 
       /*
@@ -1666,6 +1681,21 @@ export function ChatBox({
             `[Short Memory] Failed for chat ${requestChatId}:`,
             memoryError,
           );
+          completedPostResponseWarnings = [
+            ...completedPostResponseWarnings,
+            "The answer is complete, but saving short-term memory failed.",
+          ];
+          if (completedAssistantMessage) {
+            try {
+              onUpdateMessagePostResponseWarnings(
+                requestChatId,
+                completedAssistantMessage.id,
+                completedPostResponseWarnings,
+              );
+            } catch (warningError) {
+              console.error('[Chat Box] Could not display the short-term-memory warning:', warningError);
+            }
+          }
         }
       }
     } catch (error) {
@@ -1686,6 +1716,45 @@ export function ChatBox({
         `[${activeAgentName}] Request failed for chat ${requestChatId}:`,
         error,
       );
+
+      if (completedResponseContent) {
+        const failureDetail = (error instanceof Error ? error.message : String(error)).trim();
+        const conciseFailureDetail = failureDetail
+          ? `${failureDetail.slice(0, 240)}${failureDetail.length > 240 ? '…' : ''}`
+          : 'Unknown follow-up error';
+        const followUpWarning = `The answer is complete, but a follow-up step failed: ${conciseFailureDetail}`;
+        let savedAssistantMessage = completedAssistantMessage;
+        if (!savedAssistantMessage) {
+          try {
+            savedAssistantMessage = onAppendMessage(
+              requestChatId,
+              'assistant',
+              completedResponseContent,
+              undefined,
+              takeGeneratedImages(requestChatId),
+              takeGeneratedAudio(requestChatId),
+              takeGeneratedVideos(requestChatId),
+              completedPostResponseWarnings,
+            );
+            markMessageAsPartOfThread(savedAssistantMessage.id, requestThreadKey);
+            completedAssistantMessage = savedAssistantMessage;
+          } catch (appendError) {
+            console.error('[Chat Box] Could not preserve the completed answer after a follow-up failure:', appendError);
+          }
+        }
+        if (savedAssistantMessage) {
+          try {
+            onUpdateMessagePostResponseWarnings(
+              requestChatId,
+              savedAssistantMessage.id,
+              [...completedPostResponseWarnings, followUpWarning],
+            );
+          } catch (warningError) {
+            console.error('[Chat Box] Could not display the post-response warning:', warningError);
+          }
+        }
+        return;
+      }
 
       const failureContent =
         error instanceof ProjectAgentModelError
@@ -2524,6 +2593,7 @@ export function ChatBox({
                             generatedImages={message.generatedImages}
                             generatedAudio={message.generatedAudio}
                             generatedVideos={message.generatedVideos}
+                            postResponseWarnings={message.postResponseWarnings}
                             footer={messageIndex === lastAssistantIndex ? memoryFooter : undefined}
                             failureDetails={getProjectAgentFailureDetails(message.content)}
                             workflowToolCallFailure={parseStepToolCallFailureMessage(message.content)}

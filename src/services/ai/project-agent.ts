@@ -580,6 +580,7 @@ const saveProjectMemoryInBackground = (
           status: "error",
           chatId,
           projectPath,
+          error: error instanceof Error ? error.message : String(error),
         });
 
         console.error(
@@ -1929,6 +1930,7 @@ const callProjectAgentWithHistorySession =
     let memoryResult:
       | ProjectMemoryRetrievalResult
       | null = null;
+    const postResponseWarnings: string[] = [];
 
     let relatedMemoryPrompt = "";
     let personalMemoryPrompt = "";
@@ -1943,11 +1945,15 @@ const callProjectAgentWithHistorySession =
           previousTurns,
           signal,
         });
+        postResponseWarnings.push(...(memoryResult.warnings ?? []));
       } catch (error: unknown) {
         console.warn(
           "[Project Agent] Memory retrieval failed:",
           error,
         );
+        if (!isAbortError(error) && !signal?.aborted) {
+          postResponseWarnings.push("Project memory retrieval failed; this answer may not include relevant saved project context.");
+        }
       }
 
       try {
@@ -2677,10 +2683,10 @@ const callProjectAgentWithHistorySession =
     response.content =
       finalAssistantContent;
 
-    const graphHasToolCalls = graphRecorder.getRecords().some((record) => record.type === "tool_call");
-    if (recordThisRun || graphHasToolCalls) {
-      graphRecorder.finishRun(finalAssistantContent);
-      try {
+    try {
+      const graphHasToolCalls = graphRecorder.getRecords().some((record) => record.type === "tool_call");
+      if (recordThisRun || graphHasToolCalls) {
+        graphRecorder.finishRun(finalAssistantContent);
         const cleanup = await cleanRunRecords(graphRecorder.getRecords());
         const graph = buildGraph({
           runId: graphRecorder.runId,
@@ -2691,9 +2697,18 @@ const callProjectAgentWithHistorySession =
         });
         const saved = await runProjectMemoryExclusive(() => saveRunGraph(normalizedProjectPath, graph));
         console.log(`[Project Agent] Saved run graph ${saved.key}; embedded=${saved.embedded}`);
-      } catch (error) {
-        console.warn("[Project Agent] Graph recording failed; user task already completed:", error);
       }
+    } catch (error) {
+      console.warn("[Project Agent] Graph recording failed; user task already completed:", error);
+      postResponseWarnings.push("The answer is complete, but saving this run to project graph memory failed.");
+    }
+
+    const uniquePostResponseWarnings = [...new Set(postResponseWarnings)];
+    if (uniquePostResponseWarnings.length > 0) {
+      response.additional_kwargs = {
+        ...response.additional_kwargs,
+        mocuPostResponseWarnings: uniquePostResponseWarnings,
+      };
     }
 
     if (!suppressMemorySave) {
@@ -2716,6 +2731,36 @@ export const callProjectAgent = async (
   state: typeof GraphState.State,
   projectPath: string,
   config?: RunnableConfig,
-) => withProjectHistorySession(projectPath, () =>
-  callProjectAgentWithHistorySession(state, projectPath, config),
-);
+) => {
+  type ProjectAgentResult = Awaited<
+    ReturnType<typeof callProjectAgentWithHistorySession>
+  >;
+  let result: ProjectAgentResult | undefined;
+
+  return withProjectHistorySession(
+    projectPath,
+    async () => {
+      result = await callProjectAgentWithHistorySession(state, projectPath, config);
+      return result;
+    },
+    (error) => {
+      console.warn("[Project Agent] Final project-history checkpoint failed after the answer was ready:", error);
+      const finalMessage = result?.messages[result.messages.length - 1];
+      if (!(finalMessage instanceof AIMessage)) return;
+
+      const existing = finalMessage.additional_kwargs.mocuPostResponseWarnings;
+      const warnings = Array.isArray(existing)
+        ? existing.filter((warning): warning is string => typeof warning === "string")
+        : [];
+      finalMessage.additional_kwargs = {
+        ...finalMessage.additional_kwargs,
+        mocuPostResponseWarnings: [
+          ...new Set([
+            ...warnings,
+            "The answer is complete, but saving the final project-history checkpoint failed.",
+          ]),
+        ],
+      };
+    },
+  );
+};

@@ -1,8 +1,8 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { AIMessage, BaseMessage } from '@langchain/core/messages';
+import { AIMessage, BaseMessage, HumanMessage } from '@langchain/core/messages';
 
 const mocks = vi.hoisted(() => ({
-  stream: vi.fn(), llm: vi.fn(),
+  stream: vi.fn(), llm: vi.fn(), retrieveProjectMemory: vi.fn(), projectHistoryFinishError: null as Error | null,
 }));
 vi.mock('../llm', () => ({
   getMainAgentLlm: mocks.llm,
@@ -36,7 +36,7 @@ vi.mock('./user-memory', () => ({
   saveUserMemoryInBackground: vi.fn(),
 }));
 vi.mock('../../../chat/project/memory/memory-retrieval/memoryRetrievalPipeline', () => ({
-  retrieveProjectMemory: async () => null,
+  retrieveProjectMemory: mocks.retrieveProjectMemory,
   buildProjectMemoryPrompt: () => '',
 }));
 vi.mock('../../../chat/docs', () => ({ buildDocsContextPrompt: async () => '' }));
@@ -50,7 +50,11 @@ vi.mock('../../../graphStructure/graphSearch', () => ({ searchRunGraphs: async (
 vi.mock('../../../graphStructure/graphDigest', () => ({ searchRunGraphHints: async () => '', createGraphDigestTool: () => ({ name: 'get_relevant_run_graph_digest', description: '', runnable: { name: 'get_relevant_run_graph_digest' }, execute: async () => '' }), createGraphToolLogTool: () => ({ name: 'get_run_graph_tool_log', description: '', runnable: { name: 'get_run_graph_tool_log' }, execute: async () => '' }) }));
 vi.mock('../../../graphStructure/recorder', () => ({ createGraphRecorder: () => ({ startRun() {}, getRecords: () => [], finishRun() {}, recordModelCall() {}, recordToolCall() {}, runId: 'test-run', agentKind: 'project', chatId: 'test-chat' }) }));
 vi.mock('../project-history', () => ({
-  withProjectHistorySession: (_path: string, run: () => Promise<unknown>) => run(),
+  withProjectHistorySession: async (_path: string, run: () => Promise<unknown>, onFinishError?: (error: unknown) => void) => {
+    const result = await run();
+    if (mocks.projectHistoryFinishError) onFinishError?.(mocks.projectHistoryFinishError);
+    return result;
+  },
   createProjectHistoryTools: () => ({
     history: { name: 'project_history', description: '', invoke: vi.fn() },
     fileHistory: { name: 'project_file_history', description: '', invoke: vi.fn() },
@@ -69,12 +73,96 @@ import { StepExecutor } from '../stepbystep/StepExecutor';
 beforeEach(() => {
   mocks.stream.mockReset().mockResolvedValue(new AIMessage('I can see the images.'));
   mocks.llm.mockReset().mockResolvedValue({ model: 'custom-vision', bindTools: () => ({}) });
+  mocks.retrieveProjectMemory.mockReset().mockResolvedValue(emptyProjectMemory);
+  mocks.projectHistoryFinishError = null;
 });
 
 const attachments = Array.from({ length: 3 }, (_, i) => ({
   id: String(i), name: `${i}.jpg`, mimeType: 'image/jpeg', dataUrl: `data:image/jpeg;base64,${i}`,
 }));
 const config = { configurable: { suppressMemorySave: true } };
+const emptyProjectMemory = {
+  memoryRequired: false,
+  gateDecision: { memoryRequired: false, confidence: 1, reason: 'test' },
+  relatedTurns: [],
+  temporalMemory: null,
+  graphMemoryContext: '',
+  memoryContext: '',
+  estimatedTokens: 0,
+};
+
+describe('project agent post-response memory diagnostics', () => {
+  it('returns the completed answer and carries temporal-memory warnings to the caller', async () => {
+    const warning = 'Some temporal project memory could not be retrieved; the answer may not include that stored context.';
+    mocks.retrieveProjectMemory.mockResolvedValue({
+      memoryRequired: true,
+      gateDecision: { memoryRequired: true, confidence: 1, reason: 'test' },
+      relatedTurns: [],
+      temporalMemory: null,
+      graphMemoryContext: '',
+      memoryContext: '',
+      warnings: [warning],
+      estimatedTokens: 0,
+    });
+    mocks.stream.mockReset().mockResolvedValue(new AIMessage('The task is complete.'));
+
+    const result = await callProjectAgent({
+      messages: [new HumanMessage('Do the task.')],
+      memoryContext: '',
+    }, 'E:\\demo', config);
+    const answer = result.messages[result.messages.length - 1];
+
+    expect(answer.content).toBe('The task is complete.');
+    expect(answer.additional_kwargs.mocuPostResponseWarnings).toEqual([warning]);
+  });
+
+  it('keeps the final answer when graph-memory persistence fails', async () => {
+    const recorderModule = await import('../../../graphStructure/recorder');
+    const originalCreateRecorder = recorderModule.createGraphRecorder;
+    vi.spyOn(recorderModule, 'createGraphRecorder').mockReturnValue({
+      startRun() {},
+      getRecords() { throw new Error('graph recorder failed'); },
+      finishRun() {},
+      recordModelCall() {},
+      recordToolCall() {},
+      runId: 'test-run',
+      agentKind: 'project',
+      chatId: 'test-chat',
+    } as never);
+    mocks.retrieveProjectMemory.mockResolvedValue(emptyProjectMemory);
+    mocks.stream.mockReset().mockResolvedValue(new AIMessage('The answer remains complete.'));
+
+    const result = await callProjectAgent({
+      messages: [new HumanMessage('Complete the work.')],
+      memoryContext: '',
+    }, 'E:\\demo', config);
+    const answer = result.messages[result.messages.length - 1];
+
+    expect(answer.content).toBe('The answer remains complete.');
+    expect(answer.additional_kwargs.mocuPostResponseWarnings).toEqual([
+      'The answer is complete, but saving this run to project graph memory failed.',
+    ]);
+    vi.spyOn(recorderModule, 'createGraphRecorder').mockRestore();
+    expect(originalCreateRecorder).toBeDefined();
+  });
+
+  it('keeps the final answer when the project-history final checkpoint fails', async () => {
+    mocks.retrieveProjectMemory.mockResolvedValue(emptyProjectMemory);
+    mocks.projectHistoryFinishError = new Error('checkpoint write failed');
+    mocks.stream.mockReset().mockResolvedValue(new AIMessage('The completed answer.'));
+
+    const result = await callProjectAgent({
+      messages: [new HumanMessage('Finish the task.')],
+      memoryContext: '',
+    }, 'E:\\demo', config);
+    const answer = result.messages[result.messages.length - 1];
+
+    expect(answer.content).toBe('The completed answer.');
+    expect(answer.additional_kwargs.mocuPostResponseWarnings).toEqual([
+      'The answer is complete, but saving the final project-history checkpoint failed.',
+    ]);
+  });
+});
 
 describe.each(['chat', 'project'] as const)('%s agent image input', (kind) => {
   it.each(['Compare the images.', ''])('retains all images in the actual model call (text: %s)', async (text) => {

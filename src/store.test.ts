@@ -25,7 +25,7 @@ const expectedModels = {
   ttsModel: "x-ai/grok-voice-tts-1.0",
   ttsVoice: "ara",
   visionModel: "openai/gpt-6-luna",
-  embeddingModel: "openai/text-embedding-3-large",
+  embeddingModel: "amazon/titan-embed-text-v1",
   perplexityModel: "sonar",
   decisionModel: "~typesafe/jev-latest",
   summarizeModel: "scaledown/summarize",
@@ -86,8 +86,30 @@ describe("gateway defaults", () => {
     await saveSettings({ ...settings, apiKey: "new-key", gatewayBaseUrl: "https://other.example/v1", decisionEndpointUrl: "", cheapModel: "my-cheap-model", llmModel: "my-chat-model" });
     const loaded = await readSettings();
     expect(loaded).toMatchObject({ ...expectedModels, cheapModel: "my-cheap-model", llmModel: "my-chat-model" });
-    for (const field of urlFields) expect(loaded[field]).toBe("https://other.example/v1");
+    for (const field of urlFields.filter((field) => field !== "embeddingBaseUrl")) {
+      expect(loaded[field]).toBe("https://other.example/v1");
+    }
+    expect(loaded.embeddingBaseUrl).toBe("https://openrouter.ai/api/v1");
     expect(loaded.decisionEndpointUrl).toBe("https://other.example/alpha/decisions");
+  });
+
+  it("preserves a dedicated embedding endpoint independently of the shared gateway", async () => {
+    const settings = await readSettings();
+    await saveSettings({
+      ...settings,
+      apiKey: "shared-key",
+      gatewayBaseUrl: "https://chat.example/v1",
+      embeddingBaseUrl: "https://embeddings.example/v1",
+      embeddingApiKey: "embedding-key",
+      embeddingModel: "amazon/titan-embed-text-v1",
+    });
+
+    expect(await readSettings()).toMatchObject({
+      gatewayBaseUrl: "https://chat.example/v1",
+      embeddingBaseUrl: "https://embeddings.example/v1",
+      embeddingApiKey: "embedding-key",
+      embeddingModel: "amazon/titan-embed-text-v1",
+    });
   });
 
   it("preserves stored model selections, including an explicit openrouter/auto", async () => {

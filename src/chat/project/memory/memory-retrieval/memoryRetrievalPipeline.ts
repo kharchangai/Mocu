@@ -155,6 +155,9 @@ export interface ProjectMemoryRetrievalResult {
    */
   memoryContext: string;
 
+  /** Best-effort retriever warnings; these never prevent the agent from answering. */
+  warnings?: string[];
+
   estimatedTokens: number;
 }
 
@@ -486,6 +489,19 @@ export function retrieveProjectMemory(
   );
 }
 
+function getRetrieverWarning(kind: "temporal" | "graph", error: unknown): string {
+  const detail = error instanceof Error ? error.message : String(error);
+  const dimensionMismatch = detail.match(
+    /Embedding dimension mismatch.*?Query dimension:\s*(\d+)\.\s*(?:Episode|Window) dimension:\s*(\d+)\./i,
+  );
+  if (dimensionMismatch) {
+    return `Some ${kind} project memory was skipped because embedding dimensions differ (query ${dimensionMismatch[1]}, saved memory ${dimensionMismatch[2]}).`;
+  }
+  return kind === "temporal"
+    ? "Some temporal project memory could not be retrieved; the answer may not include that stored context."
+    : "Some project graph memory could not be retrieved; the answer may not include that stored context.";
+}
+
 async function retrieveProjectMemoryInternal(
   input: ProjectMemoryRetrievalInput,
 ): Promise<ProjectMemoryRetrievalResult> {
@@ -545,13 +561,16 @@ async function retrieveProjectMemoryInternal(
       ].join("\n\n")
     : normalizedUserMessage;
 
+  const warnings: string[] = [];
   const [temporalMemory, graphMemory] = await Promise.all([
     retrieveTemporalMemory(queryMessage, anchorTurn, databasePath).catch((error: unknown) => {
       console.error("[Memory Retrieval] Temporal retriever failed:", error);
+      warnings.push(getRetrieverWarning("temporal", error));
       return null;
     }),
     retrieveGraphMemory(queryMessage, normalizedProjectPath).catch((error: unknown) => {
       console.error("[Memory Retrieval] Graph retriever failed:", error);
+      warnings.push(getRetrieverWarning("graph", error));
       return null;
     }),
   ]);
@@ -597,6 +616,7 @@ async function retrieveProjectMemoryInternal(
     temporalMemory,
     graphMemoryContext,
     memoryContext,
+    warnings,
     estimatedTokens: estimateTokens(memoryContext),
   };
 }
