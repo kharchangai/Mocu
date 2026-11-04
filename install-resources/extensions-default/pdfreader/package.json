@@ -1,14 +1,14 @@
 {
-  "name": "mocu-pdf-reader",
-  "version": "3.2.0",
-  "private": true,
-  "type": "module",
-  "description": "Mocu PDF reader extension with agent-powered translation and cached Markdown-backed simplification.",
-  "scripts": {
-    "test": "node tests/ui-smoke.mjs && node tests/translation-smoke.mjs && node tests/math-render-smoke.mjs && node tests/markdown-cache-smoke.mjs && node tests/pdfjs-smoke.mjs"
-  },
-  "dependencies": {
-    "@mocu/extension-sdk": "file:./vendor/extension-sdk",
-    "@mocu/extension-contracts": "file:./vendor/extension-contracts"
-  }
+    "name":  "mocu-pdf-reader",
+    "version":  "0.1",
+    "private":  true,
+    "type":  "module",
+    "description":  "Mocu PDF reader extension with agent-powered translation and cached Markdown-backed simplification.",
+    "scripts":  {
+                    "test":  "node tests/ui-smoke.mjs \u0026\u0026 node tests/translation-smoke.mjs \u0026\u0026 node tests/math-render-smoke.mjs \u0026\u0026 node tests/markdown-cache-smoke.mjs \u0026\u0026 node tests/pdfjs-smoke.mjs"
+                },
+    "dependencies":  {
+                         "@mocu/extension-sdk":  "file:./vendor/extension-sdk",
+                         "@mocu/extension-contracts":  "file:./vendor/extension-contracts"
+                     }
 }

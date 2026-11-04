@@ -2,7 +2,7 @@
   "id": "hi-llm-node",
   "name": "Hi LLM",
   "description": "A minimal test extension that calls the Mocu LLM and asks it to say hi.",
-  "version": "0.1.0",
+  "version": "0.1",
   "runtime": "node",
   "entry": "index.js",
   "permissions": ["agents.invoke"],

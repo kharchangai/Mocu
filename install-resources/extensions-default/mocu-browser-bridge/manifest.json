@@ -2,7 +2,7 @@
   "id": "com.mocu.browser-bridge",
   "name": "Mocu Browser Bridge",
   "description": "Lets Mocu agents inspect and control Google Chrome through a local browser extension connection.",
-  "version": "1.0.0",
+  "version": "0.1",
   "runtime": "node",
   "entry": "index.js",
   "showInSlashCommand": true,

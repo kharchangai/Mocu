@@ -1,16 +1,18 @@
 {
-  "name": "@mocu/telegram-bridge",
-  "version": "0.1.0",
-  "private": true,
-  "type": "module",
-  "description": "Private Telegram bridge for messaging saved Mocu agents.",
-  "scripts": {
-    "vendor:sdk": "node scripts/vendor-sdk.js",
-    "test": "node test/protocol-smoke.js",
-    "build": "npm run vendor:sdk && node scripts/build.js"
-  },
-  "engines": {
-    "node": ">=20"
-  },
-  "dependencies": {}
+    "name":  "@mocu/telegram-bridge",
+    "version":  "0.1",
+    "private":  true,
+    "type":  "module",
+    "description":  "Private Telegram bridge for messaging saved Mocu agents.",
+    "scripts":  {
+                    "vendor:sdk":  "node scripts/vendor-sdk.js",
+                    "test":  "node test/protocol-smoke.js",
+                    "build":  "npm run vendor:sdk \u0026\u0026 node scripts/build.js"
+                },
+    "engines":  {
+                    "node":  "\u003e=20"
+                },
+    "dependencies":  {
+
+                     }
 }

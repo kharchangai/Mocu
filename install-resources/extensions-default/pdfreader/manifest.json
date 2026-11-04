@@ -2,7 +2,7 @@
   "id": "com.mocu.markdown-reader",
   "name": "PDF Reader",
   "description": "A local page-by-page PDF reader with selectable text, cached per-page Markdown, and agent-powered translation and explanations.",
-  "version": "3.2.0",
+  "version": "0.1",
   "runtime": "node",
   "entry": "index.js",
   "permissions": ["agents.invoke"],

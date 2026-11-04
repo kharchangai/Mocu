@@ -1,8 +1,8 @@
-﻿{
+{
   "id": "filesystem-semantic-search",
   "name": "Filesystem Semantic Search",
   "description": "Searches files with regex and then filters matching text semantically with Jev.",
-  "version": "0.1.0",
+  "version": "0.1",
   "runtime": "node",
   "entry": "index.js",
   "engines": {

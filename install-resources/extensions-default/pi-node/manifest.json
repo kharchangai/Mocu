@@ -2,7 +2,7 @@
   "id": "pi-node",
   "name": "Pi Agent",
   "description": "Embeds a persistent pi coding-agent session with live Mocu chat controls for steering, pausing and resuming tasks.",
-  "version": "0.1.0",
+  "version": "0.1",
   "runtime": "node",
   "entry": "index.js",
   "engines": {

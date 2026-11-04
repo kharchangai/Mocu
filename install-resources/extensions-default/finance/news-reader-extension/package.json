@@ -1,13 +1,13 @@
-﻿{
-  "name": "mocu-news-reader-extension",
-  "version": "0.1.0",
-  "private": true,
-  "type": "module",
-  "description": "Mocu news reader extension.",
-  "engines": {
-    "node": ">=20"
-  },
-  "dependencies": {
-    "@mocu/extension-sdk": "file:./vendor/extension-sdk"
-  }
+{
+    "name":  "mocu-news-reader-extension",
+    "version":  "0.1",
+    "private":  true,
+    "type":  "module",
+    "description":  "Mocu news reader extension.",
+    "engines":  {
+                    "node":  "\u003e=20"
+                },
+    "dependencies":  {
+                         "@mocu/extension-sdk":  "file:./vendor/extension-sdk"
+                     }
 }
