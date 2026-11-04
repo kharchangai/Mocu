@@ -19,6 +19,8 @@ type CancelledRunCardProps = {
   data: CancelledRunData;
   /** Number of tool actions that had already run when the user cancelled. */
   toolCount: number;
+  /** Keep the checkpoint visible but indicate when its run is active again. */
+  isResuming?: boolean;
 };
 
 function StopIcon() {
@@ -61,6 +63,7 @@ function ClockIcon() {
 function CancelledRunCardImpl({
   data,
   toolCount,
+  isResuming = false,
 }: CancelledRunCardProps) {
   const [showFullAnswer, setShowFullAnswer] = useState(false);
 
@@ -79,7 +82,7 @@ function CancelledRunCardImpl({
   return (
     <article
       className="cancelled-run-card"
-      aria-label="Task cancelled"
+      aria-label={isResuming ? 'Task resumed' : 'Task cancelled'}
     >
       <header className="cancelled-run-card__header">
         <span
@@ -91,19 +94,23 @@ function CancelledRunCardImpl({
 
         <div className="cancelled-run-card__titles">
           <p className="cancelled-run-card__eyebrow">
-            Task cancelled
+            {isResuming ? 'Task resumed' : 'Task cancelled'}
           </p>
           <h3 className="cancelled-run-card__title">
-            Stopped early — your progress is saved
+            {isResuming ? 'Continuing from saved progress…' : 'Stopped early — your progress is saved'}
           </h3>
         </div>
       </header>
 
       <p className="cancelled-run-card__text">
-        {toolCount > 0
-          ? `The conversation, the ${toolCount} tool action${toolCount === 1 ? '' : 's'} already run and the partial answer below were kept.`
-          : 'The conversation and everything the agent produced up to this point were kept.'}{' '}
-        Send a message or use the refresh button to pick up where it stopped.
+        {isResuming
+          ? 'The agent is working from the saved checkpoint. Live tool activity appears with the active user turn below.'
+          : toolCount > 0
+            ? `The conversation, the ${toolCount} tool action${toolCount === 1 ? '' : 's'} already run and the partial answer below were kept.`
+            : 'The conversation and everything the agent produced up to this point were kept.'}{' '}
+        {!isResuming
+          ? 'Use Continue task to resume exactly, or send a new message; Mocu checks whether it belongs to this task or starts a new one.'
+          : null}
       </p>
 
       {partialAnswer ? (

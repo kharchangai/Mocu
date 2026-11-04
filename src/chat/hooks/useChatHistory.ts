@@ -496,10 +496,6 @@ export function useChatHistory() {
     ): Promise<EnsureChatResult> => {
       const normalizedMessage = firstUserMessage.trim();
 
-      if (!normalizedMessage && attachments.length === 0) {
-        throw new Error('The first message cannot be empty.');
-      }
-
       /*
        * Reuse the already-active conversation. It keeps its chat ID,
        * agent thread ID, project path, and history file path, so new
@@ -538,6 +534,15 @@ export function useChatHistory() {
             wasCreated: false,
           };
         }
+      }
+
+      /*
+       * Empty trigger messages are valid when reusing an existing chat
+       * or loading its persisted project conversation. Reject them only
+       * when this call would actually create a brand-new conversation.
+       */
+      if (!normalizedMessage && attachments.length === 0) {
+        throw new Error('The first message cannot be empty.');
       }
 
       /*

@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { AIMessage, BaseMessage, HumanMessage } from '@langchain/core/messages';
+import { AIMessage, BaseMessage, HumanMessage, SystemMessage, ToolMessage, mapChatMessagesToStoredMessages } from '@langchain/core/messages';
 
 const mocks = vi.hoisted(() => ({
   stream: vi.fn(), llm: vi.fn(), retrieveProjectMemory: vi.fn(), projectHistoryFinishError: null as Error | null,
@@ -66,13 +66,14 @@ vi.mock('../project-history', () => ({
 
 import { callChatAgent } from '../chat-agent';
 import { callProjectAgent } from '../project-agent';
+import type { ProjectAgentResumeSnapshot } from '../projectAgentResume';
 import { buildHumanMessageFromRequest, buildHumanMessageWithImages, hasImageInput } from './image-content';
 import { FocusExecutor } from '../focus/FocusExecutor';
 import { StepExecutor } from '../stepbystep/StepExecutor';
 
 beforeEach(() => {
   mocks.stream.mockReset().mockResolvedValue(new AIMessage('I can see the images.'));
-  mocks.llm.mockReset().mockResolvedValue({ model: 'custom-vision', bindTools: () => ({}) });
+  mocks.llm.mockReset().mockResolvedValue({ model: 'custom-vision', clientConfig: { baseURL: 'https://gateway.example/v1' }, bindTools: vi.fn(() => ({})) });
   mocks.retrieveProjectMemory.mockReset().mockResolvedValue(emptyProjectMemory);
   mocks.projectHistoryFinishError = null;
 });
@@ -161,6 +162,75 @@ describe('project agent post-response memory diagnostics', () => {
     expect(answer.additional_kwargs.mocuPostResponseWarnings).toEqual([
       'The answer is complete, but saving the final project-history checkpoint failed.',
     ]);
+  });
+
+  it('resumes from the exact saved model conversation and appends new user guidance', async () => {
+    const savedMessages = [
+      new SystemMessage('Original system prompt and retrieved context.'),
+      new HumanMessage('Build the feature.'),
+      new AIMessage({
+        content: 'I inspected the project.',
+        tool_calls: [{ id: 'saved-call-1', name: 'terminal_executor', args: { command: 'Get-ChildItem' }, type: 'tool_call' }],
+      }),
+      new ToolMessage({ content: 'Found the application files.', tool_call_id: 'saved-call-1', name: 'terminal_executor' }),
+    ];
+    const snapshot: ProjectAgentResumeSnapshot = {
+      version: 1,
+      projectPath: 'E:\\demo',
+      originalUserPrompt: 'Build the feature.',
+      latestUserPrompt: 'Build the feature.',
+      modelId: 'saved-model',
+      gatewayBaseUrl: 'https://saved-gateway.example/v1',
+      messages: mapChatMessagesToStoredMessages(savedMessages),
+      toolDefinitions: [{ type: 'function', function: { name: 'terminal_executor', parameters: { type: 'object' } } }],
+      configurable: {
+        selectedSkills: [],
+        selectedExtensions: [],
+        selectedMcpServers: [],
+        selectedAgent: null,
+        selectedModel: 'saved-model',
+        reasoningEffort: 'high',
+        projectDescription: 'Original description.',
+      },
+    };
+    mocks.stream.mockReset().mockResolvedValue(new AIMessage('Resumed answer.'));
+
+    await callProjectAgent({
+      messages: [new HumanMessage('Also add a regression test.')],
+      memoryContext: '',
+    }, 'E:\\different-project', {
+      configurable: {
+        ...config.configurable,
+        projectAgentResumeSnapshot: snapshot,
+        projectAgentResumeHasNewMessage: true,
+      },
+    });
+
+    const modelMessages = mocks.stream.mock.calls[0][0].messages as BaseMessage[];
+    expect(modelMessages.slice(0, savedMessages.length).map((message) => message.toDict()))
+      .toEqual(savedMessages.map((message) => message.toDict()));
+    expect(modelMessages[modelMessages.length - 1]?.content).toBe('Also add a regression test.');
+    expect(mocks.llm.mock.calls[0][0]).toBe('saved-model');
+    expect(mocks.llm.mock.calls[0][1]).toEqual({
+      reasoningEffort: 'high',
+      baseUrl: 'https://saved-gateway.example/v1',
+    });
+    const boundModel = await mocks.llm.mock.results[0].value;
+    expect(boundModel.bindTools).toHaveBeenCalledWith(snapshot.toolDefinitions);
+
+    mocks.stream.mockReset().mockResolvedValue(new AIMessage('Continued from the checkpoint.'));
+    await callProjectAgent({
+      messages: [new HumanMessage('Build the feature.')],
+      memoryContext: '',
+    }, snapshot.projectPath, {
+      configurable: {
+        projectAgentResumeSnapshot: snapshot,
+        projectAgentResumeHasNewMessage: false,
+      },
+    });
+    const exactResumeMessages = mocks.stream.mock.calls[0][0].messages as BaseMessage[];
+    expect(exactResumeMessages.map((message) => message.toDict()))
+      .toEqual(savedMessages.map((message) => message.toDict()));
   });
 });
 

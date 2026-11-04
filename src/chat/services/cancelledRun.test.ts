@@ -76,6 +76,71 @@ describe("cancelled run checkpoints", () => {
     expect(parseCancelledRunMessage(content)?.tools).toHaveLength(5);
   });
 
+  it("round-trips the exact model-run snapshot needed for resuming", () => {
+    const resumeSnapshot = {
+      version: 1 as const,
+      projectPath: "E:/demo",
+      originalUserPrompt: "finish the feature",
+      latestUserPrompt: "finish the feature",
+      modelId: "test-model",
+      gatewayBaseUrl: "https://gateway.example/v1",
+      messages: [
+        { type: "system", data: { content: "stable system prompt", role: undefined, name: undefined, tool_call_id: undefined } },
+        { type: "human", data: { content: "finish the feature", role: undefined, name: undefined, tool_call_id: undefined } },
+        { type: "tool", data: { content: "created the file", role: undefined, name: "terminal_executor", tool_call_id: "tool-call-1" } },
+      ],
+      toolDefinitions: [{ type: "function", function: { name: "terminal_executor", parameters: {} } }],
+      configurable: {
+        selectedSkills: ["coding"],
+        selectedExtensions: [],
+        selectedMcpServers: [],
+        selectedAgent: null,
+        selectedModel: "test-model",
+        reasoningEffort: "high",
+        projectDescription: "demo project",
+      },
+    };
+    const content = buildCancelledRunMessage({
+      userPrompt: "finish the feature",
+      partialAnswer: "",
+      activities: [],
+      resumeSnapshot,
+    });
+
+    expect(parseCancelledRunMessage(content)?.resumeSnapshot).toEqual(resumeSnapshot);
+  });
+
+  it("drops an oversized resume payload rather than writing an unloadable checkpoint", () => {
+    const resumeSnapshot = {
+      version: 1 as const,
+      projectPath: "E:/demo",
+      originalUserPrompt: "continue",
+      latestUserPrompt: "continue",
+      modelId: "test-model",
+      gatewayBaseUrl: "https://gateway.example/v1",
+      messages: [],
+      toolDefinitions: [],
+      configurable: {
+        selectedSkills: [],
+        selectedExtensions: [],
+        selectedMcpServers: [],
+        selectedAgent: null,
+        selectedModel: "test-model",
+        reasoningEffort: null,
+        projectDescription: "x".repeat(1_600_000),
+      },
+    };
+    const content = buildCancelledRunMessage({
+      userPrompt: "continue",
+      partialAnswer: "",
+      activities: [],
+      resumeSnapshot,
+    });
+
+    expect(content.length).toBeLessThan(20_000);
+    expect(parseCancelledRunMessage(content)?.resumeSnapshot).toBeUndefined();
+  });
+
   it("returns null for corrupted checkpoints", () => {
     expect(
       parseCancelledRunMessage(`${CANCELLED_RUN_MARKER} not json`),

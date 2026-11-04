@@ -17,6 +17,8 @@ export type LlmGenerationOptions = {
   temperature?: number;
   maxTokens?: number;
   reasoningEffort?: GatewayReasoningEffort | null;
+  /** Preserve the exact gateway endpoint when resuming a serialized model run. */
+  baseUrl?: string;
 };
 
 function normalizeBaseUrl(baseUrl: string): string | undefined {
@@ -65,7 +67,8 @@ export const getAsyncLLM = async (
     );
   }
 
-  if (!selectedModel.baseUrl.trim()) {
+  const baseUrl = options.baseUrl?.trim() || selectedModel.baseUrl;
+  if (!baseUrl.trim()) {
     throw new Error(
       `The ${tier} LLM base URL is not configured. Open Settings and set its base URL.`,
     );
@@ -88,7 +91,7 @@ export const getAsyncLLM = async (
         }
       : {}),
     configuration: {
-      baseURL: normalizeBaseUrl(selectedModel.baseUrl),
+      baseURL: normalizeBaseUrl(baseUrl),
     },
   });
 };
@@ -112,6 +115,7 @@ export const getAsyncLLMByModel = async (
   // `mediumBaseUrl` is the canonical shared URL; the fallbacks keep this
   // working when only one of the tier fields has been configured.
   const baseUrl =
+    options.baseUrl?.trim() ||
     config.mediumBaseUrl || config.cheapBaseUrl || config.expensiveBaseUrl;
 
   if (!baseUrl.trim()) {
@@ -154,7 +158,7 @@ export const getMainAgentLlm = async (
   if (trimmedModel) {
     const config = await readSettings();
 
-    const baseUrl = getMainGatewayBaseUrl(config);
+    const baseUrl = options.baseUrl?.trim() || getMainGatewayBaseUrl(config);
 
     if (!baseUrl.trim()) {
       throw new Error(

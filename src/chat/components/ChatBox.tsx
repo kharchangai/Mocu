@@ -20,6 +20,9 @@ import {
   AIMessage,
   BaseMessage,
   HumanMessage,
+  ToolMessage,
+  mapChatMessagesToStoredMessages,
+  mapStoredMessagesToChatMessages,
 } from '@langchain/core/messages';
 import { ChatInput, type AskUserQuestion } from './ChatInput';
 import {
@@ -101,6 +104,12 @@ import {
   type CancelledRunData,
 } from '../services/cancelledRun';
 import { CancelledRunCard } from './CancelledRunCard';
+import { routeMessageAfterCancelledRun } from '../services/cancelledRunRouting';
+import {
+  clearProjectAgentRunSnapshot,
+  getProjectAgentRunSnapshot,
+  type ProjectAgentResumeSnapshot,
+} from '../../services/ai/projectAgentResume';
 import { useMemorySaveStatus } from '../hooks/useMemorySaveStatus';
 import { useMentionResources } from './useMentionResources';
 import type { MentionResourceNames } from './SlashMentionText';
@@ -212,6 +221,8 @@ type SendOptions = {
   selectedReasoningEffort?: GatewayReasoningEffort | null;
   fileReferences?: SelectedFileReference[];
   imageAttachments?: ChatMessage['attachments'];
+  /** Internal: resume the most recent cancelled Project Agent execution. */
+  resumeCancelledRun?: boolean;
 };
 
 type ProjectAgentFailureDetails = {
@@ -654,6 +665,13 @@ function buildFocusMessageMapping(
 function getProjectAgentFailureDetails(
   content: string,
 ): ProjectAgentFailureDetails | undefined {
+  // The progress marker may appear in a normal answer. It denotes a failure
+  // only when paired with the failure envelope emitted by ProjectAgentModelError.
+  const failureHeader = /^The model request failed after \d+ attempts?\.\r?\nModel error: /;
+  if (!failureHeader.test(content)) {
+    return undefined;
+  }
+
   const markerIndex = content.indexOf(
     PROJECT_AGENT_PARTIAL_PROGRESS_MARKER,
   );
@@ -1262,6 +1280,13 @@ export function ChatBox({
   ): Promise<void> => {
     const normalizedText = text.trim();
     const imageAttachments = options?.imageAttachments ?? [];
+    const latestAssistantMessage = [...messages].reverse().find((message) => message.role === 'assistant');
+    const cancelledCheckpoint = latestAssistantMessage
+      ? parseCancelledRunMessage(latestAssistantMessage.content)
+      : null;
+    let resumeSnapshot: ProjectAgentResumeSnapshot | null =
+      cancelledCheckpoint?.resumeSnapshot ?? null;
+    const isResumeOnly = Boolean(options?.resumeCancelledRun);
     const requestThreadKey = sectionOnlyVisible && currentThreadIsActive
       ? currentThreadGroupKey
       : null;
@@ -1271,7 +1296,7 @@ export function ChatBox({
      * agent run is active, or its conversation is still being created.
      * Other chats keep running in the background and are untouched.
      */
-    if ((!normalizedText && imageAttachments.length === 0) || isLoading) {
+    if ((!normalizedText && imageAttachments.length === 0 && !isResumeOnly) || isLoading) {
       return;
     }
 
@@ -1280,6 +1305,7 @@ export function ChatBox({
      * where the projectPath prop has not been updated by React yet.
      */
     const effectiveProjectPath =
+      resumeSnapshot?.projectPath.trim() ||
       options?.projectPath?.trim() ||
       projectPath.trim() ||
       '';
@@ -1304,8 +1330,25 @@ export function ChatBox({
       }
     }
 
-    /* Lock the composer only after project-only modes have been validated. */
+    /* Lock the composer before the routing decision to avoid duplicate sends. */
     setIsPreparingChat(true);
+    let discardedCancelledTask = false;
+    if (cancelledCheckpoint && !isResumeOnly && (normalizedText || imageAttachments.length > 0)) {
+      try {
+        const route = await routeMessageAfterCancelledRun({
+          cancelledRun: cancelledCheckpoint!,
+          newUserMessage: normalizedText || '[User sent image attachment(s)]',
+        });
+        if (route === 'start_new_task') {
+          resumeSnapshot = null;
+          discardedCancelledTask = true;
+        }
+      } catch (error) {
+        setIsPreparingChat(false);
+        throw error;
+      }
+    }
+    const isResumingCancelledRun = Boolean(resumeSnapshot);
 
     let requestChatId: string;
     let wasCreated: boolean;
@@ -1385,8 +1428,8 @@ export function ChatBox({
       const userMessage = onAppendMessage(
         requestChatId,
         'user',
-        normalizedText,
-        imageAttachments,
+        isResumeOnly ? 'Continue task' : normalizedText,
+        isResumeOnly ? undefined : imageAttachments,
       );
       markMessageAsPartOfThread(userMessage.id, requestThreadKey);
     }
@@ -1428,9 +1471,26 @@ export function ChatBox({
      * Use the messages belonging to the selected chat directly. The ref may
      * still hold the previous chat for a render while switching conversations.
      */
+    const discardedMessageIds = new Set<string>();
+    if (discardedCancelledTask && cancelledCheckpoint) {
+      const originalPrompt = cancelledCheckpoint.resumeSnapshot?.originalUserPrompt ?? cancelledCheckpoint.userPrompt;
+      messages.forEach((message, index) => {
+        if (message.role !== 'assistant') return;
+        const checkpoint = parseCancelledRunMessage(message.content);
+        const checkpointOriginalPrompt = checkpoint?.resumeSnapshot?.originalUserPrompt ?? checkpoint?.userPrompt;
+        if (!checkpoint || checkpointOriginalPrompt !== originalPrompt) return;
+        discardedMessageIds.add(message.id);
+        for (let priorIndex = index - 1; priorIndex >= 0; priorIndex -= 1) {
+          if (messages[priorIndex].role === 'user') {
+            discardedMessageIds.add(messages[priorIndex].id);
+            break;
+          }
+        }
+      });
+    }
     const currentHistory =
       chatId === requestChatId
-        ? convertToLangChainMessages(messages)
+        ? convertToLangChainMessages(messages.filter((message) => !discardedMessageIds.has(message.id)))
         : [];
 
     const existingUserTexts =
@@ -1452,7 +1512,7 @@ export function ChatBox({
      * Project memory is included only when a project folder is selected.
      */
     const memoryHistory =
-      hasSelectedProject
+      hasSelectedProject && !discardedCancelledTask
         ? projectMemoryRef.current.filter(
             (message) => {
               if (
@@ -1472,15 +1532,34 @@ export function ChatBox({
         : [];
 
     const resolvedUserText = resolveFileMentions(normalizedText, options?.fileReferences ?? []);
-    const agentUserMessage = buildHumanMessageWithImages(
+    const newAgentUserMessage = buildHumanMessageWithImages(
       resolvedUserText,
       imageAttachments,
     );
-    const nextMessages: BaseMessage[] = [
-      ...memoryHistory,
-      ...currentHistory,
-      agentUserMessage,
-    ];
+    const hasNewContinuation = Boolean(isResumingCancelledRun && !isResumeOnly);
+    const restoredResumeMessages = isResumingCancelledRun && resumeSnapshot
+      ? mapStoredMessagesToChatMessages(resumeSnapshot.messages)
+      : null;
+    const previousResumeUserMessage = restoredResumeMessages
+      ? [...restoredResumeMessages].reverse().find((message) => message.getType() === 'human')
+      : null;
+    const agentUserMessage = hasNewContinuation
+      ? newAgentUserMessage
+      : previousResumeUserMessage ?? newAgentUserMessage;
+    const nextMessages: BaseMessage[] = restoredResumeMessages
+      ? [
+          ...restoredResumeMessages,
+          // callProjectAgent requires the triggering state message to be human.
+          // Resume-only sends use the saved latest user turn here, but the
+          // Project Agent deliberately does not append this UI trigger again
+          // to the already-exact model prompt.
+          agentUserMessage,
+        ]
+      : [
+          ...memoryHistory,
+          ...currentHistory,
+          agentUserMessage,
+        ];
 
     let completedResponseContent: string | null = null;
     let completedAssistantMessage: ChatMessage | null = null;
@@ -1492,10 +1571,46 @@ export function ChatBox({
       }
       cancelledRunRecorded = true;
 
+      const partialAnswer = getLiveAgentAnswer(requestChatId);
+      const activeSnapshot = getProjectAgentRunSnapshot(requestChatId);
+      const activities = getPendingToolActivities(requestChatId);
+      const checkpointUserPrompt =
+        normalizedText || resumeSnapshot?.latestUserPrompt || resumeSnapshot?.originalUserPrompt || '';
+      if (activeSnapshot) {
+        activeSnapshot.latestUserPrompt = checkpointUserPrompt;
+        const snapshotMessages = mapStoredMessagesToChatMessages(activeSnapshot.messages);
+        const completedToolCallIds = new Set(
+          snapshotMessages
+            .filter((message) => message.getType() === 'tool')
+            .map((message) => (message as ToolMessage).tool_call_id),
+        );
+        const pendingToolCalls = snapshotMessages
+          .filter((message) => message.getType() === 'ai')
+          .flatMap((message) => (message as AIMessage).tool_calls ?? [])
+          .filter((toolCall) => toolCall.id && !completedToolCallIds.has(toolCall.id));
+        for (const toolCall of pendingToolCalls) {
+          const activity = activities.find((item) => item.id === toolCall.id);
+          const result = activity?.result?.trim() || (
+            activity
+              ? 'Tool execution was interrupted. Inspect the current project state before retrying; side effects may be partial.'
+              : 'This tool call had not started when the run was cancelled.'
+          );
+          snapshotMessages.push(new ToolMessage({
+            content: result,
+            tool_call_id: toolCall.id!,
+            name: toolCall.name,
+          }));
+        }
+        if (partialAnswer.trim()) {
+          snapshotMessages.push(new AIMessage(partialAnswer.trim()));
+        }
+        activeSnapshot.messages = mapChatMessagesToStoredMessages(snapshotMessages);
+      }
       const cancellationMessage = buildCancelledRunMessage({
-        userPrompt: normalizedText,
-        partialAnswer: getLiveAgentAnswer(requestChatId),
-        activities: getPendingToolActivities(requestChatId),
+        userPrompt: checkpointUserPrompt,
+        partialAnswer,
+        activities,
+        resumeSnapshot: activeSnapshot,
       });
       const langChainMessage = new AIMessage(cancellationMessage);
       messagesRef.current = [...nextMessages, langChainMessage];
@@ -1544,6 +1659,7 @@ export function ChatBox({
            * the agent into their SKILL.md system-prompt content.
            */
           selectedSkills:
+            resumeSnapshot?.configurable.selectedSkills ??
             options?.selectedSkills?.map(
               (skill) => skill.name,
             ) ?? [],
@@ -1553,6 +1669,7 @@ export function ChatBox({
            * prompt.
            */
           selectedExtensions:
+            resumeSnapshot?.configurable.selectedExtensions ??
             options?.selectedExtensions?.map(
               (extension) => extension.id,
             ) ?? [],
@@ -1561,21 +1678,35 @@ export function ChatBox({
            * discovered tools to the agent as callable tools.
            */
           selectedMcpServers:
+            resumeSnapshot?.configurable.selectedMcpServers ??
             options?.selectedMcpServers?.map(
               (server) => server.id,
             ) ?? [],
           selectedAgent:
-            options?.selectedAgent?.name ?? null,
-          projectDescription,
+            resumeSnapshot
+              ? resumeSnapshot.configurable.selectedAgent
+              : options?.selectedAgent?.name ?? null,
+          projectDescription: resumeSnapshot?.configurable.projectDescription ?? projectDescription,
           /*
            * Model override chosen in the composer model picker. Only the
            * main agents (chat agent and project agent) read this key;
            * every other agent keeps its own configured model.
            */
           selectedModel:
-            options?.selectedModel?.trim() || null,
+            resumeSnapshot?.modelId || options?.selectedModel?.trim() || null,
           reasoningEffort:
-            options?.selectedReasoningEffort ?? null,
+            resumeSnapshot
+              ? resumeSnapshot.configurable.reasoningEffort as GatewayReasoningEffort | null
+              : options?.selectedReasoningEffort ?? null,
+          ...(resumeSnapshot
+            ? {
+                projectAgentResumeSnapshot: resumeSnapshot,
+                projectAgentResumeHasNewMessage: hasNewContinuation,
+              }
+            : {}),
+          // The resume button's synthetic triggering turn is not a new user
+          // request; avoid duplicating it in project/personal/graph memories.
+          ...(isResumeOnly ? { suppressMemorySave: true } : {}),
         },
       };
 
@@ -1806,6 +1937,7 @@ export function ChatBox({
        * dev-reload guard and the recovery routing only when no chat is
        * running anymore.
        */
+      clearProjectAgentRunSnapshot(requestChatId);
       endChatRun(requestChatId, controller);
 
       endGuardedRun();
@@ -2145,6 +2277,8 @@ export function ChatBox({
     if (lastAssistantIndex >= 0 && lastUserIndex >= 0) break;
   }
 
+  const latestAssistantIsCancelled = lastAssistantIndex >= 0 &&
+    Boolean(parseCancelledRunMessage(displayMessages[lastAssistantIndex]?.content ?? '')?.resumeSnapshot);
   const liveRequestUserMessageId = isLoading && lastUserIndex > lastAssistantIndex
     ? displayMessages[lastUserIndex]?.id
     : undefined;
@@ -2190,7 +2324,7 @@ export function ChatBox({
     const target = displayMessages[userIndex];
 
     if (target?.role === 'user') {
-      void handleSendMessage(target.content);
+      void handleSendMessage('', { resumeCancelledRun: true });
     }
   };
 
@@ -2486,7 +2620,7 @@ export function ChatBox({
               const cancelledRunFollows =
                 message.role === 'user' &&
                 messageIndex + 1 === displayMessages.length - 1 &&
-                cancelledRunByIndex.has(messageIndex + 1);
+                Boolean(cancelledRunByIndex.get(messageIndex + 1)?.resumeSnapshot);
               const rowClass = thread
                 ? `chat-thread-row chat-thread-row--${thread.type} chat-thread-row--${thread.position}`
                 : 'chat-thread-row';
@@ -2583,6 +2717,7 @@ export function ChatBox({
                       {cancelledRun ? (
                         <CancelledRunCard
                           data={cancelledRun}
+                          isResuming={Boolean(isLoading && lastUserIndex > lastAssistantIndex && latestAssistantIsCancelled && messageIndex === lastAssistantIndex)}
                           toolCount={(message.toolActivities ?? toolActivity.getForMessage(message.id))
                             .filter((activity) => (activity.kind ?? 'tool') === 'tool').length}
                         />

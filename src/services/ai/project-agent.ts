@@ -12,6 +12,8 @@ import type {
 } from "@langchain/core/runnables";
 
 import { tool } from "@langchain/core/tools";
+import { convertToOpenAITool } from "@langchain/core/utils/function_calling";
+import { mapChatMessagesToStoredMessages, mapStoredMessagesToChatMessages } from "@langchain/core/messages";
 import { z } from "zod";
 
 import {
@@ -92,6 +94,11 @@ import {
   getSelectedChatModel,
   getSelectedChatReasoningEffort,
 } from "./llm";
+import {
+  isProjectAgentResumeSnapshot,
+  setProjectAgentRunSnapshot,
+  type ProjectAgentResumeSnapshot,
+} from "./projectAgentResume";
 
 import {
   terminalExecutionTool,
@@ -1500,10 +1507,6 @@ const executeProjectToolCall = async ({
         { toolCallId, toolName, chatId, signal },
       );
 
-      throwIfAborted(
-        signal,
-      );
-
       toolResult =
         getToolResultText(
           rawToolResult,
@@ -1808,6 +1811,11 @@ const callProjectAgentWithHistorySession =
       );
     }
 
+    const candidateResumeSnapshot = runnableConfig.configurable?.projectAgentResumeSnapshot;
+    const resumeSnapshot = isProjectAgentResumeSnapshot(candidateResumeSnapshot)
+      ? candidateResumeSnapshot
+      : null;
+
     // Comparison/secondary runs are not new user turns and must not write memory.
     if (runnableConfig.configurable?.suppressMemorySave !== true) {
       saveProjectPersonalMemoryInBackground(rawUserText, normalizedProjectPath);
@@ -1819,7 +1827,7 @@ const callProjectAgentWithHistorySession =
 
     const focusChatId = getChatIdFromConfig(runnableConfig) || "default";
     const sourceMessage = currentUserMessage?.getType() === "human" ? currentUserMessage : undefined;
-    const specialistResponse = await runSpecialistSlashCommand({
+    const specialistResponse = resumeSnapshot ? null : await runSpecialistSlashCommand({
       chatId: focusChatId,
       userText: rawUserText,
       historyMessages: state.messages.slice(0, -1),
@@ -1831,7 +1839,7 @@ const callProjectAgentWithHistorySession =
       return { messages: [specialistResponse] };
     }
 
-    if (await hasActiveFocusSession(focusChatId)) {
+    if (!resumeSnapshot && await hasActiveFocusSession(focusChatId)) {
       const focusResponse = await runFocusTurn(
         focusChatId,
         rawUserText,
@@ -1853,6 +1861,7 @@ const callProjectAgentWithHistorySession =
       getChatIdFromConfig(runnableConfig) || "default";
 
     if (
+      !resumeSnapshot &&
       await hasActiveStepWorkflow(stepWorkflowChatId)
     ) {
       const workflowResponse =
@@ -1871,7 +1880,7 @@ const callProjectAgentWithHistorySession =
       };
     }
 
-    const requestedFocusGoal = parseFocusStartGoal(rawUserText);
+    const requestedFocusGoal = resumeSnapshot ? null : parseFocusStartGoal(rawUserText);
     if (requestedFocusGoal) {
       const focusResponse = await startFocusFromRequest({
         chatId: focusChatId,
@@ -1884,15 +1893,13 @@ const callProjectAgentWithHistorySession =
       return { messages: [focusResponse] };
     }
 
-    const selectedSkillNames =
-      getSelectedSkillNames(
-        runnableConfig,
-      );
+    const selectedSkillNames = resumeSnapshot
+      ? resumeSnapshot.configurable.selectedSkills
+      : getSelectedSkillNames(runnableConfig);
 
-    const skillResolution =
-      await resolveSelectedSkills(
-        selectedSkillNames,
-      );
+    const skillResolution = resumeSnapshot
+      ? { skills: [], missingSkills: [], skillsPrompt: "" }
+      : await resolveSelectedSkills(selectedSkillNames);
 
     throwIfAborted(
       signal,
@@ -1907,17 +1914,19 @@ const callProjectAgentWithHistorySession =
       userText,
     );
 
-    const selectedExtensionIds =
-      getSelectedExtensionIds(
-        runnableConfig,
-      );
+    const selectedExtensionIds = resumeSnapshot
+      ? resumeSnapshot.configurable.selectedExtensions
+      : getSelectedExtensionIds(runnableConfig);
 
-    const selectedMcpServerIds =
-      getSelectedMcpServerIds(
-        runnableConfig,
-      );
+    const selectedMcpServerIds = resumeSnapshot
+      ? resumeSnapshot.configurable.selectedMcpServers
+      : getSelectedMcpServerIds(runnableConfig);
 
-    const selectedAgentNames = getSelectedAgentNames(runnableConfig);
+    const selectedAgentNames = resumeSnapshot
+      ? resumeSnapshot.configurable.selectedAgent
+        ? [resumeSnapshot.configurable.selectedAgent]
+        : []
+      : getSelectedAgentNames(runnableConfig);
 
     throwIfAborted(
       signal,
@@ -1935,6 +1944,8 @@ const callProjectAgentWithHistorySession =
     let relatedMemoryPrompt = "";
     let personalMemoryPrompt = "";
     let projectAgentMemoryPrompt = "";
+    let docsContextPrompt = "";
+    if (!resumeSnapshot) {
     dispatchAgentActivity("checking_project_history");
     try {
       try {
@@ -2012,8 +2023,6 @@ const callProjectAgentWithHistorySession =
      * capped doc references (metadata only, never content) plus notes hints
      * into the system prompt. Failures never block the agent.
      */
-    let docsContextPrompt = "";
-
     try {
       docsContextPrompt = (
         await Promise.all([
@@ -2030,6 +2039,7 @@ const callProjectAgentWithHistorySession =
         "[Project Agent] Docs/notes context search failed:",
         error,
       );
+    }
     }
 
     if (
@@ -2099,18 +2109,14 @@ const callProjectAgentWithHistorySession =
      * this request. Without an override the configured expensive-tier
      * model is used, exactly like before.
      */
-    const selectedModel =
-      getSelectedChatModel(
-        runnableConfig,
-      );
-    const reasoningEffort =
-      getSelectedChatReasoningEffort(runnableConfig);
-
-    const llm =
-      await getMainAgentLlm(
-        selectedModel,
-        { reasoningEffort },
-      );
+    const selectedModel = getSelectedChatModel(runnableConfig);
+    const reasoningEffort = getSelectedChatReasoningEffort(runnableConfig);
+    const llm = resumeSnapshot
+      ? await getMainAgentLlm(resumeSnapshot.modelId, {
+          reasoningEffort: resumeSnapshot.configurable.reasoningEffort as "minimal" | "low" | "medium" | "high" | "xhigh" | null,
+          baseUrl: resumeSnapshot.gatewayBaseUrl,
+        })
+      : await getMainAgentLlm(selectedModel, { reasoningEffort });
     await assertImageModelSupport(llm.model, currentUserMessage);
     throwIfAborted(
       signal,
@@ -2229,7 +2235,7 @@ const callProjectAgentWithHistorySession =
     const projectChatMemorySearchTool = createProjectChatMemorySearchTool(normalizedProjectPath);
     const projectAgentMemoryTools = createProjectAgentMemoryTools(normalizedProjectPath);
     const projectHistoryTools = createProjectHistoryTools(normalizedProjectPath);
-    const llmWithTools = llm.bindTools([
+    const availableTools = [
       askUserTool, scheduleTool, desktopVisionTool, generateImageTool, generateVideoTool, terminalTool, perplexitySearchTool, summarizeTextTool,
       textToSpeechTool, speechControlTool, skillLoaderTool, createAgentTool,
       ...agentManagementTools,
@@ -2239,7 +2245,13 @@ const callProjectAgentWithHistorySession =
       extractEntitiesTool, extractTypedFieldsTool,
       ...projectAgentMemoryTools,
       ...docTools, ...notesTools, ...extensionTools.tools, ...mcpTools.tools, ...agentTools.tools,
-    ]);
+    ];
+    const toolDefinitions = resumeSnapshot
+      ? resumeSnapshot.toolDefinitions
+      : availableTools.map((item) => convertToOpenAITool(item));
+    const llmWithTools = llm.bindTools(
+      toolDefinitions as Parameters<typeof llm.bindTools>[0],
+    );
     const toolExecutor = createProjectToolExecutor(terminalTool, runnableConfig, currentUserMessage);
     toolExecutor.registerTool({
       name: askUserTool.name,
@@ -2337,9 +2349,10 @@ const callProjectAgentWithHistorySession =
     const systemPrompt = addMcpToolsToProjectSystemPrompt(
       buildProjectAgentSystemPrompt(
         normalizedProjectPath,
-        typeof runnableConfig.configurable?.projectDescription === "string"
-          ? runnableConfig.configurable.projectDescription
-          : "",
+        resumeSnapshot?.configurable.projectDescription ??
+          (typeof runnableConfig.configurable?.projectDescription === "string"
+            ? runnableConfig.configurable.projectDescription
+            : ""),
         skillResolution.skillsPrompt,
         extensionTools.prompt,
         relatedMemoryPrompt,
@@ -2360,25 +2373,74 @@ const callProjectAgentWithHistorySession =
       systemPrompt,
       await buildGlobalDirectoryPrompt(),
     ].join("\n\n");
-    let messagesToRun: BaseMessage[] = [
-      new SystemMessage(systemPromptWithGlobalDirectory),
-      ...(memoryResult?.memoryRequired === false
-        ? (memoryResult.relatedTurns.length > 0
-            ? [...memoryResult.relatedTurns]
-                .reverse()
-                .flatMap((turn) => [
-                  new HumanMessage(turn.userMessage),
-                  new AIMessage(turn.agentResponse),
-                ])
-            : previousTurn && !memoryResult.memoryContext.trim()
-              ? [
-                  new HumanMessage(previousTurn.userMessage),
-                  new AIMessage(previousTurn.agentResponse),
-                ]
-              : [])
-        : []),
-      buildHumanMessageFromRequest(userText, currentUserMessage),
-    ];
+    let messagesToRun: BaseMessage[] = resumeSnapshot
+      ? mapStoredMessagesToChatMessages(resumeSnapshot.messages)
+      : [
+          new SystemMessage(systemPromptWithGlobalDirectory),
+          ...(memoryResult?.memoryRequired === false
+            ? (memoryResult.relatedTurns.length > 0
+                ? [...memoryResult.relatedTurns]
+                    .reverse()
+                    .flatMap((turn) => [
+                      new HumanMessage(turn.userMessage),
+                      new AIMessage(turn.agentResponse),
+                    ])
+                : previousTurn && !memoryResult.memoryContext.trim()
+                  ? [
+                      new HumanMessage(previousTurn.userMessage),
+                      new AIMessage(previousTurn.agentResponse),
+                    ]
+                  : [])
+            : []),
+        ];
+    if (
+      resumeSnapshot &&
+      runnableConfig.configurable?.projectAgentResumeHasNewMessage === true
+    ) {
+      // The cancelled checkpoint is the exact saved model conversation. Add
+      // only a genuinely new continuation instruction, without rebuilding
+      // system context or flattening prior tool exchanges. The resume button's
+      // trigger message is intentionally not repeated to the model.
+      messagesToRun.push(buildHumanMessageFromRequest(userText, currentUserMessage));
+    } else if (!resumeSnapshot) {
+      messagesToRun.push(buildHumanMessageFromRequest(userText, currentUserMessage));
+    }
+
+    const runSnapshot: ProjectAgentResumeSnapshot = resumeSnapshot
+      ? {
+          ...resumeSnapshot,
+          latestUserPrompt:
+            runnableConfig.configurable?.projectAgentResumeHasNewMessage === true
+              ? userText
+              : resumeSnapshot.latestUserPrompt,
+          messages: mapChatMessagesToStoredMessages(messagesToRun),
+        }
+      : {
+          version: 1,
+          projectPath: normalizedProjectPath,
+          originalUserPrompt: userText,
+          latestUserPrompt: userText,
+          modelId: llm.model,
+          gatewayBaseUrl: llm.clientConfig?.baseURL ?? "",
+          messages: mapChatMessagesToStoredMessages(messagesToRun),
+          toolDefinitions,
+          configurable: {
+            selectedSkills: selectedSkillNames,
+            selectedExtensions: selectedExtensionIds,
+            selectedMcpServers: selectedMcpServerIds,
+            selectedAgent: selectedAgentNames[0] ?? null,
+            selectedModel,
+            reasoningEffort: reasoningEffort ?? null,
+            projectDescription: typeof runnableConfig.configurable?.projectDescription === "string"
+              ? runnableConfig.configurable.projectDescription
+              : "",
+          },
+        };
+    const saveRunSnapshot = (messages: BaseMessage[]): void => {
+      runSnapshot.messages = mapChatMessagesToStoredMessages(messages);
+      setProjectAgentRunSnapshot(projectChatId, runSnapshot);
+    };
+    saveRunSnapshot(messagesToRun);
 
     const toolResultsSummary: string[] = [];
 
@@ -2405,14 +2467,16 @@ const callProjectAgentWithHistorySession =
       () => toolResultsSummary,
     );
 
+    // Persist the completed model turn (including pending tool calls) before
+    // executing any tools. If cancellation happens mid-tool, the checkpoint
+    // can then pair every call with its saved result/status.
+    saveRunSnapshot([...messagesToRun, response]);
     initialModelTrace.finish({
       hasToolCalls: Boolean(response.tool_calls?.length),
     });
     if (recordThisRun) {
       graphRecorder.recordModelCall({ hasToolCalls: Boolean(response.tool_calls?.length), text: getTextContent(response.content).slice(0, 2000) });
     }
-    throwIfAborted(signal);
-
     let stepCount =
       0;
 
@@ -2434,10 +2498,6 @@ const callProjectAgentWithHistorySession =
       response.tool_calls
         ?.length
     ) {
-      throwIfAborted(
-        signal,
-      );
-
       const currentStepNumber =
         stepCount + 1;
 
@@ -2485,22 +2545,30 @@ const callProjectAgentWithHistorySession =
       const toolMessages: ToolMessage[] = [];
       const askUserCall = response.tool_calls.find((call) => call.name === askUserTool.name);
       for (
-        const toolCall
-        of response.tool_calls
+        let toolCallIndex = 0;
+        toolCallIndex < response.tool_calls.length;
+        toolCallIndex += 1
       ) {
-        throwIfAborted(
-          signal,
-        );
+        const toolCall = response.tool_calls[toolCallIndex];
+        const toolCallId = toolCall.id;
 
-        const toolCallId =
-          toolCall.id;
+        if (!toolCallId) {
+          throw new Error(`Missing tool call ID for ${toolCall.name}.`);
+        }
 
-        if (
-          !toolCallId
-        ) {
-          throw new Error(
-            `Missing tool call ID for ${toolCall.name}.`,
-          );
+        if (signal?.aborted) {
+          const interruptedCalls = response.tool_calls.slice(toolCallIndex);
+          for (const interruptedCall of interruptedCalls) {
+            if (!interruptedCall.id) continue;
+            const interruptedResult = "Execution was interrupted before this tool call completed. Inspect the project state before repeating it; it may have produced partial side effects.";
+            toolMessages.push(new ToolMessage({
+              content: interruptedResult,
+              tool_call_id: interruptedCall.id,
+              name: interruptedCall.name,
+            }));
+            toolResultsSummary.push(`[Tool result: ${interruptedCall.name}]\n${interruptedResult}`);
+          }
+          break;
         }
 
         if (askUserCall && toolCall.name !== askUserTool.name) {
@@ -2510,28 +2578,34 @@ const callProjectAgentWithHistorySession =
           continue;
         }
 
-        const {
-          toolMessage,
-          summary,
-        } =
-          await executeProjectToolCall({
+        let execution: ProjectToolExecutionResult;
+        try {
+          execution = await executeProjectToolCall({
             toolExecutor,
-
-            toolName:
-              toolCall.name,
-
-            toolArgs:
-              (
-                toolCall.args ??
-                {}
-              ) as ToolArgs,
-
+            toolName: toolCall.name,
+            toolArgs: (toolCall.args ?? {}) as ToolArgs,
             toolCallId,
             stepNumber: currentStepNumber,
             signal,
             chatId: getChatIdFromConfig(runnableConfig),
             recorder: !suppressMemorySave ? graphRecorder : undefined,
           });
+        } catch (error: unknown) {
+          if (!isAbortError(error) && !signal?.aborted) throw error;
+          const interruptedCalls = response.tool_calls.slice(toolCallIndex);
+          for (const interruptedCall of interruptedCalls) {
+            if (!interruptedCall.id) continue;
+            const interruptedResult = "Execution was interrupted before this tool call completed. Inspect the project state before repeating it; it may have produced partial side effects.";
+            toolMessages.push(new ToolMessage({
+              content: interruptedResult,
+              tool_call_id: interruptedCall.id,
+              name: interruptedCall.name,
+            }));
+            toolResultsSummary.push(`[Tool result: ${interruptedCall.name}]\n${interruptedResult}`);
+          }
+          break;
+        }
+        const { toolMessage, summary } = execution;
 
         /*
          * Nudge the model away from repeating the same call forever:
@@ -2571,6 +2645,8 @@ const callProjectAgentWithHistorySession =
         response,
         ...toolMessages,
       ];
+      saveRunSnapshot(messagesToRun);
+      throwIfAborted(signal);
 
       const stepModelTrace = createAgentModelTrace(
         getChatIdFromConfig(runnableConfig),
@@ -2595,11 +2671,13 @@ const callProjectAgentWithHistorySession =
         () => toolResultsSummary,
       );
 
+      if (!response.tool_calls?.length) {
+        saveRunSnapshot([...messagesToRun, response]);
+      }
       stepModelTrace.finish({ hasToolCalls: Boolean(response.tool_calls?.length) });
       if (recordThisRun) {
         graphRecorder.recordModelCall({ hasToolCalls: Boolean(response.tool_calls?.length), text: getTextContent(response.content).slice(0, 2000) });
       }
-      throwIfAborted(signal);
       stepCount +=
         1;
     }
@@ -2657,6 +2735,7 @@ const callProjectAgentWithHistorySession =
         () => toolResultsSummary,
       );
 
+      saveRunSnapshot([...toolLimitMessages, response]);
       toolLimitTrace.finish({
         hasToolCalls: false,
       });

@@ -15,6 +15,7 @@
 // model and for plain-text consumers.
 
 import type { AgentToolActivity } from './toolActivity';
+import { isProjectAgentResumeSnapshot, type ProjectAgentResumeSnapshot } from '../../services/ai/projectAgentResume';
 
 export const CANCELLED_RUN_MARKER = 'MOCU_CANCELLED_RUN_V1';
 
@@ -34,6 +35,7 @@ export type CancelledRunData = {
   partialAnswer: string;
   tools: CancelledRunTool[];
   createdAt: string;
+  resumeSnapshot?: ProjectAgentResumeSnapshot;
 };
 
 /*
@@ -42,6 +44,7 @@ export type CancelledRunData = {
  * checkpoint only carries a compact overview of it.
  */
 const MAX_JSON_CHARS = 6_000;
+const MAX_RESUME_SNAPSHOT_CHARS = 1_500_000;
 const MAX_PARTIAL_ANSWER_CHARS = 4_000;
 const MAX_TOOL_INPUT_CHARS = 240;
 const MAX_TOOLS = 40;
@@ -129,10 +132,12 @@ export function buildCancelledRunMessage({
   userPrompt,
   partialAnswer,
   activities,
+  resumeSnapshot,
 }: {
   userPrompt: string;
   partialAnswer: string;
   activities: AgentToolActivity[];
+  resumeSnapshot?: ProjectAgentResumeSnapshot | null;
 }): string {
   let payload: CancelledRunData = {
     userPrompt: userPrompt.trim(),
@@ -142,11 +147,18 @@ export function buildCancelledRunMessage({
     ),
     tools: toCancelledRunTools(activities),
     createdAt: new Date().toISOString(),
+    ...(resumeSnapshot ? { resumeSnapshot } : {}),
   };
 
   let encoded = JSON.stringify(payload);
 
-  if (encoded.length > MAX_JSON_CHARS) {
+  if (payload.resumeSnapshot && encoded.length > MAX_RESUME_SNAPSHOT_CHARS) {
+    const { resumeSnapshot: _omitted, ...compactPayload } = payload;
+    payload = compactPayload;
+    encoded = JSON.stringify(payload);
+  }
+
+  if (!payload.resumeSnapshot && encoded.length > MAX_JSON_CHARS) {
     payload = {
       ...payload,
       partialAnswer: '',
@@ -224,6 +236,9 @@ export function parseCancelledRunMessage(
         typeof candidate.createdAt === 'string'
           ? candidate.createdAt
           : '',
+      ...(isProjectAgentResumeSnapshot(candidate.resumeSnapshot)
+        ? { resumeSnapshot: candidate.resumeSnapshot }
+        : {}),
     };
   } catch (error) {
     console.warn(
