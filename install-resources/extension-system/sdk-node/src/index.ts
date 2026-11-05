@@ -10,6 +10,7 @@ export { TypedFieldsApi } from "./extract-typed-fields.js";
 export { DecisionApi } from "./decision.js";
 export { EmbeddingApi } from "./embedding.js";
 export { SpeechApi } from "./speech.js";
+export { NotificationsApi } from "./notifications.js";
 export { AgentsApi } from "./agents.js";
 export type {
   ExtensionCommandHandler,
@@ -51,3 +52,4 @@ export type {
 } from "@mocu/extension-contracts";
 
 export type { ExtensionInteractionOptions } from "./ui.js";
+export type { DesktopNotificationParams } from "@mocu/extension-contracts";

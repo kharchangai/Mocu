@@ -41,6 +41,21 @@ await window.mocu.filesystem.writeText("summary.txt", text.trim()); // resolves 
 const selected = await window.mocu.selection.get(); // { text: string }
 ```
 
+### Desktop notifications
+
+Declare `"notifications.show"` in the extension manifest before using this API:
+
+```js
+await window.mocu.notifications.show({
+  title: "Download finished",
+  body: "Your file is ready.",
+  position: "top-right",
+  durationMs: 5000
+});
+```
+
+The host checks this permission on each request. `html`, `css`, and `javascript` run in an isolated notification iframe with no same-origin or network access; `icon` and `sound` use image/audio data URLs.
+
 ### Methods and return values
 
 - `mocu.request(method, params?, { timeoutMs? }?)` sends a generic host request and resolves to its `result`. Default timeout: 180,000 ms. Set `timeoutMs: 0` to wait without a timeout.

@@ -48,6 +48,7 @@ import {
   subscribeToMcpManager,
 } from '../../mcp/manager';
 import { filterAgents } from './agentMention';
+import { resolveSlashMentions } from './slashResourceResolver';
 import { SlashMentionText } from './SlashMentionText';
 import { ResourceToggleMenu } from './ResourceToggleMenu';
 import {
@@ -1610,15 +1611,40 @@ export function ChatInput({
       ...pinnedResources.skills,
       ...selectedSkills,
     ]);
+    /*
+     * Resolve explicit slash-resource references from the final message too,
+     * not just from composer menu clicks. This is intentionally done at send
+     * time so pasted text (and text composed outside the menu) activates the
+     * same installed resource as a selected mention.
+     */
+    const mentionedExtensions = resolveSlashMentions(
+      message,
+      'extension',
+      [...availableExtensions, ...selectedExtensions, ...pinnedResources.extensions],
+      (extension) => [extension.name, extension.id],
+    ).map((extension) => ({
+      id: extension.id,
+      name: extension.name,
+      path: extension.path,
+    }));
     const extensionsToSend = mergeExtensionsById([
       ...pinnedResources.extensions,
       ...selectedExtensions,
+      ...mentionedExtensions,
     ]);
     const mcpServersToSend = mergeMcpServersById([
       ...pinnedResources.mcpServers,
       ...selectedMcpServers,
     ]);
-    const agentToSend = selectedAgent ?? pinnedResources.agent;
+    const mentionedAgent = resolveSlashMentions(
+      message,
+      'agent',
+      [...availableAgents, ...(selectedAgent ? [selectedAgent] : []), ...(pinnedResources.agent ? [pinnedResources.agent] : [])],
+      (agent) => [agent.name, agent.id],
+    )[0];
+    const agentToSend = mentionedAgent
+      ? { id: mentionedAgent.id, name: mentionedAgent.name, path: mentionedAgent.path }
+      : selectedAgent ?? pinnedResources.agent;
 
     setSendError(null);
     closeCommandMenu();

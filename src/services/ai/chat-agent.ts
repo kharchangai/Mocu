@@ -100,6 +100,7 @@ import {
 import {
   desktopVisionTool,
 } from "./tools/desktop-vision-tool";
+import { desktopNotificationTool } from "../desktop-notifications";
 
 import {
   terminalExecutionTool,
@@ -747,6 +748,12 @@ const createToolExecutor = (
         config,
       );
     },
+  });
+
+  toolExecutor.registerTool({
+    name: desktopNotificationTool.name,
+    description: desktopNotificationTool.description,
+    execute: async (args) => desktopNotificationTool.invoke(args as never, config),
   });
 
   toolExecutor.registerTool({
@@ -1762,6 +1769,7 @@ export const callChatAgent =
       generateVideoTool,
       scheduleTool,
       desktopVisionTool,
+      desktopNotificationTool,
       terminalTool,
       perplexitySearchTool,
       summarizeTextTool,

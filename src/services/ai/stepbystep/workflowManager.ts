@@ -1,3 +1,4 @@
+import { desktopNotificationTool } from "../../desktop-notifications";
 import type { StructuredToolInterface } from "@langchain/core/tools";
 import { prepareAgentGraphTurn } from "../../../graphStructure/agentTurn";
 import type { RunnableConfig } from "@langchain/core/runnables";
@@ -112,6 +113,7 @@ async function buildMainAgentToolRuntime(
     perplexitySearchTool,
     summarizeTextTool,
     scheduleTool,
+    desktopNotificationTool,
     createAgentTool,
     ...agentManagementTools,
     readFileTool,

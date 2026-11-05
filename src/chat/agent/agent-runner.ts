@@ -46,6 +46,7 @@ import { extractTypedFieldsTool } from '../../services/ai/tools/extract-typed-fi
 import { findRelevantSkillsTool } from '../../services/ai/tools/find-relevant-skills-tool';
 import { AGENT_TOOL_CATALOG, type AgentToolName } from './agent-tool-catalog';
 import { desktopVisionTool } from '../../services/ai/tools/desktop-vision-tool';
+import { desktopNotificationTool } from '../../services/desktop-notifications';
 import { loadExtensionAgentTools } from '../../extensions/services/extension-agent-tools';
 import { resolveSelectedSkills } from '../components/skills/selected-skill-loader';
 import { scanInstalledExtensions } from '../../extensions/services/extension-scanner';
@@ -188,6 +189,7 @@ async function runAgentNode(
     ...(includeTool('load_skill') ? [skillLoaderTool] : []),
     ...(includeTool('find_relevant_skills') ? [findRelevantSkillsTool] : []),
     ...(includeTool('desktop_vision_action') ? [desktopVisionTool] : []),
+    ...(includeTool('desktop_notification') ? [desktopNotificationTool] : []),
     ...(includeTool('extract_entities') ? [extractEntitiesTool] : []),
     ...(includeTool('extract_typed_fields') ? [extractTypedFieldsTool] : []),
     ...(includeTool('schedule_action') ? [scheduleTool] : []),
@@ -255,6 +257,13 @@ async function runAgentNode(
       name: 'schedule_action',
       description: scheduleTool.description,
       execute: (args) => scheduleTool.invoke(args as ScheduleActionInput, runnableConfig),
+    });
+  }
+  if (includeTool('desktop_notification')) {
+    executor.registerTool({
+      name: desktopNotificationTool.name,
+      description: desktopNotificationTool.description,
+      execute: (args) => desktopNotificationTool.invoke(args as never, runnableConfig),
     });
   }
   if (includeTool('desktop_vision_action')) {

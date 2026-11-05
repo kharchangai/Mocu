@@ -9,6 +9,7 @@ import { LlmApi } from "./llm.js";
 import { SummarizeApi } from "./summarize.js";
 import { ExtractApi } from "./extract.js";
 import { SpeechApi } from "./speech.js";
+import { NotificationsApi } from "./notifications.js";
 import { ExtensionUiApi } from "./ui.js";
 import { JsonRpcProtocolClient } from "./protocol-client.js";
 
@@ -42,6 +43,8 @@ export class MocuExtension {
 
   /** Transcribe audio (STT) and synthesize speech (TTS) with Mocu's configured models. */
   public readonly speech: SpeechApi;
+  /** Show customizable desktop notifications. */
+  public readonly notifications: NotificationsApi;
 
   /** Discover and invoke the current user's saved agents. */
   public readonly agents: AgentsApi;
@@ -55,6 +58,7 @@ export class MocuExtension {
     this.decision = new DecisionApi(this.protocol);
     this.embedding = new EmbeddingApi(this.protocol);
     this.speech = new SpeechApi(this.protocol);
+    this.notifications = new NotificationsApi(this.protocol);
     this.agents = new AgentsApi(this.protocol);
 
     for (const [command, handler] of Object.entries(definition.commands ?? {})) {

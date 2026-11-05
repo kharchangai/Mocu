@@ -1,3 +1,4 @@
+import { desktopNotificationTool } from "../../desktop-notifications";
 import { AIMessage, type BaseMessage } from "@langchain/core/messages";
 import { prepareAgentGraphTurn } from "../../../graphStructure/agentTurn";
 import type { RunnableConfig } from "@langchain/core/runnables";
@@ -48,6 +49,7 @@ async function buildTaskTools(config: RunnableConfig, projectPath?: string): Pro
     perplexitySearchTool as FocusToolLike,
     summarizeTextTool as FocusToolLike,
     scheduleTool as FocusToolLike,
+    desktopNotificationTool as FocusToolLike,
     createAgentTool as FocusToolLike,
     ...(agentManagementTools as unknown as FocusToolLike[]),
     readFileTool as FocusToolLike,

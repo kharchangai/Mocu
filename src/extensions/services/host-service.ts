@@ -1,3 +1,4 @@
+import { showDesktopNotification, type DesktopNotificationInput } from "../../services/desktop-notifications";
 import { listen } from "@tauri-apps/api/event";
 
 import { generateSimpleAnswer } from "../../services/ai";
@@ -164,6 +165,11 @@ async function handleHostMessage(
 
   if (method === "mocu.tts.speak") {
     await handleTtsSpeak(extensionId, requestId, params);
+    return;
+  }
+
+  if (method === "mocu.notification.show") {
+    await handleDesktopNotification(extensionId, requestId, params);
     return;
   }
 
@@ -716,6 +722,30 @@ async function handleSttTranscribe(
         message: errorMessage,
         data: null,
       });
+    }
+  }
+}
+
+/** Show a desktop notification after checking the extension manifest capability. */
+async function handleDesktopNotification(
+  extensionId: string,
+  requestId: string | number | null,
+  params: Record<string, unknown>,
+): Promise<void> {
+  try {
+    const installed = await scanInstalledExtensions();
+    const extension = installed.find((item) => item.manifest.id === extensionId);
+    if (!extension) throw new Error(`Extension "${extensionId}" is not installed.`);
+    if (!(extension.manifest.permissions ?? []).includes("notifications.show")) {
+      throw new Error("This extension has not declared the 'notifications.show' permission.");
+    }
+    const payload = params as DesktopNotificationInput;
+    const id = await showDesktopNotification(payload);
+    if (requestId !== null) await respondExtension(extensionId, requestId, { id }, null);
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    if (requestId !== null) {
+      await respondExtension(extensionId, requestId, null, { code: -32603, message, data: null });
     }
   }
 }

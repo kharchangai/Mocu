@@ -14,6 +14,7 @@ import { FirstRunSetup } from './components/FirstRunSetup';
 import { getSettingsStore } from './store';
 import ChatPage from './chat/ChatPage';
 import { TranscriptSpeaker } from './components/MocuTranscript';
+import { DesktopNotificationWindow } from './components/DesktopNotificationWindow';
 
 import {
   generateSpeech,
@@ -86,7 +87,8 @@ function App() {
    * the chat page, so there is no separate settings route anymore.
    */
   const isMocuWindow = routeHash === '#mocu';
-  const isChatWindow = !isMocuWindow;
+  const isNotificationWindow = routeHash === '#notification';
+  const isChatWindow = !isMocuWindow && !isNotificationWindow;
 
   const { resizeWindow } = useMocuWindowSize({
     width: MAIN_WINDOW_WIDTH,
@@ -759,6 +761,10 @@ function App() {
       setMocuState('idle');
     }
   };
+
+  if (isNotificationWindow) {
+    return <DesktopNotificationWindow />;
+  }
 
   if (isChatWindow) {
     if (firstRunComplete === null) {

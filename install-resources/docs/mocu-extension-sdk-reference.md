@@ -29,10 +29,10 @@ keywords:
 This reference documents only capabilities verified in the Mocu SDK and host implementation.
 
 - Node package: `@mocu/extension-sdk`
-  - Exports `createExtension`, `MocuExtension`, `LlmApi`, `SummarizeApi`, `DecisionApi`, `EmbeddingApi`, `AgentsApi`, `SpeechApi`, `ExtractApi`, `ExtensionUiApi`, and related types.
+  - Exports `createExtension`, `MocuExtension`, `LlmApi`, `SummarizeApi`, `DecisionApi`, `EmbeddingApi`, `AgentsApi`, `SpeechApi`, `NotificationsApi`, `ExtractApi`, `ExtensionUiApi`, and related types.
 - Python package: `mocu_extension_sdk`
-  - Exports `create_extension`, `MocuExtension`, and the corresponding API classes, including `SummarizeApi`, `SpeechApi`, and `ExtractApi`.
-- Each extension instance exposes `extension.llm`, `extension.summarize`, `extension.decision`, `extension.embedding`, `extension.agents`, `extension.speech`, and `extension.extract`.
+  - Exports `create_extension`, `MocuExtension`, and the corresponding API classes, including `SummarizeApi`, `SpeechApi`, `NotificationsApi`, and `ExtractApi`.
+- Each extension instance exposes `extension.llm`, `extension.summarize`, `extension.decision`, `extension.embedding`, `extension.agents`, `extension.speech`, `extension.notifications`, and `extension.extract`.
 - For each command invocation, the context exposes chat UI access as `context.mocu.ui` in Node or `context["mocu"]["ui"]` in Python.
 - Node and Python extensions can call `extension.summarize.text` to summarize source text with Mocu Settings’ separately configured Summarize model.
 - Node and Python extensions can call `extension.extract.entities` to extract typed entities with Mocu Settings’ separately configured Extract model.
@@ -367,3 +367,16 @@ The import examples in this reference show SDK package names; they do not guaran
 ## When to use this document
 
 Retrieve this reference when building or reviewing a Mocu extension that needs verified Node or Python SDK capabilities, including host LLM calls, embeddings, structured decisions, saved agents, chat interaction, speech transcription or synthesis, summarization with the separately configured Summarize model, or typed entity extraction with the separately configured Extract model. Use it to check API identifiers, return fields, manifest requirements, validation limits, host behavior, cancellation, or streaming progress; to verify public SDK availability and local vendoring requirements; or to locate shared global resource folders and distinguish global SDK source from Mocu-shipped and user-installed extensions.
+
+
+## Desktop notifications
+
+Declare `"notifications.show"` in an extension manifest's `permissions` to display customizable, always-on-top notifications when Mocu is minimized. The host checks this permission each time.
+
+**Node:** `await extension.notifications.show({ title, body, icon, html, css, javascript, sound, position, monitorIndex, x, y, width, height, durationMs })` returns `{ id }`.
+
+**Python:** `extension.notifications.show(title="...", body="...", position="top-right")` returns a dictionary containing `id`.
+
+**Extension App UI:** `await window.mocu.notifications.show({ title, body, ... })` has the same permission requirement.
+
+`position` accepts `top-left`, `top-center`, `top-right`, `center`, `bottom-left`, `bottom-center`, `bottom-right`, or `custom` (which requires physical desktop `x` and `y`). `monitorIndex` is zero-based and defaults to the primary display. `icon` must be an image data URL, and `sound` an audio data URL. Custom HTML/CSS/JavaScript is executed in a sandboxed notification iframe without same-origin access or network connections.

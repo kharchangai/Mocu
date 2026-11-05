@@ -135,6 +135,7 @@ pub fn run() {
         .plugin(tauri_plugin_sql::Builder::default().build())
         // Register the extension manager state
         .manage(ExtensionManager::default())
+        .manage(commands::notifications::DesktopNotificationState::default())
         .manage(ExtensionFileAccess::default())
         .manage(McpStdioHost::default())
         // Register all Tauri commands
@@ -143,6 +144,10 @@ pub fn run() {
             toggle_mocu,
             check_system_runtimes,
             commands::desktop::capture_desktop,
+            commands::notifications::show_desktop_notification,
+            commands::notifications::desktop_notification_take,
+            commands::notifications::desktop_notification_ready,
+            commands::notifications::close_desktop_notification,
             extension_host::extension_execute,
             extension_host::extension_open_log,
             extension_host::extension_list_apps,
@@ -281,9 +286,9 @@ pub fn run() {
                 }
 
                 /*
-                 * Closing the chat (main) window only hides it so the
-                 * tray icon keeps working: "Open Chat" can always
-                 * re-show it and "Quit" performs the real exit.
+                 * Closing the chat window exits Mocu instead of hiding it.
+                 * Hiding it here left the process and notification/tray
+                 * windows alive, making the app appear impossible to close.
                  */
                 tauri::RunEvent::WindowEvent {
                     label,
@@ -291,12 +296,8 @@ pub fn run() {
                     ..
                 } => {
                     if label == "main" {
-                        if let tauri::WindowEvent::CloseRequested { api, .. } = window_event {
-                            if let Some(window) = app_handle.get_webview_window("main") {
-                                let _ = window.hide();
-                            }
-
-                            api.prevent_close();
+                        if let tauri::WindowEvent::CloseRequested { .. } = window_event {
+                            app_handle.exit(0);
                         }
                     }
                 }

@@ -55,6 +55,11 @@ export const AGENT_TOOL_CATALOG = [
       "Find installed skills relevant to a user request by asking Mocu's Decision model to match the request against skill names and descriptions; returns matching names and descriptions.",
   },
   {
+    name: "desktop_notification",
+    description:
+      "Show customizable always-on-top desktop notifications with HTML/CSS/JavaScript, image, sound, monitor, and position controls.",
+  },
+  {
     name: "schedule_action",
     description:
       "Create, list, update, or delete reminders, schedules, and scheduled agent runs.",

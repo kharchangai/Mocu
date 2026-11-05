@@ -22,7 +22,12 @@
         {
             "id": "control_app",
             "title": "Control an application window",
-            "description": "Open, minimize, maximize, or gracefully close a Windows app. Example: {\"action\":\"open\",\"name\":\"Google Chrome\"}."
+            "description": "Open, minimize, maximize, focus/restore, or gracefully close a Windows app. Example: {\"action\":\"focus\",\"name\":\"Google Chrome\"}."
+        },
+        {
+            "id": "get_app_window_state",
+            "title": "Get application window state",
+            "description": "Report whether a matching app window is minimized, maximized, normal, currently foreground/focused, and on the primary monitor. Input: {\"name\":\"Google Chrome\"}. Returns monitor and work-area bounds for each matching window."
         },
         {
             "id": "screenshot_app",

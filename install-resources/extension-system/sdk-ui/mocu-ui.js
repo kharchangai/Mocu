@@ -114,6 +114,16 @@
     },
   });
 
+  mocu.notifications = Object.assign(mocu.notifications || {}, {
+    /** Show a desktop notification; the extension must declare notifications.show. */
+    show(options, requestOptions) {
+      if (!options || typeof options !== "object" || Array.isArray(options)) {
+        return Promise.reject(new TypeError("notifications.show requires an options object."));
+      }
+      return request("notifications.show", options, requestOptions);
+    },
+  });
+
   mocu.filesystem = Object.assign(mocu.filesystem || {}, {
     request(method, params, options) {
       const supported = [

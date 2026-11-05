@@ -112,6 +112,7 @@ import {
 import {
   desktopVisionTool,
 } from "./tools/desktop-vision-tool";
+import { desktopNotificationTool } from "../desktop-notifications";
 import {
   perplexitySearchTool,
 } from "./tools/perplexity_search_tool";
@@ -2236,7 +2237,7 @@ const callProjectAgentWithHistorySession =
     const projectAgentMemoryTools = createProjectAgentMemoryTools(normalizedProjectPath);
     const projectHistoryTools = createProjectHistoryTools(normalizedProjectPath);
     const availableTools = [
-      askUserTool, scheduleTool, desktopVisionTool, generateImageTool, generateVideoTool, terminalTool, perplexitySearchTool, summarizeTextTool,
+      askUserTool, scheduleTool, desktopVisionTool, desktopNotificationTool, generateImageTool, generateVideoTool, terminalTool, perplexitySearchTool, summarizeTextTool,
       textToSpeechTool, speechControlTool, skillLoaderTool, createAgentTool,
       ...agentManagementTools,
       readFileTool, writeFileTool, editFileTool, findFileTool,
@@ -2257,6 +2258,11 @@ const callProjectAgentWithHistorySession =
       name: askUserTool.name,
       description: askUserTool.description,
       execute: async (args, context) => askUserForClarification(args, context),
+    });
+    toolExecutor.registerTool({
+      name: desktopNotificationTool.name,
+      description: desktopNotificationTool.description,
+      execute: async (args) => desktopNotificationTool.invoke(args as never, runnableConfig),
     });
     toolExecutor.registerTool({
       name: graphDigestTool.name,
@@ -2334,7 +2340,7 @@ const callProjectAgentWithHistorySession =
     agentTools.registerAll(toolExecutor);
 
     const availableToolNames = [
-      generateImageTool.name, generateVideoTool.name, askUserTool.name, "terminal_executor", "schedule_action", "desktop_vision_action", "text_to_speech",
+      generateImageTool.name, generateVideoTool.name, askUserTool.name, "terminal_executor", "schedule_action", "desktop_vision_action", "desktop_notification", "text_to_speech",
       "speech_control", perplexitySearchTool.name, skillLoaderTool.name, createAgentTool.name,
       ...agentManagementTools.map((agentTool) => agentTool.name),
       readFileTool.name, writeFileTool.name, editFileTool.name, findFileTool.name,

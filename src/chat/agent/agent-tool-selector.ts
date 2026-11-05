@@ -37,6 +37,7 @@ const EXPLICIT_TOOL_MENTIONS: Record<AgentToolName, RegExp> = {
   find_relevant_skills: /\bskills?\b|مهارت/iu,
   schedule_action: /\b(?:schedule|reminder|calendar|alarm)\b|یادآور|زمان‌بندی/iu,
   desktop_vision_action: /\b(?:desktop\s+vision|screen(?:shot)?|monitor|visible\s+(?:screen|ui|interface)|screen\s+element|coordinate(?:s)?)\b|صفحه\s*نمایش|نمایشگر|اسکرین\s*شات|مختصات/iu,
+  desktop_notification: /\b(?:desktop|system)\s+notifications?\b|notification\s+(?:on|in)\s+(?:the\s+)?desktop|(?:\u0646\u0648\u062a\u06cc\u0641\u06cc\u06a9\u06cc\u0634\u0646|\u0627\u0639\u0644\u0627\u0646).{0,20}\u062f\u0633\u06a9\u062a\u0627\u067e|\u062f\u0633\u06a9\u062a\u0627\u067e.{0,20}(?:\u0646\u0648\u062a\u06cc\u0641\u06cc\u06a9\u06cc\u0634\u0646|\u0627\u0639\u0644\u0627\u0646)/iu,
 };
 
 function isExplicitlyRequested(name: AgentToolName, request: string): boolean {

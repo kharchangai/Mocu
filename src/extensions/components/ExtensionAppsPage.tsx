@@ -130,6 +130,20 @@ export function ExtensionAppsPage() {
         return;
       }
 
+      if (message.method === "notifications.show") {
+        if (!selectedApp.permissions.includes("notifications.show")) {
+          reply(message.requestId, undefined, "This app has not declared the 'notifications.show' permission.");
+          return;
+        }
+        try {
+          const id = await invoke<string>("show_desktop_notification", { input: params });
+          reply(message.requestId, { id });
+        } catch (reason) {
+          reply(message.requestId, undefined, reason instanceof Error ? reason.message : String(reason));
+        }
+        return;
+      }
+
       if (message.method === "filesystem.chooseFolder") {
         const canChooseFolder = FILESYSTEM_FOLDER_PERMISSIONS.some((permission) =>
           selectedApp.permissions.includes(permission)

@@ -10,6 +10,7 @@ from .summarize import SummarizeApi
 from .extract import ExtractApi
 from .extract_typed_fields import TypedFieldsApi
 from .speech import SpeechApi
+from .notifications import NotificationsApi
 from .ui import ExtensionUiApi
 __all__ = [
     "MocuExtension",
@@ -21,6 +22,7 @@ __all__ = [
     "TypedFieldsApi",
     "EmbeddingApi",
     "SpeechApi",
+    "NotificationsApi",
     "AgentsApi",
     "ExtensionUiApi",
 ]

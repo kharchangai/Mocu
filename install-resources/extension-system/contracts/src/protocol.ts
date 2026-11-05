@@ -1,3 +1,5 @@
+import { NOTIFICATION_SHOW_METHOD } from "./notifications.js";
+export type { DesktopNotificationParams } from "./notifications.js";
 import { LLM_GENERATE_METHOD } from "./llm.js";
 import { DECISION_ASK_METHOD } from "./decision.js";
 import { EMBEDDING_EMBED_METHOD } from "./embedding.js";
@@ -97,6 +99,7 @@ export const HOST_METHODS = {
   extractTypedFields: EXTRACT_TYPED_FIELDS_METHOD,
   extensionInteract: "mocu.extension.interact",
   extensionInteractionCancel: "mocu.extension.interaction.cancel",
+  notificationShow: NOTIFICATION_SHOW_METHOD,
 } as const;
 
 /** Buttons an extension may display while waiting for user input. */

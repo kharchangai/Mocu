@@ -59,6 +59,14 @@ File-tool rules the agent follows: read the target region before editing; never 
 |------|--------------|----------------|
 | `desktop_vision_action` | Captures the screen and analyzes it with the vision model. Use ONLY when the user asks to look at their screen, analyze the desktop, debug code on screen, or explain UI elements. | `userRequest` |
 
+## Desktop notifications
+
+| Tool | What it does | Key parameters |
+|------|--------------|----------------|
+| `desktop_notification` | Shows a separate always-on-top desktop notification even when Mocu is minimized. Supports plain text or sandboxed custom HTML/CSS/JavaScript, image/audio data URLs, display selection, standard corners/center or absolute physical desktop coordinates, size, and auto-dismiss. | `title`, `body`, `icon`, `html`, `css`, `javascript`, `sound`, `position`, `monitorIndex`, `x`, `y`, `width`, `height`, `durationMs` |
+
+The saved-agent tool catalog includes `desktop_notification`. Extensions must declare the `notifications.show` manifest permission and can use `extension.notifications.show({...})` (Node), `extension.notifications.show(...)` (Python), or `window.mocu.notifications.show({...})` in their app UI.
+
 ## Speech
 
 | Tool | What it does | Key parameters |

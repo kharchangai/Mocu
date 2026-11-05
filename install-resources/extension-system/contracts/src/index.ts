@@ -8,3 +8,4 @@ export * from "./agents.js";
 export * from "./summarize.js";
 export * from "./extract.js";
 export * from "./extract-typed-fields.js";
+export * from "./notifications.js";
