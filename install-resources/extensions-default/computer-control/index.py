@@ -7,6 +7,7 @@ import subprocess
 import sys
 import time
 import unicodedata
+import base64
 from ctypes import wintypes
 from typing import Any
 
@@ -32,6 +33,71 @@ from mocu_extension_sdk import create_extension
 extension = create_extension()
 
 _SCREEN_COORDINATE_AGENT_NAME = "Screen Coordinate Finder"
+
+_SCREEN_ICON_SVG = (
+    '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">'
+    '<rect x="7" y="10" width="50" height="36" rx="6" fill="#eef5ff" stroke="#4d83c3" stroke-width="4"/>'
+    '<path d="M24 54h16M32 46v8" fill="none" stroke="#4d83c3" stroke-width="4" stroke-linecap="round"/>'
+    '<circle cx="49" cy="18" r="7" fill="#4caa78" stroke="white" stroke-width="3"/>'
+    '</svg>'
+)
+_SCREEN_ICON_DATA_URL = "data:image/svg+xml;base64," + base64.b64encode(_SCREEN_ICON_SVG.encode("utf-8")).decode("ascii")
+_MOUSE_NOTICE_UNTIL = 0.0
+
+
+def _show_desktop_status(kind: str) -> None:
+    """Show a temporary status toast via Mocu's desktop notification API."""
+    global _MOUSE_NOTICE_UNTIL
+    if kind == "mouse" and time.monotonic() < _MOUSE_NOTICE_UNTIL:
+        return
+    if kind == "screenshot":
+        options = {
+            "icon": _SCREEN_ICON_DATA_URL,
+            "css": (
+                "html,body{width:100%;height:100%;margin:0;padding:0;overflow:hidden}"
+                ".notice{width:100%;height:100%;min-height:0;display:grid;place-items:center;"
+                "padding:0;border:0;border-radius:0;background:transparent;box-shadow:none}"
+                ".brand{display:grid;width:100%;height:100%;place-items:center;gap:0}"
+                ".icon{display:block;width:32px;height:32px;object-fit:contain;border-radius:0}"
+                ".brand>div{display:none}"
+            ),
+            "position": "bottom-center",
+            "width": 48,
+            "height": 48,
+            "durationMs": 10_000,
+        }
+    elif kind == "mouse":
+        options = {
+            "title": "Computer control is using the mouse",
+            "body": "Please avoid interacting with the application until the agent is done.",
+            "html": (
+                '<main style="display:flex;align-items:center;gap:13px;width:100%;height:100%;min-height:0;'
+                'overflow:hidden;padding:16px 18px;box-sizing:border-box;border:1px solid #e4e7ec;'
+                'border-radius:18px;background:linear-gradient(145deg,#fff,#f4f7fb);color:#202938;'
+                'font:13px Segoe UI,Arial,sans-serif;box-shadow:0 12px 34px #10182824">'
+                '<span style="display:grid;place-items:center;flex:0 0 42px;width:42px;height:42px;'
+                'border-radius:13px;background:#edf3fb;color:#4275ad">'
+                '<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" '
+                'fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">'
+                '<path d="M12 2v4m0 12v4M2 12h4m12 0h4"/><circle cx="12" cy="12" r="5"/>'
+                '<circle cx="12" cy="12" r="1" fill="currentColor" stroke="none"/></svg></span>'
+                '<span><strong style="display:block;margin-bottom:5px;font-size:14px">Agent is using the mouse</strong>'
+                '<span style="color:#667085;line-height:1.45">Please avoid interacting with the app while it works.</span></span></main>'
+            ),
+            "css": "html,body{width:100%;height:100%;margin:0;padding:0;overflow:hidden}",
+            "position": "bottom-center",
+            "width": 360,
+            "height": 120,
+            "durationMs": 5_000,
+        }
+    else:
+        return
+    try:
+        extension.notifications.show(**options)
+        if kind == "mouse":
+            _MOUSE_NOTICE_UNTIL = time.monotonic() + 3.5
+    except Exception as error:
+        sys.stderr.write(f"[Computer Control] Could not show desktop notice: {error}\n")
 
 
 def _find_screen_coordinate_agent() -> dict[str, str]:
@@ -331,12 +397,14 @@ def _resolve_virtual_key(key:Any)->int:
 
 @extension.command("desktop_input")
 def desktop_input(input:Any,context:dict[str,Any],config:dict[str,Any])->dict[str,Any]:
-    """Move/click/scroll the desktop mouse or send keyboard input on Windows."""
+    """Control desktop mouse/keyboard. Scroll: vertical positive delta=up, negative=down; use -120..-1200 over page content and repeat with screenshot checks to reach bottom. Coordinates are optional as a pair; otherwise current pointer is used."""
     if not isinstance(input,dict):raise ValueError("Provide an object with an action and relevant mouse or keyboard fields.")
     action=input.get("action") or input.get("operation")
     if not isinstance(action,str) or action.strip().casefold() not in {"move","click","scroll","press_key","hotkey","type_text"}:raise ValueError("Action must be move, click, scroll, press_key, hotkey, or type_text.")
     action=action.strip().casefold()
     if sys.platform!="win32":return {"supported":False,"success":False,"action":action,"message":"Desktop mouse and keyboard input is supported on Windows only."}
+    if action in {"move", "click", "scroll"}:
+        _show_desktop_status("mouse")
     if action=="move":
         pos=_move_pointer_smoothly(input.get("x"),input.get("y"));return {"supported":True,"success":True,"action":action,"position":{"x":pos[0],"y":pos[1]},"message":f"Moved pointer to physical pixels ({pos[0]}, {pos[1]})."}
     if action=="click":
@@ -580,6 +648,95 @@ def control_app(input:Any,context:dict[str,Any],config:dict[str,Any])->dict[str,
         message=f"Requested graceful close for {target['title']!r}."
     return{"supported":True,"action":action,"query":app,"success":True,"selectedWindow":{"processName":target["processName"],"pid":target["pid"],"title":target["title"]},"message":message}
 
+@extension.command("get_app_window_state")
+def get_app_window_state(input: Any, context: dict[str, Any], config: dict[str, Any]) -> dict[str, Any]:
+    """Report state, foreground status, and monitor/work-area bounds for matching app windows."""
+    if isinstance(input, str):
+        app = input
+    elif isinstance(input, dict):
+        app = input.get("name") or input.get("program") or input.get("app")
+    else:
+        app = None
+    if not isinstance(app, str) or not app.strip():
+        raise ValueError("Provide an application name.")
+    app = app.strip()
+    if sys.platform != "win32":
+        return {"supported": False, "query": app, "success": False,
+                "message": "Window-state inspection is supported on Windows only."}
+
+    query = _normalize(app)
+    if not query:
+        raise ValueError("Application name must contain searchable characters.")
+    targets = _find_matching_window_targets(query)
+    if not targets:
+        return {"supported": True, "query": app, "success": False, "matches": [],
+                "message": f"No visible application window matching {app!r} was found."}
+
+    class RECT(ctypes.Structure):
+        _fields_ = [("left", wintypes.LONG), ("top", wintypes.LONG),
+                    ("right", wintypes.LONG), ("bottom", wintypes.LONG)]
+
+    class MONITORINFO(ctypes.Structure):
+        _fields_ = [("cbSize", wintypes.DWORD), ("rcMonitor", RECT),
+                    ("rcWork", RECT), ("dwFlags", wintypes.DWORD)]
+
+    user = ctypes.WinDLL("user32", use_last_error=True)
+    user.IsWindow.argtypes = [wintypes.HWND]
+    user.IsWindow.restype = wintypes.BOOL
+    user.IsIconic.argtypes = [wintypes.HWND]
+    user.IsIconic.restype = wintypes.BOOL
+    user.IsZoomed.argtypes = [wintypes.HWND]
+    user.IsZoomed.restype = wintypes.BOOL
+    user.GetForegroundWindow.argtypes = []
+    user.GetForegroundWindow.restype = wintypes.HWND
+    user.MonitorFromWindow.argtypes = [wintypes.HWND, wintypes.DWORD]
+    user.MonitorFromWindow.restype = wintypes.HANDLE
+    user.GetMonitorInfoW.argtypes = [wintypes.HANDLE, ctypes.POINTER(MONITORINFO)]
+    user.GetMonitorInfoW.restype = wintypes.BOOL
+
+    dpi = _set_physical_pixel_dpi_context(user)
+    try:
+        foreground = user.GetForegroundWindow()
+        matches = []
+        for target in targets:
+            hwnd = wintypes.HWND(target["hwnd"])
+            if not user.IsWindow(hwnd):
+                continue
+            is_minimized = bool(user.IsIconic(hwnd))
+            is_maximized = bool(user.IsZoomed(hwnd))
+            state = "minimized" if is_minimized else "maximized" if is_maximized else "normal"
+            monitor = user.MonitorFromWindow(hwnd, 2)  # MONITOR_DEFAULTTONEAREST
+            if not monitor:
+                raise ctypes.WinError(ctypes.get_last_error())
+            info = MONITORINFO()
+            info.cbSize = ctypes.sizeof(MONITORINFO)
+            if not user.GetMonitorInfoW(monitor, ctypes.byref(info)):
+                raise ctypes.WinError(ctypes.get_last_error())
+            is_foreground = int(hwnd or 0) == int(foreground or 0)
+
+            def bounds(rect: RECT) -> dict[str, int]:
+                return {"left": rect.left, "top": rect.top,
+                        "right": rect.right, "bottom": rect.bottom,
+                        "width": rect.right - rect.left, "height": rect.bottom - rect.top}
+
+            matches.append({
+                "processName": target["processName"], "pid": target["pid"],
+                "hwnd": target["hwnd"], "title": target["title"],
+                "state": state, "isMinimized": is_minimized, "isMaximized": is_maximized,
+                "isForeground": is_foreground, "isFocused": is_foreground,
+                "isOnPrimaryMonitor": bool(info.dwFlags & 1),
+                "monitorBounds": bounds(info.rcMonitor), "workAreaBounds": bounds(info.rcWork),
+            })
+    finally:
+        if dpi:
+            setter, previous = dpi
+            if not setter(previous):
+                raise ctypes.WinError(ctypes.get_last_error())
+
+    return {"supported": True, "query": app, "success": bool(matches), "matches": matches,
+            "message": f"Inspected {len(matches)} matching application window(s)."}
+
+
 @extension.command("screenshot_app")
 def screenshot_app(input:Any,context:dict[str,Any],config:dict[str,Any])->dict[str,Any]:
     """Capture a selected application window (not the desktop) without minimizing it."""
@@ -594,6 +751,7 @@ def screenshot_app(input:Any,context:dict[str,Any],config:dict[str,Any])->dict[s
     targets=_find_matching_window_targets(query)
     if not targets:return{"supported":True,"query":app,"success":False,"matches":[],"message":f"No visible application window matching {app!r} was found."}
     target=targets[0];destination=_screenshot_path(path);user=ctypes.WinDLL("user32",use_last_error=True);hwnd=wintypes.HWND(target["hwnd"])
+    _show_desktop_status("screenshot")
     user.IsIconic.argtypes=[wintypes.HWND];user.IsIconic.restype=wintypes.BOOL;user.ShowWindowAsync.argtypes=[wintypes.HWND,ctypes.c_int];was_minimized=bool(user.IsIconic(hwnd))
     if was_minimized:
         user.ShowWindowAsync(hwnd,9);deadline=time.monotonic()+3

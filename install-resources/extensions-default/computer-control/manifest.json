@@ -6,7 +6,8 @@
     "runtime": "python",
     "entry": "index.py",
     "permissions": [
-        "agents.invoke"
+        "agents.invoke",
+        "notifications.show"
     ],
     "commands": [
         {
@@ -32,12 +33,12 @@
         {
             "id": "screenshot_app",
             "title": "Capture an application window screenshot",
-            "description": "Capture only the named app window as PNG and save it. It does not provide reliable desktop coordinates. Use find_screen_coordinates to locate screen elements via the full-monitor vision agent, not this window screenshot."
+            "description": "Capture only the named app window as PNG and save it. It does not provide reliable desktop coordinates. Use find_screen_coordinates to locate screen elements via the full-monitor vision agent, not this window screenshot. Uses a small screen-icon desktop notification when capture begins; it auto-dismisses after 10 seconds."
         },
         {
             "id": "desktop_input",
             "title": "Control desktop mouse and keyboard",
-            "description": "Move/click/scroll the Windows desktop mouse or send keyboard input. Coordinates x/y must be physical virtual-desktop screen pixels (including negative monitor origins); use the exact coordinate origin and dimensions from the full-monitor screenshot metadata. Supports move, click, scroll, press_key, hotkey, and type_text. The extension explicitly reads and writes Mocu JSON-RPC streams as UTF-8, so type_text receives exact Unicode input regardless of the Windows system code page. It sends text as ordered UTF-16 Unicode keyboard events, independent of the active keyboard layout."
+            "description": "Move/click/scroll the Windows desktop mouse or send keyboard input. Coordinates x/y are physical virtual-desktop pixels (including negative monitor origins); use the exact origin and dimensions from the full-monitor screenshot metadata. For scroll, use {\"action\":\"scroll\",\"direction\":\"vertical\",\"delta\":-120,\"x\":500,\"y\":300} to scroll down at a point in the scrollable page content; use positive delta (e.g. 120) to scroll up. delta is a non-zero integer from -1200 to 1200 in Windows wheel units; default is +120 (up). x and y must be provided together; if omitted, scrolling occurs at the current pointer position. To reach the bottom of a long page, scroll down in repeated calls, checking a fresh screenshot after each call and stopping when the bottom is visible; success means the wheel input was sent, not that the page reached its bottom. Supports move, click, scroll, press_key, hotkey, and type_text. The extension explicitly reads and writes Mocu JSON-RPC streams as UTF-8, so type_text receives exact Unicode input regardless of the Windows system code page. It sends text as ordered UTF-16 Unicode keyboard events, independent of the active keyboard layout. Before mouse move/click/scroll, shows a styled desktop notice asking the user not to interact; it auto-dismisses after 5 seconds."
         }
     ]
 }

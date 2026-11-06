@@ -9,6 +9,7 @@ from .llm import LlmApi
 from .summarize import SummarizeApi
 from .extract import ExtractApi
 from .speech import SpeechApi
+from .notifications import NotificationsApi
 from .protocol import JsonRpcProtocol
 from .types import CommandHandler
 from .ui import ExtensionUiApi
@@ -33,6 +34,7 @@ class MocuExtension:
         self.summarize = SummarizeApi(self._protocol)
         self.extract = ExtractApi(self._protocol)
         self.speech = SpeechApi(self._protocol)
+        self.notifications = NotificationsApi(self._protocol)
         self.agents = AgentsApi(self._protocol)
         self._protocol.register_handler(
             "extension.execute",

@@ -9,6 +9,7 @@ from .llm import LlmApi
 from .summarize import SummarizeApi
 from .extract import ExtractApi
 from .speech import SpeechApi
+from .notifications import NotificationsApi
 from .ui import ExtensionUiApi
 __all__ = [
     "MocuExtension",
@@ -19,6 +20,7 @@ __all__ = [
     "ExtractApi",
     "EmbeddingApi",
     "SpeechApi",
+    "NotificationsApi",
     "AgentsApi",
     "ExtensionUiApi",
 ]
