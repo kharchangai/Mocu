@@ -207,8 +207,11 @@ describe('project agent post-response memory diagnostics', () => {
     });
 
     const modelMessages = mocks.stream.mock.calls[0][0].messages as BaseMessage[];
-    expect(modelMessages.slice(0, savedMessages.length).map((message) => message.toDict()))
-      .toEqual(savedMessages.map((message) => message.toDict()));
+    expect(modelMessages[0]?.toDict()).toEqual(savedMessages[0]?.toDict());
+    expect(modelMessages[1]?.getType()).toBe('system');
+    expect(String(modelMessages[1]?.content)).toContain('CANCELLED PROJECT AGENT RUN RESUMPTION');
+    expect(modelMessages.slice(2, savedMessages.length + 1).map((message) => message.toDict()))
+      .toEqual(savedMessages.slice(1).map((message) => message.toDict()));
     expect(modelMessages[modelMessages.length - 1]?.content).toBe('Also add a regression test.');
     expect(mocks.llm.mock.calls[0][0]).toBe('saved-model');
     expect(mocks.llm.mock.calls[0][1]).toEqual({
@@ -229,8 +232,11 @@ describe('project agent post-response memory diagnostics', () => {
       },
     });
     const exactResumeMessages = mocks.stream.mock.calls[0][0].messages as BaseMessage[];
-    expect(exactResumeMessages.map((message) => message.toDict()))
-      .toEqual(savedMessages.map((message) => message.toDict()));
+    expect(exactResumeMessages[0]?.toDict()).toEqual(savedMessages[0]?.toDict());
+    expect(exactResumeMessages[1]?.getType()).toBe('system');
+    expect(String(exactResumeMessages[1]?.content)).toContain('CANCELLED PROJECT AGENT RUN RESUMPTION');
+    expect(exactResumeMessages.slice(2).map((message) => message.toDict()))
+      .toEqual(savedMessages.slice(1).map((message) => message.toDict()));
   });
 });
 

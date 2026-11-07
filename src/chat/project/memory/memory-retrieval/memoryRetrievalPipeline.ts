@@ -1,8 +1,8 @@
 /**
  * Retrieval pipeline for project memory.
  *
- * 1. Receives up to 15 completed live turns and keeps the contiguous,
- *    recent topic chain with findRecentRelatedTurns (Decision model).
+ * 1. Receives turns extracted from at most 15 prior chat messages and keeps
+ *    the contiguous recent topic chain with findRecentRelatedTurns (Decision model).
  * 2. A Decision-model route choice decides whether the latest turn is
  *    complete, memory is needed, or an older live turn supplies the
  *    complete answer / a useful memory-search anchor.
@@ -25,6 +25,7 @@ import {
 import { runMemoryPipeline, type MemoryPipelineResult } from "./memoryPipeline";
 import { getLLMResponseText } from "../window/llmResponse";
 import { findRecentRelatedTurns } from "./recentRelatedTurns";
+import { CANCELLED_RUN_MARKER } from "../../../services/cancelledRun";
 import type { ConversationTurn } from "./continuityAnalyzer";
 
 /* -------------------------------------------------------------------------- */
@@ -40,6 +41,9 @@ import type { ConversationTurn } from "./continuityAnalyzer";
  */
 const PROJECT_STORAGE_DIRECTORY = ".mocu/storage";
 const PROJECT_DATABASE_FILE = "memory.db";
+
+/** Defensive cap if another caller supplies an unbounded list of live turns. */
+const MAX_PREVIOUS_CONVERSATION_TURNS = 15;
 
 /**
  * Location of the global (application-wide) memory database.
@@ -509,9 +513,22 @@ async function retrieveProjectMemoryInternal(
   const normalizedProjectPath = input.projectPath.trim();
   if (!normalizedUserMessage) throw new Error("The current user message cannot be empty.");
 
-  const chronologicalTurns: ConversationTurn[] = input.previousTurns?.length
+  const suppliedTurns: ConversationTurn[] = input.previousTurns?.length
     ? input.previousTurns
     : input.previousTurn ? [input.previousTurn] : [];
+  // A cancellation checkpoint is an execution boundary, not a completed
+  // assistant turn. Never expose its JSON/tool snapshot to memory selection,
+  // and do not join turns from before the boundary to turns after it.
+  let lastCancelledTurnIndex = -1;
+  suppliedTurns.forEach((turn, index) => {
+    if (turn.agentResponse.trim().startsWith(CANCELLED_RUN_MARKER)) {
+      lastCancelledTurnIndex = index;
+    }
+  });
+  const chronologicalTurns = (lastCancelledTurnIndex >= 0
+    ? suppliedTurns.slice(lastCancelledTurnIndex + 1)
+    : suppliedTurns)
+    .slice(-MAX_PREVIOUS_CONVERSATION_TURNS);
   const relatedTurns = await findRecentRelatedTurns(chronologicalTurns, { signal: input.signal });
   const routeDecision = await decideConversationMemoryRoute(normalizedUserMessage, relatedTurns, input.signal);
   const gateDecision = createGateDecision(routeDecision.route, routeDecision.reason);

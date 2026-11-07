@@ -56,6 +56,8 @@ import {
 } from '../../schedule/schedule-tool';
 import { loadMcpAgentTools } from '../../mcp/tool-adapter';
 import { findAvailableAgent, type AvailableAgent } from './agent-loader';
+import { createJavaScriptDemoTool } from '../../services/ai/tools/javascript-demo-tool';
+import { compactJavaScriptDemoToolCalls, getJavaScriptDemoActivityArgs, prepareJavaScriptDemoAnswer } from '../services/javascriptDemoRegistry';
 
 type ToolArgs = Record<string, unknown>;
 
@@ -174,6 +176,7 @@ async function runAgentNode(
   const childAgents = await createChildAgentTools(input, runnableConfig);
   const explicitlyConfiguredTools = input.agent.toolSelectionConfigured === true;
   const selectedBuiltInTools = new Set(input.agent.tools);
+  const scopedJavaScriptDemoTool = createJavaScriptDemoTool(normalizedProjectPath);
   const includeTool = (name: AgentToolName) =>
     !explicitlyConfiguredTools || selectedBuiltInTools.has(name);
   const selectedFilesystemTools = includeTool('filesystem') ? FILESYSTEM_TOOLS : [];
@@ -250,6 +253,13 @@ async function runAgentNode(
         args as { userRequest: string },
         runnableConfig,
       ),
+    });
+  }
+  if (includeTool('run_javascript_demo')) {
+    executor.registerTool({
+      name: scopedJavaScriptDemoTool.name,
+      description: scopedJavaScriptDemoTool.description,
+      execute: (args) => scopedJavaScriptDemoTool.invoke(args as never, runnableConfig),
     });
   }
   if (includeTool('schedule_action')) {
@@ -330,7 +340,7 @@ async function runAgentNode(
       dispatchAgentToolActivity({
         id: toolCallId,
         tool: toolCall.name,
-        args: (toolCall.args ?? {}) as ToolArgs,
+        args: toolCall.name === 'run_javascript_demo' ? getJavaScriptDemoActivityArgs((toolCall.args ?? {}) as ToolArgs) : (toolCall.args ?? {}) as ToolArgs,
         status: 'running',
         chatId: ownerChatId,
       });
@@ -356,7 +366,7 @@ async function runAgentNode(
       dispatchAgentToolActivity({
         id: toolCallId,
         tool: toolCall.name,
-        args: (toolCall.args ?? {}) as ToolArgs,
+        args: toolCall.name === 'run_javascript_demo' ? getJavaScriptDemoActivityArgs((toolCall.args ?? {}) as ToolArgs) : (toolCall.args ?? {}) as ToolArgs,
         result,
         status: toolFailed ? 'error' : 'done',
         chatId: ownerChatId,
@@ -369,7 +379,7 @@ async function runAgentNode(
       }));
     }
 
-    messages = [...messages, response, ...toolMessages];
+    messages = [...messages, compactJavaScriptDemoToolCalls(response, toolMessages), ...toolMessages];
     const stepModelTrace = createAgentModelTrace(getChatIdFromConfig(runnableConfig));
     response = await streamChatModelWithTrace({
       model: llmWithTools,
@@ -409,7 +419,18 @@ async function runAgentNode(
       },
     });
     finalTrace.finish({ hasToolCalls: false });
+
+    // Ensure the preview tag reaches MarkdownRenderer in the assistant answer.
+    const originalAnswer = getTextContent(response.content).trim();
+    const answerWithDemos = await prepareJavaScriptDemoAnswer(originalAnswer, toolResults, input.projectPath);
+    if (answerWithDemos !== originalAnswer) {
+      response = new AIMessage({ content: answerWithDemos });
+    }
   }
+
+  const finalText = getTextContent(response.content).trim();
+  const sanitizedText = await prepareJavaScriptDemoAnswer(finalText, toolResults, input.projectPath);
+  if (sanitizedText !== finalText) response = new AIMessage({ content: sanitizedText });
 
   throwIfAborted(signal);
   return response;
@@ -444,8 +465,9 @@ function buildAgentSystemPrompt(
     '',
     'AVAILABLE TOOLS',
     getConfiguredToolNames(agent).length > 0
-      ? `Only use the following built-in tools, which are enabled for this agent: ${getConfiguredToolNames(agent).join(', ')}.`
+      ? `Only use the following built-in tools, which are enabled for this agent: ${getConfiguredToolNames(agent).filter((name) => name !== 'run_javascript_demo').join(', ')}.`
       : 'No built-in tools were selected for this agent. Use only its configured child agents, selected extension tools, selected MCP tools, or skill-loading support when available.',
+    "INTERACTIVE JAVASCRIPT PREVIEWS: Create a preview only when the user explicitly requests an interactive result or it is genuinely useful; ordinary code for reading or copying belongs in a normal javascript fence. For each preview, put the complete runnable JavaScript source in the assistant response inside its own Markdown fenced code block with the exact language tag `mocu-js` (three backticks, `mocu-js`, source code, then three closing backticks). This `mocu-js` fence is the required handoff format: Mocu intercepts its source, saves it as a persistent JSON file, and replaces the source with an opaque `mocu-interactive-js:<id>` reference before the answer is displayed or stored. Project chats save under the active project `.mocu/interactive-js-demos`; ordinary chats save in the global app-data `interactive-js-demos` folder; if project saving fails, Mocu falls back to global app data. The user should see the rendered preview/reference, never the JavaScript source. Do not create or write the file yourself, do not call a tool to create a new preview, and do not put source outside the `mocu-js` block. The block body must contain only runnable JavaScript - not prose, filenames, paths, JSON wrappers, or references. Never manually invent, edit, or output a `mocu-interactive-js:` reference. Put each independent example in a separate `mocu-js` block. Each preview must fit exactly 360px high with no internal vertical scrolling, using warm-neutral Mocu colors (#ffffff/#f7f7f5 surfaces, #30302e text, #73736f secondary, #e7e7e3 borders, restrained #4d645d green). The isolated sandbox provides an element named `root`; render the complete interface inside it. Network requests are unavailable.",
     agent.agents.length > 0 && childAgentsPrompt
       ? `CONFIGURED CHILD AGENTS: ${agent.agents.join(', ')}`
       : '',

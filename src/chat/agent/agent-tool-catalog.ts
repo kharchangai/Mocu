@@ -5,6 +5,11 @@
  */
 export const AGENT_TOOL_CATALOG = [
   {
+    name: "run_javascript_demo",
+    description:
+      "Legacy preview tool retained only for resuming old saved calls. For new previews, write complete source in a mocu-js response fence; Mocu persists it automatically and replaces it with a reference before display. Do not use this tool to create a preview.",
+  },
+  {
     name: "terminal_executor",
     description:
       "Run terminal, shell, or command-line commands to inspect, build, test, or operate on the project and files.",

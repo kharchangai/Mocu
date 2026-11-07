@@ -159,14 +159,16 @@ const MarkdownChunk = memo(function MarkdownChunk({
   generatedImages,
   generatedAudio,
   generatedVideos,
+  projectPath,
 }: {
   text: string;
   generatedImages: GeneratedChatImage[];
   generatedAudio: GeneratedChatAudio[];
   generatedVideos: GeneratedChatVideo[];
+  projectPath: string;
 }) {
   return (
-    <MarkdownRenderer content={text} direction="auto" generatedImages={generatedImages} generatedAudio={generatedAudio} generatedVideos={generatedVideos} />
+    <MarkdownRenderer content={text} direction="auto" generatedImages={generatedImages} generatedAudio={generatedAudio} generatedVideos={generatedVideos} projectPath={projectPath} />
   );
 });
 
@@ -180,12 +182,14 @@ const CodeChunk = memo(function CodeChunk({
   generatedImages,
   generatedAudio,
   generatedVideos,
+  projectPath,
 }: {
   language: string;
   body: string;
   generatedImages: GeneratedChatImage[];
   generatedAudio: GeneratedChatAudio[];
   generatedVideos: GeneratedChatVideo[];
+  projectPath: string;
 }) {
   return (
     <MarkdownRenderer
@@ -194,6 +198,7 @@ const CodeChunk = memo(function CodeChunk({
       generatedImages={generatedImages}
       generatedAudio={generatedAudio}
       generatedVideos={generatedVideos}
+      projectPath={projectPath}
     />
   );
 });
@@ -203,6 +208,7 @@ export type StreamingMarkdownProps = {
   generatedImages?: GeneratedChatImage[];
   generatedAudio?: GeneratedChatAudio[];
   generatedVideos?: GeneratedChatVideo[];
+  projectPath?: string;
 };
 
 export const StreamingMarkdown = memo(
@@ -211,6 +217,7 @@ export const StreamingMarkdown = memo(
     generatedImages = [],
     generatedAudio = [],
     generatedVideos = [],
+    projectPath = "",
   }: StreamingMarkdownProps) {
     if (!content || !content.trim()) {
       return null;
@@ -229,6 +236,7 @@ export const StreamingMarkdown = memo(
               generatedImages={generatedImages}
               generatedAudio={generatedAudio}
               generatedVideos={generatedVideos}
+              projectPath={projectPath}
             />
           ) : (
             <MarkdownChunk
@@ -237,6 +245,7 @@ export const StreamingMarkdown = memo(
               generatedImages={generatedImages}
               generatedAudio={generatedAudio}
               generatedVideos={generatedVideos}
+              projectPath={projectPath}
             />
           ),
         )}

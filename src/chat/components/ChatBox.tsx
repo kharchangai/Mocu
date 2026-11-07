@@ -1654,6 +1654,7 @@ export function ChatBox({
            * parallel chats each see only their own tool boxes.
            */
           [CHAT_ID_CONFIG_KEY]: requestChatId,
+          projectPath: effectiveProjectPath,
           /*
            * Skills selected with the /skill command are resolved inside
            * the agent into their SKILL.md system-prompt content.
@@ -2016,6 +2017,7 @@ export function ChatBox({
         configurable: {
           thread_id: chatId,
           [CHAT_ID_CONFIG_KEY]: chatId,
+          projectPath: effectiveProjectPath,
           selectedSkills: chatResourceSelection.skills.map((skill) => skill.name),
           selectedExtensions: chatResourceSelection.extensions.map((extension) => extension.id),
           selectedMcpServers: chatResourceSelection.mcpServers.map((server) => server.id),
@@ -2704,7 +2706,7 @@ export function ChatBox({
                           <ImageGenerationProgress active={toolActivity.pendingActivities.some((activity) => activity.tool === 'generate_image' && activity.status === 'running')} />
                           <VideoGenerationProgress active={toolActivity.pendingActivities.some((activity) => activity.tool === 'generate_video' && activity.status === 'running')} />
                           {toolActivity.liveAnswer ? (
-                            <AssistantMessage content={toolActivity.liveAnswer} streaming generatedImages={generatedImages} generatedAudio={generatedAudio} generatedVideos={generatedVideos} />
+                            <AssistantMessage content={toolActivity.liveAnswer} streaming generatedImages={generatedImages} generatedAudio={generatedAudio} generatedVideos={generatedVideos} projectPath={projectPath ?? ""} />
                           ) : (
                             <ChatStatusBubble agentName={agentName} isLoading />
                           )}
@@ -2725,6 +2727,7 @@ export function ChatBox({
                         <>
                           <AssistantMessage
                             content={message.content}
+                            projectPath={projectPath ?? ""}
                             generatedImages={message.generatedImages}
                             generatedAudio={message.generatedAudio}
                             generatedVideos={message.generatedVideos}

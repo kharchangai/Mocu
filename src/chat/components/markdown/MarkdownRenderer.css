@@ -649,6 +649,76 @@
   background: #fafaf8;
 }
 
+/* Mathematical notation (KaTeX) */
+
+.mocu-markdown .katex {
+  font-size: 1.05em;
+  direction: ltr;
+  unicode-bidi: isolate;
+}
+
+.mocu-markdown .katex-display {
+  max-width: 100%;
+  margin: 16px 0;
+  overflow-x: auto;
+  overflow-y: hidden;
+  padding: 2px 0 6px;
+  text-align: center;
+  scrollbar-width: thin;
+}
+
+.mocu-markdown .katex-display > .katex {
+  direction: ltr;
+  text-align: left;
+}
+
+.mocu-markdown__javascript-demo {
+  display: block;
+  overflow: hidden;
+  margin: 14px 0;
+  border: 1px solid var(--md-border);
+  border-radius: 10px;
+  background: var(--md-code-bg, #fafaf8);
+}
+
+.mocu-markdown__javascript-demo-header {
+  display: block;
+  padding: 8px 12px;
+  border-bottom: 1px solid var(--md-border);
+  color: var(--md-heading);
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.mocu-markdown__javascript-demo iframe {
+  display: block;
+  width: 100%;
+  border: 0;
+  background: #fff;
+}
+
+.mocu-markdown__javascript-demo-unavailable {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 8px;
+  margin: 12px 0;
+  padding: 12px;
+  border: 1px solid var(--md-border);
+  border-radius: 8px;
+  color: var(--md-muted, #666);
+}
+
+.mocu-markdown__javascript-demo-unavailable button {
+  padding: 5px 9px;
+  border: 1px solid var(--md-border);
+  border-radius: 6px;
+  background: var(--md-code-bg, #fafaf8);
+  color: var(--md-heading);
+  font: inherit;
+  cursor: pointer;
+}
+
 /* Horizontal rule */
 
 .mocu-markdown hr {

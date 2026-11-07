@@ -112,6 +112,40 @@ describe("agent-tool-selector", () => {
       "find_relevant_skills",
     ]);
   });
+  it("explicitly selects the interactive JavaScript preview tool for requested demos", async () => {
+    getJevDecision.mockResolvedValue({
+      answers: Object.fromEntries(AGENT_TOOL_CATALOG.map(({ name }) => [name, { noul: 0.01 }])),
+    });
+
+    const selected = await selectAgentTools(
+      "Create an agent that explains the slope with an interactive JavaScript demo and runs it inline.",
+    );
+
+    expect(selected.map(({ name }) => name)).toContain("run_javascript_demo");
+  });
+
+  it("does not infer interactive execution from a plain code example request", async () => {
+    getJevDecision.mockResolvedValue({
+      answers: Object.fromEntries(AGENT_TOOL_CATALOG.map(({ name }) => [name, { noul: 0.01 }])),
+    });
+
+    const selected = await selectAgentTools(
+      "Create an agent that explains slope and provides a JavaScript code example without running it.",
+    );
+
+    expect(selected.map(({ name }) => name)).not.toContain("run_javascript_demo");
+  });
+
+  it("recognizes Persian interactive JavaScript requests and code-only constraints", async () => {
+    getJevDecision.mockResolvedValue({
+      answers: Object.fromEntries(AGENT_TOOL_CATALOG.map(({ name }) => [name, { noul: 0.01 }])),
+    });
+    const interactive = await selectAgentTools("\u06cc\u06a9 \u0627\u06cc\u062c\u0646\u062a \u06a9\u0647 \u06a9\u062f \u062c\u0627\u0648\u0627\u0627\u0633\u06a9\u0631\u06cc\u067e\u062a \u062a\u0639\u0627\u0645\u0644\u06cc \u0627\u062c\u0631\u0627 \u06a9\u0646\u062f");
+    const codeOnly = await selectAgentTools("\u06cc\u06a9 \u0627\u06cc\u062c\u0646\u062a \u06a9\u0647 \u06a9\u062f \u062c\u0627\u0648\u0627\u0627\u0633\u06a9\u0631\u06cc\u067e\u062a \u0628\u062f\u0647 \u0648\u0644\u06cc \u0628\u062f\u0648\u0646 \u0627\u062c\u0631\u0627");
+    expect(interactive.map(({ name }) => name)).toContain("run_javascript_demo");
+    expect(codeOnly.map(({ name }) => name)).not.toContain("run_javascript_demo");
+  });
+
   it("selects full-monitor vision for a screen-coordinate agent even if Jev scores it low", async () => {
     getJevDecision.mockResolvedValue({
       answers: Object.fromEntries(AGENT_TOOL_CATALOG.map(({ name }) => [name, { noul: 0.01 }])),

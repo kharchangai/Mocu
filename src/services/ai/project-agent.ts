@@ -22,6 +22,8 @@ import {
 } from "./agent/abort";
 import { assertImageModelSupport, buildHumanMessageFromRequest, getImageInputReferences, getVideoFrameImages, getImageRequestText, hasImageInput } from './agent/image-content';
 import { isFileToolError } from "./agent/file-tool-recovery";
+import { createJavaScriptDemoTool } from "./tools/javascript-demo-tool";
+import { compactJavaScriptDemoToolCalls, getJavaScriptDemoActivityArgs, persistJavaScriptDemoToolCalls, persistMocuJsBlocks, prepareJavaScriptDemoAnswer, hideStreamingMocuJsSource } from "../../chat/services/javascriptDemoRegistry";
 import {
   dispatchAgentActivity,
   getTextContent,
@@ -32,6 +34,7 @@ import {
   dispatchAgentToolActivity,
   getChatIdFromConfig,
 } from "../../chat/services/toolActivity";
+import { CANCELLED_RUN_MARKER } from "../../chat/services/cancelledRun";
 
 import {
   createAgentModelTrace,
@@ -235,6 +238,15 @@ const MAX_IDENTICAL_TOOL_ROUNDS = 8;
 const MAX_LLM_RETRIES = 3;
 const LLM_RETRY_DELAY_MS = 500;
 const MAX_PARTIAL_PROGRESS_CHARS = 20_000;
+const MAX_PREVIOUS_CONVERSATION_MESSAGES = 15;
+const CANCELLED_RUN_RESUME_GUIDANCE_MARKER = "CANCELLED PROJECT AGENT RUN RESUMPTION";
+
+const CANCELLED_RUN_RESUME_GUIDANCE = [
+  CANCELLED_RUN_RESUME_GUIDANCE_MARKER,
+  "The preceding model conversation and tool results are a checkpoint from an interrupted run, not a final answer to the latest user message.",
+  "Continue from the saved state. Treat the latest user message as authoritative when it clarifies or changes earlier requirements; do not report an earlier tool result as if it completed the latest request.",
+  "Use prior tool results as evidence of what actually completed. Do not repeat verified completed side effects; inspect current state before retrying an interrupted or ambiguous side effect. Carry out any still-needed work, and claim completion only when the available tool results confirm it.",
+].join("\n");
 
 export const PROJECT_AGENT_PARTIAL_PROGRESS_MARKER =
   "Completed work before the model error:";
@@ -467,6 +479,13 @@ const getPreviousConversationTurns = (
 
     if (message.getType() === "ai" && pendingUserMessage) {
       const response = getTextContent(message.content).trim();
+      if (response.startsWith(CANCELLED_RUN_MARKER)) {
+        // Cancellation checkpoints contain serialized execution/tool state,
+        // not a completed assistant answer. Do not pass them to memory routing.
+        pendingAgentResponse = "";
+        pendingAgentTimestamp = undefined;
+        continue;
+      }
       if (response) {
         pendingAgentResponse = response;
         pendingAgentTimestamp = typeof message.additional_kwargs?.createdAt === "string"
@@ -704,6 +723,7 @@ const buildProjectAgentSystemPrompt = (
     "If clarification is needed, call ask_user with one concise question; use its tool result (the user's answer) to continue the task.",
     "When the user asks about something related to Mocu, use the document tools to check whether a relevant saved document exists. If one exists, read it and use its contents to answer the user.",
     "When tools are used, report important results, errors, and incomplete work accurately. Do not hide tool failures; distinguish a recovered failure from work that remains incomplete.",
+    "INTERACTIVE JAVASCRIPT PREVIEWS: Create a preview only when the user explicitly requests an interactive result or it is genuinely useful; ordinary code for reading or copying belongs in a normal javascript fence. For each preview, put the complete runnable JavaScript source in the assistant response inside its own Markdown fenced code block with the exact language tag `mocu-js` (three backticks, `mocu-js`, source code, then three closing backticks). This `mocu-js` fence is the required handoff format: Mocu intercepts its source, saves it as a persistent JSON file, and replaces the source with an opaque `mocu-interactive-js:<id>` reference before the answer is displayed or stored. Project chats save under the active project `.mocu/interactive-js-demos`; ordinary chats save in the global app-data `interactive-js-demos` folder; if project saving fails, Mocu falls back to global app data. The user should see the rendered preview/reference, never the JavaScript source. Do not create or write the file yourself, do not call a tool to create a new preview, and do not put source outside the `mocu-js` block. The block body must contain only runnable JavaScript - not prose, filenames, paths, JSON wrappers, or references. Never manually invent, edit, or output a `mocu-interactive-js:` reference. Put each independent example in a separate `mocu-js` block. Each preview must fit exactly 360px high with no internal vertical scrolling, using warm-neutral Mocu colors (#ffffff/#f7f7f5 surfaces, #30302e text, #73736f secondary, #e7e7e3 borders, restrained #4d645d green). The isolated sandbox provides an element named `root`; render the complete interface inside it. Network requests are unavailable.",
     // "- Finish the user's request completely in this run. There is no step limit: keep calling tools for as many steps as the job needs.",
     // "- Never stop after a few steps and promise to continue later. Read, write, edit, run commands, and verify results until the job is actually done.",
     // "- If a tool call fails or returns an error, fix the problem and keep going; do not abandon the task.",
@@ -1492,14 +1512,14 @@ const executeProjectToolCall = async ({
     dispatchAgentToolActivity({
       id: toolCallId,
       tool: toolName,
-      args: toolArgs,
+      args: toolName === "run_javascript_demo" ? getJavaScriptDemoActivityArgs(toolArgs) : toolArgs,
       status: "running",
       chatId,
     });
 
     let toolResult = "";
     let executionFailed = false;
-    recorder?.recordToolCall({ id: toolCallId, tool: toolName, args: toolArgs, status: "running" });
+    recorder?.recordToolCall({ id: toolCallId, tool: toolName, args: toolName === "run_javascript_demo" ? getJavaScriptDemoActivityArgs(toolArgs) : toolArgs, status: "running" });
 
     try {
       const rawToolResult = await toolExecutor.execute(
@@ -1514,7 +1534,7 @@ const executeProjectToolCall = async ({
         ).trim();
     } catch (error: unknown) {
       executionFailed = true;
-      recorder?.recordToolCall({ id: toolCallId, tool: toolName, args: toolArgs, result: error instanceof Error ? error.message : String(error), status: "error" });
+      recorder?.recordToolCall({ id: toolCallId, tool: toolName, args: toolName === "run_javascript_demo" ? getJavaScriptDemoActivityArgs(toolArgs) : toolArgs, result: error instanceof Error ? error.message : String(error), status: "error" });
       if (isAbortError(error) || signal?.aborted) throw error;
       console.error(`[Project Agent] Error executing ${toolName}:`, error);
       toolResult = CHAT_TOOL_FAILURE_RESULT;
@@ -1525,14 +1545,17 @@ const executeProjectToolCall = async ({
     const normalizedToolResult =
       toolResult ||
       CHAT_EMPTY_TOOL_RESULT;
+    const compactToolResult = toolName === "run_javascript_demo"
+      ? normalizedToolResult.replace(/mocu-interactive-js:[A-Za-z0-9-]+/g, (reference) => `\`\`\`mocu-js\n${reference}\n\`\`\``)
+      : normalizedToolResult;
 
     const reportedToolFailure = /^(?:SYSTEM_ERROR:|EXECUTION_FAILED(?:\s|$)|SECURITY_BLOCKED:)/m.test(normalizedToolResult);
     executionFailed ||= isFileToolError(normalizedToolResult) || reportedToolFailure;
     dispatchAgentToolActivity({
       id: toolCallId,
       tool: toolName,
-      args: toolArgs,
-      result: normalizedToolResult,
+      args: toolName === "run_javascript_demo" ? getJavaScriptDemoActivityArgs(toolArgs) : toolArgs,
+      result: compactToolResult,
       status:
         normalizedToolResult ===
         CHAT_TOOL_FAILURE_RESULT || executionFailed
@@ -1540,18 +1563,18 @@ const executeProjectToolCall = async ({
           : "done",
       chatId,
     });
-    recorder?.recordToolCall({ id: toolCallId, tool: toolName, args: toolArgs, result: normalizedToolResult, status: executionFailed ? "error" : "done" });
+    recorder?.recordToolCall({ id: toolCallId, tool: toolName, args: toolName === "run_javascript_demo" ? getJavaScriptDemoActivityArgs(toolArgs) : toolArgs, result: compactToolResult, status: executionFailed ? "error" : "done" });
 
     return {
       toolMessage: new ToolMessage({
-        content: normalizedToolResult,
+        content: compactToolResult,
         tool_call_id: toolCallId,
         name: toolName,
       }),
       summary: [
         `[Tool result: ${toolName}]`,
         `[Step: ${stepNumber}]`,
-        normalizedToolResult,
+        compactToolResult,
       ].join("\n"),
     };
 };
@@ -1908,7 +1931,11 @@ const callProjectAgentWithHistorySession =
 
     const userText =
       rawUserText;
-    const previousTurns = getPreviousConversationTurns(state.messages);
+    // The last message is this request; inspect no more than the 15 prior
+    // chat messages, rather than walking the entire conversation history.
+    const previousTurns = getPreviousConversationTurns(
+      state.messages.slice(0, -1).slice(-MAX_PREVIOUS_CONVERSATION_MESSAGES),
+    );
     const previousTurn = previousTurns[previousTurns.length - 1] ?? null;
     const resumableProgress = getResumableProgress(
       previousTurn,
@@ -2254,6 +2281,12 @@ const callProjectAgentWithHistorySession =
       toolDefinitions as Parameters<typeof llm.bindTools>[0],
     );
     const toolExecutor = createProjectToolExecutor(terminalTool, runnableConfig, currentUserMessage);
+    const javascriptDemoTool = createJavaScriptDemoTool(normalizedProjectPath);
+    toolExecutor.registerTool({
+      name: javascriptDemoTool.name,
+      description: javascriptDemoTool.description,
+      execute: (args) => javascriptDemoTool.invoke(args as never, runnableConfig),
+    });
     toolExecutor.registerTool({
       name: askUserTool.name,
       description: askUserTool.description,
@@ -2399,6 +2432,22 @@ const callProjectAgentWithHistorySession =
                   : [])
             : []),
         ];
+    if (resumeSnapshot) {
+      const hasResumeGuidance = messagesToRun.some(
+        (message) => message.getType() === "system" &&
+          getTextContent(message.content).includes(CANCELLED_RUN_RESUME_GUIDANCE_MARKER),
+      );
+      if (!hasResumeGuidance) {
+        const firstSystemMessage = messagesToRun.findIndex(
+          (message) => message.getType() === "system",
+        );
+        messagesToRun.splice(
+          firstSystemMessage >= 0 ? firstSystemMessage + 1 : 0,
+          0,
+          new SystemMessage(CANCELLED_RUN_RESUME_GUIDANCE),
+        );
+      }
+    }
     if (
       resumeSnapshot &&
       runnableConfig.configurable?.projectAgentResumeHasNewMessage === true
@@ -2442,13 +2491,29 @@ const callProjectAgentWithHistorySession =
               : "",
           },
         };
-    const saveRunSnapshot = (messages: BaseMessage[]): void => {
-      runSnapshot.messages = mapChatMessagesToStoredMessages(messages);
+    const saveRunSnapshot = async (messages: BaseMessage[]): Promise<void> => {
+      const compactMessages = await Promise.all(messages.map(async (message) => {
+        if (!(message instanceof AIMessage)) return message;
+        const originalContent = getTextContent(message.content);
+        const persistedContent = await persistMocuJsBlocks(originalContent, normalizedProjectPath);
+        if (persistedContent.answer !== originalContent) message.content = persistedContent.answer;
+        if (!Array.isArray(message.tool_calls)) return message;
+        return await persistJavaScriptDemoToolCalls(message, normalizedProjectPath);
+      }));
+      runSnapshot.messages = mapChatMessagesToStoredMessages(compactMessages);
       setProjectAgentRunSnapshot(projectChatId, runSnapshot);
     };
-    saveRunSnapshot(messagesToRun);
+    await saveRunSnapshot(messagesToRun);
 
     const toolResultsSummary: string[] = [];
+    const persistInlinePreviews = async (message: AIMessage): Promise<void> => {
+      const original = getTextContent(message.content);
+      const persisted = await persistMocuJsBlocks(original, normalizedProjectPath);
+      if (persisted.answer !== original) message.content = persisted.answer;
+      for (const reference of persisted.references) {
+        toolResultsSummary.push(`[run_javascript_demo]\n${reference}`);
+      }
+    };
 
     const initialModelTrace = createAgentModelTrace(
       getChatIdFromConfig(runnableConfig),
@@ -2473,15 +2538,15 @@ const callProjectAgentWithHistorySession =
       () => toolResultsSummary,
     );
 
-    // Persist the completed model turn (including pending tool calls) before
-    // executing any tools. If cancellation happens mid-tool, the checkpoint
-    // can then pair every call with its saved result/status.
-    saveRunSnapshot([...messagesToRun, response]);
+    // Persist direct preview blocks before saving the model turn or executing tools.
+    await persistInlinePreviews(response);
+    response = await persistJavaScriptDemoToolCalls(response, normalizedProjectPath);
+    await saveRunSnapshot([...messagesToRun, compactJavaScriptDemoToolCalls(response)]);
     initialModelTrace.finish({
       hasToolCalls: Boolean(response.tool_calls?.length),
     });
     if (recordThisRun) {
-      graphRecorder.recordModelCall({ hasToolCalls: Boolean(response.tool_calls?.length), text: getTextContent(response.content).slice(0, 2000) });
+      graphRecorder.recordModelCall({ hasToolCalls: Boolean(response.tool_calls?.length), text: hideStreamingMocuJsSource(getTextContent(response.content)).slice(0, 2000) });
     }
     let stepCount =
       0;
@@ -2646,12 +2711,13 @@ const callProjectAgentWithHistorySession =
         );
       }
 
+      response = await persistJavaScriptDemoToolCalls(response, normalizedProjectPath);
       messagesToRun = [
         ...messagesToRun,
-        response,
+        compactJavaScriptDemoToolCalls(response),
         ...toolMessages,
       ];
-      saveRunSnapshot(messagesToRun);
+      await saveRunSnapshot(messagesToRun);
       throwIfAborted(signal);
 
       const stepModelTrace = createAgentModelTrace(
@@ -2676,13 +2742,15 @@ const callProjectAgentWithHistorySession =
         signal,
         () => toolResultsSummary,
       );
+      await persistInlinePreviews(response);
 
       if (!response.tool_calls?.length) {
-        saveRunSnapshot([...messagesToRun, response]);
+        response = await persistJavaScriptDemoToolCalls(response, normalizedProjectPath);
+        await saveRunSnapshot([...messagesToRun, compactJavaScriptDemoToolCalls(response)]);
       }
       stepModelTrace.finish({ hasToolCalls: Boolean(response.tool_calls?.length) });
       if (recordThisRun) {
-        graphRecorder.recordModelCall({ hasToolCalls: Boolean(response.tool_calls?.length), text: getTextContent(response.content).slice(0, 2000) });
+        graphRecorder.recordModelCall({ hasToolCalls: Boolean(response.tool_calls?.length), text: hideStreamingMocuJsSource(getTextContent(response.content)).slice(0, 2000) });
       }
       stepCount +=
         1;
@@ -2741,7 +2809,7 @@ const callProjectAgentWithHistorySession =
         () => toolResultsSummary,
       );
 
-      saveRunSnapshot([...toolLimitMessages, response]);
+      await saveRunSnapshot([...toolLimitMessages, response]);
       toolLimitTrace.finish({
         hasToolCalls: false,
       });
@@ -2756,7 +2824,11 @@ const callProjectAgentWithHistorySession =
     // Do not replace it with a second, flattened summary-only model call: that
     // discarded earlier assistant text and could fail after the task itself
     // had already completed.
-    let finalAssistantContent = getTextContent(response.content).trim();
+    let finalAssistantContent = await prepareJavaScriptDemoAnswer(
+      getTextContent(response.content).trim(),
+      toolResultsSummary,
+      normalizedProjectPath,
+    );
 
     if (
       !finalAssistantContent

@@ -19,6 +19,8 @@ import {
 } from "./agent/abort";
 import { assertImageModelSupport, buildHumanMessageFromRequest, getImageInputReferences, getVideoFrameImages, getImageRequestText, hasImageInput } from './agent/image-content';
 import { isFileToolError } from "./agent/file-tool-recovery";
+import { createJavaScriptDemoTool } from "./tools/javascript-demo-tool";
+import { compactJavaScriptDemoToolCalls, getJavaScriptDemoActivityArgs, persistMocuJsBlocks, prepareJavaScriptDemoAnswer } from "../../chat/services/javascriptDemoRegistry";
 import {
   dispatchAgentActivity,
   getTextContent,
@@ -702,6 +704,7 @@ const createToolExecutor = (
   terminalTool: TerminalTool,
   config: RunnableConfig,
   currentUserMessage?: BaseMessage,
+  projectPath = "",
 ): ToolExecutor => {
   const toolExecutor =
     new ToolExecutor();
@@ -1329,6 +1332,13 @@ const createToolExecutor = (
     ),
   });
 
+  const javascriptDemoTool = createJavaScriptDemoTool(projectPath);
+  toolExecutor.registerTool({
+    name: javascriptDemoTool.name,
+    description: javascriptDemoTool.description,
+    execute: (args) => javascriptDemoTool.invoke(args as never, config),
+  });
+
   return toolExecutor;
 };
 
@@ -1368,7 +1378,7 @@ const executeToolCall =
     dispatchAgentToolActivity({
       id: toolCallId,
       tool: toolName,
-      args: toolArgs,
+      args: toolName === "run_javascript_demo" ? getJavaScriptDemoActivityArgs(toolArgs) : toolArgs,
       status: "running",
       chatId,
     });
@@ -1423,16 +1433,20 @@ const executeToolCall =
     recorder?.recordToolCall({
       id: toolCallId,
       tool: toolName,
-      args: toolArgs,
-      result: normalizedToolResult,
+      args: toolName === "run_javascript_demo" ? getJavaScriptDemoActivityArgs(toolArgs) : toolArgs,
+      result: toolName === "run_javascript_demo"
+        ? normalizedToolResult.replace(/mocu-interactive-js:[A-Za-z0-9-]+/g, (reference) => `\`\`\`mocu-js\n${reference}\n\`\`\``)
+        : normalizedToolResult,
       status: normalizedToolResult === CHAT_TOOL_FAILURE_RESULT || isFileToolError(normalizedToolResult) ? "error" : "done",
     });
 
     dispatchAgentToolActivity({
       id: toolCallId,
       tool: toolName,
-      args: toolArgs,
-      result: normalizedToolResult,
+      args: toolName === "run_javascript_demo" ? getJavaScriptDemoActivityArgs(toolArgs) : toolArgs,
+      result: toolName === "run_javascript_demo"
+        ? normalizedToolResult.replace(/mocu-interactive-js:[A-Za-z0-9-]+/g, (reference) => `\`\`\`mocu-js\n${reference}\n\`\`\``)
+        : normalizedToolResult,
       status:
         normalizedToolResult ===
         CHAT_TOOL_FAILURE_RESULT || isFileToolError(normalizedToolResult)
@@ -1441,11 +1455,15 @@ const executeToolCall =
       chatId,
     });
 
+    const compactToolResult = toolName === "run_javascript_demo"
+      ? normalizedToolResult.replace(/mocu-interactive-js:[A-Za-z0-9-]+/g, (reference) => `\`\`\`mocu-js\n${reference}\n\`\`\``)
+      : normalizedToolResult;
+
     return {
       toolMessage:
         new ToolMessage({
           content:
-            normalizedToolResult,
+            compactToolResult,
 
           tool_call_id:
             toolCallId,
@@ -1457,7 +1475,7 @@ const executeToolCall =
       summary: [
         `[Tool result: ${toolName}]`,
         `[Step: ${stepNumber}]`,
-        normalizedToolResult,
+        compactToolResult,
       ].join(
         "\n",
       ),
@@ -1797,7 +1815,7 @@ export const callChatAgent =
      * bindTools() only gives the schema to the model. ToolExecutor is
      * responsible for actually invoking the requested tool.
      */
-    const toolExecutor = createToolExecutor(terminalTool, runnableConfig, currentUserMessage);
+    const toolExecutor = createToolExecutor(terminalTool, runnableConfig, currentUserMessage, typeof runnableConfig.configurable?.projectPath === "string" ? runnableConfig.configurable.projectPath : "");
     toolExecutor.registerTool({
       name: askUserTool.name,
       description: askUserTool.description,
@@ -1886,6 +1904,7 @@ export const callChatAgent =
       addFileManagerRulesToSystemPrompt(docsEnabledSystemPrompt),
       globalDirectoryPrompt,
       "When the user asks about something related to Mocu, use the document tools to check whether a relevant saved document exists. If one exists, read it and use its contents to answer the user.",
+      "INTERACTIVE JAVASCRIPT PREVIEWS: Create a preview only when the user explicitly requests an interactive result or it is genuinely useful; ordinary code for reading or copying belongs in a normal javascript fence. For each preview, put the complete runnable JavaScript source in the assistant response inside its own Markdown fenced code block with the exact language tag `mocu-js` (three backticks, `mocu-js`, source code, then three closing backticks). This `mocu-js` fence is the required handoff format: Mocu intercepts its source, saves it as a persistent JSON file, and replaces the source with an opaque `mocu-interactive-js:<id>` reference before the answer is displayed or stored. Project chats save under the active project `.mocu/interactive-js-demos`; ordinary chats save in the global app-data `interactive-js-demos` folder; if project saving fails, Mocu falls back to global app data. The user should see the rendered preview/reference, never the JavaScript source. Do not create or write the file yourself, do not call a tool to create a new preview, and do not put source outside the `mocu-js` block. The block body must contain only runnable JavaScript - not prose, filenames, paths, JSON wrappers, or references. Never manually invent, edit, or output a `mocu-interactive-js:` reference. Put each independent example in a separate `mocu-js` block. Each preview must fit exactly 360px high with no internal vertical scrolling, using warm-neutral Mocu colors (#ffffff/#f7f7f5 surfaces, #30302e text, #73736f secondary, #e7e7e3 borders, restrained #4d645d green). The isolated sandbox provides an element named `root`; render the complete interface inside it. Network requests are unavailable.",
     ].join("\n\n");
     let messagesToRun: BaseMessage[] = [new SystemMessage(systemPrompt), ...chatMessages];
 
@@ -1929,6 +1948,18 @@ export const callChatAgent =
 
     const toolResultsSummary:
       string[] = [];
+    const persistInlinePreviews = async (message: AIMessage): Promise<void> => {
+      const original = getTextContent(message.content);
+      const persisted = await persistMocuJsBlocks(
+        original,
+        typeof runnableConfig.configurable?.projectPath === "string" ? runnableConfig.configurable.projectPath : "",
+      );
+      if (persisted.answer !== original) message.content = persisted.answer;
+      for (const reference of persisted.references) {
+        toolResultsSummary.push(`[run_javascript_demo]\n${reference}`);
+      }
+    };
+    await persistInlinePreviews(response);
 
     let stepCount =
       0;
@@ -2032,7 +2063,7 @@ export const callChatAgent =
 
       messagesToRun = [
         ...messagesToRun,
-        response,
+        compactJavaScriptDemoToolCalls(response, toolMessages),
         ...toolMessages,
       ];
 
@@ -2059,7 +2090,9 @@ export const callChatAgent =
           runnableConfig,
           `response after tool step ${currentStepNumber}`,
         );
+      await persistInlinePreviews(response);
 
+      await persistInlinePreviews(response);
       stepModelTrace.finish({
         hasToolCalls: Boolean(
           response.tool_calls?.length,
@@ -2202,10 +2235,7 @@ export const callChatAgent =
         signal,
       );
 
-      finalAssistantContent =
-        getTextContent(
-          finalResponse.content,
-        ).trim();
+      finalAssistantContent = getTextContent(finalResponse.content).trim();
 
       response =
         finalResponse;
@@ -2216,6 +2246,11 @@ export const callChatAgent =
         ).trim();
     }
 
+    finalAssistantContent = await prepareJavaScriptDemoAnswer(
+      finalAssistantContent,
+      toolResultsSummary,
+      typeof runnableConfig.configurable?.projectPath === "string" ? runnableConfig.configurable.projectPath : "",
+    );
     if (
       !finalAssistantContent
     ) {

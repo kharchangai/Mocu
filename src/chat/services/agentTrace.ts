@@ -16,6 +16,7 @@
 
 import type { BaseMessage, AIMessage } from '@langchain/core/messages';
 import type { RunnableConfig } from '@langchain/core/runnables';
+import { hideStreamingMocuJsSource } from './javascriptDemoRegistry';
 
 import {
   dispatchAgentAnswerDelta,
@@ -179,10 +180,12 @@ export const createAgentModelTrace = (
        * Every other call: stream into the ↳ note row, so the response
        * area never fills up mid-turn and then jumps around.
        */
+      const visibleText = hideStreamingMocuJsSource(accumulated);
+
       if (mode === 'answer') {
         dispatchAgentAnswerDelta({
           chatId,
-          text: accumulated,
+          text: visibleText,
         });
 
         return;
@@ -196,7 +199,7 @@ export const createAgentModelTrace = (
         id: noteId,
         tool: 'note',
         kind: 'note',
-        text: accumulated,
+        text: visibleText,
         status: 'running',
         chatId,
       });
@@ -239,7 +242,7 @@ export const createAgentModelTrace = (
         id: noteId,
         tool: 'note',
         kind: 'note',
-        text: promoteToAnswer ? '' : text,
+        text: promoteToAnswer ? '' : hideStreamingMocuJsSource(text),
         status: 'done',
         chatId,
       });
@@ -247,7 +250,7 @@ export const createAgentModelTrace = (
       if (promoteToAnswer) {
         dispatchAgentAnswerDelta({
           chatId,
-          text,
+          text: hideStreamingMocuJsSource(text),
         });
       }
     },

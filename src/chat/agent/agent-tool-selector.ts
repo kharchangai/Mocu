@@ -25,6 +25,7 @@ function ensureSkillFinder(selections: AgentToolSelection[]): AgentToolSelection
 }
 
 const EXPLICIT_TOOL_MENTIONS: Record<AgentToolName, RegExp> = {
+  run_javascript_demo: /\b(?:interactive|run|execute|preview|sandboxed)\b.{0,35}\b(?:javascript|js|code|demo)\b|\b(?:javascript|js|code|demo)\b.{0,35}\b(?:interactive|run|execute|preview)\b|(?:\u{0627}\u{062C}\u{0631}\u{0627}.{0,32}(?:\u{06A9}\u{062F}|javascript|js)|(?:\u{06A9}\u{062F}|javascript|js).{0,32}\u{0627}\u{062C}\u{0631}\u{0627}|\u{06A9}\u{062F}.{0,20}\u{062A}\u{0639}\u{0627}\u{0645}\u{0644}\u{06CC})/iu,
   terminal_executor: /\b(?:terminal|shell|command[- ]line)\b|ترمینال|خط\s*فرمان/iu,
   filesystem: /\b(?:file\s*system|filesystem|files?)\b|فایل[\s‌_-]*سیستم|سیستم[\s‌_-]*فایل|فایل(?:‌|\s)*(?:ها|های)/iu,
   documents: /\b(?:documents?|knowledge\s+docs?|docs?)\b|داک|مستند|سند/iu,
@@ -45,9 +46,14 @@ function isExplicitlyRequested(name: AgentToolName, request: string): boolean {
   if (!match || match.index === undefined) return false;
 
   const prefix = request.slice(Math.max(0, match.index - 36), match.index);
+  const nearby = request.slice(
+    Math.max(0, match.index - 36),
+    Math.min(request.length, match.index + match[0].length + 56),
+  );
   return !(
     /\b(?:do not|don't|without|avoid|exclude|never|no)\b[^,;.!?]{0,24}$/i.test(prefix) ||
-    /(?:بدون|نمی‌خواهم|نمیخوام|استفاده نکن)[^،؛.!؟]{0,24}$/u.test(prefix)
+    /\b(?:without|not|never|avoid|exclude)\b[^,;.!?]{0,48}\b(?:interactive|run|running|execute|executing|preview)\b/i.test(nearby) ||
+    /\u{0628}\u{062F}\u{0648}\u{0646}.{0,24}\u{0627}\u{062C}\u{0631}\u{0627}|\u{0646}\u{0645}\u{06CC}.{0,18}\u{0627}\u{062C}\u{0631}\u{0627}/u.test(nearby)
   );
 }
 

@@ -10,6 +10,8 @@ import {
 
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
+import remarkMath from "remark-math";
+import rehypeKatex from "rehype-katex";
 import rehypeHighlight from "rehype-highlight";
 import { defaultUrlTransform } from "react-markdown";
 import type { GeneratedChatImage } from "../../types/generatedImage";
@@ -20,6 +22,8 @@ import { GeneratedImageCard } from "../GeneratedImageMessage";
 import { GeneratedVideoCard } from "../GeneratedVideoMessage";
 
 import { getTextDirection } from "../textDirection";
+import { getJavaScriptDemo, loadJavaScriptDemo } from "../../services/javascriptDemoRegistry";
+import "katex/dist/katex.min.css";
 import "./MarkdownRenderer.css";
 
 export type MarkdownDirection =
@@ -34,6 +38,7 @@ export type MarkdownRendererProps = {
   generatedImages?: GeneratedChatImage[];
   generatedAudio?: GeneratedChatAudio[];
   generatedVideos?: GeneratedChatVideo[];
+  projectPath?: string;
 };
 
 type CodeElementProps = {
@@ -246,10 +251,101 @@ function CopyButton({
   );
 }
 
+function InteractiveJavaScriptDemo({
+  id,
+  projectPath = "",
+}: {
+  id: string;
+  projectPath?: string;
+}) {
+  const [demo, setDemo] = useState(() => getJavaScriptDemo(id));
+  const [isLoading, setIsLoading] = useState(() => !getJavaScriptDemo(id));
+  const [loadAttempt, setLoadAttempt] = useState(0);
+
+  useEffect(() => {
+    let active = true;
+    const cached = getJavaScriptDemo(id);
+    setDemo(cached);
+    setIsLoading(!cached);
+    void loadJavaScriptDemo(id, projectPath).then((saved) => {
+      if (!active) return;
+      if (saved) setDemo(saved);
+      setIsLoading(false);
+    });
+    return () => { active = false; };
+  }, [id, projectPath, loadAttempt]);
+  const iframeRef = useRef<HTMLIFrameElement | null>(null);
+
+  useEffect(() => {
+    if (!demo) return;
+
+    const timeout = window.setTimeout(() => {
+      if (!iframeRef.current) return;
+      iframeRef.current.srcdoc = "<!doctype html><html><body style='font-family:system-ui,sans-serif;padding:12px;color:#b42318'>Preview stopped: JavaScript exceeded the 8-second startup limit.</body></html>";
+    }, 8000);
+
+    const handleMessage = (event: MessageEvent) => {
+      if (
+        event.source !== iframeRef.current?.contentWindow ||
+        event.data?.type !== "mocu-demo-ready"
+      ) return;
+      window.clearTimeout(timeout);
+    };
+
+    window.addEventListener("message", handleMessage);
+    return () => {
+      window.clearTimeout(timeout);
+      window.removeEventListener("message", handleMessage);
+    };
+  }, [demo, id]);
+
+  if (isLoading && !demo) {
+    return (
+      <span className="mocu-markdown__javascript-demo-unavailable" role="status" aria-live="polite">
+        Loading saved interactive preview...
+      </span>
+    );
+  }
+
+  if (!demo) {
+    return (
+      <span className="mocu-markdown__javascript-demo-unavailable" role="status" aria-live="polite">
+        <span>Preview data could not be found or loaded. The reference may be invalid, its saved file may be missing, or this chat may be open in a different project folder.</span>
+        <button type="button" onClick={() => setLoadAttempt((attempt) => attempt + 1)}>
+          Try loading again
+        </button>
+        <span>If it still cannot be loaded, ask the agent to create the preview again.</span>
+      </span>
+    );
+  }
+
+  const escapeScriptEnd = (value: string) =>
+    value.replace(/<\/script/gi, "<\\/script");
+  const escapeStyleEnd = (value: string) =>
+    value.replace(/<\/style/gi, "<\\/style");
+  const srcDoc = `<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; img-src data: blob:; font-src data:; connect-src 'none'; form-action 'self'; base-uri 'none'; navigate-to 'none'"><style>html,body{margin:0;padding:0;font-family:system-ui,sans-serif}body{padding:12px;box-sizing:border-box;color:#222}#root{min-height:40px}${escapeStyleEnd(demo.css)}</style></head><body><div id="root"></div><script>(()=>{const root=document.getElementById('root');try{const render=(root)=>{${escapeScriptEnd(demo.javascript)}\n};render(root)}catch(e){root.textContent='Demo error: '+(e&&e.message?e.message:String(e));root.style.color='#b42318'}})();parent.postMessage({type:'mocu-demo-ready'},'*');<\/script></body></html>`;
+
+  return (
+    <span className="mocu-markdown__javascript-demo" aria-label="Interactive JavaScript">
+      <span className="mocu-markdown__javascript-demo-header">Interactive JavaScript</span>
+      <iframe
+        ref={iframeRef}
+        title="Interactive JavaScript"
+        sandbox="allow-scripts allow-forms"
+        referrerPolicy="no-referrer"
+        loading="lazy"
+        height={demo.height}
+        srcDoc={srcDoc}
+      />
+    </span>
+  );
+}
+
 function CodeBlock({
   children,
+  projectPath = "",
   ...props
-}: HTMLAttributes<HTMLPreElement>) {
+}: HTMLAttributes<HTMLPreElement> & { projectPath?: string }) {
   const codeElement = Array.isArray(children)
     ? children.find((child) =>
         isValidElement<CodeElementProps>(
@@ -270,6 +366,13 @@ function CodeBlock({
 
   const codeText =
     normalizeCodeText(codeElement);
+
+  if (codeClassName?.split(/\s+/).includes("language-mocu-js")) {
+    const reference = codeText.trim().match(/^mocu-interactive-js:([A-Za-z0-9-]+)$/)?.[1];
+    return reference
+      ? <InteractiveJavaScriptDemo id={reference} projectPath={projectPath} />
+      : <span className="mocu-markdown__javascript-demo-unavailable" role="status">Invalid mocu-js reference. Use the saved demo reference returned by the JavaScript demo tool.</span>;
+  }
 
   return (
     <div className="mocu-markdown__code-block">
@@ -293,6 +396,7 @@ function MarkdownRendererImpl({
   generatedImages = [],
   generatedAudio = [],
   generatedVideos = [],
+  projectPath = "",
 }: MarkdownRendererProps) {
   if (!content || !content.trim()) {
     return null;
@@ -316,8 +420,9 @@ function MarkdownRendererImpl({
       dir={resolvedDirection}
     >
       <ReactMarkdown
-        remarkPlugins={[remarkGfm]}
+        remarkPlugins={[remarkGfm, remarkMath]}
         rehypePlugins={[
+          [rehypeKatex, { throwOnError: false }],
           [
             rehypeHighlight,
             {
@@ -326,9 +431,9 @@ function MarkdownRendererImpl({
             },
           ],
         ]}
-        urlTransform={(url) => url.startsWith("mocu-generated-image:") || url.startsWith("mocu-generated-audio:") || url.startsWith("mocu-generated-video:") ? url : defaultUrlTransform(url)}
+        urlTransform={(url) => url.startsWith("mocu-generated-image:") || url.startsWith("mocu-generated-audio:") || url.startsWith("mocu-generated-video:") || url.startsWith("mocu-interactive-js:") ? url : defaultUrlTransform(url)}
         components={{
-          pre: CodeBlock,
+          pre: (props) => <CodeBlock {...props} projectPath={projectPath} />,
 
           table: ({
             children,
@@ -362,6 +467,12 @@ function MarkdownRendererImpl({
             alt,
             ...props
           }) => {
+            const interactiveDemoId = src?.startsWith("mocu-interactive-js:")
+              ? src.slice("mocu-interactive-js:".length)
+              : "";
+            if (interactiveDemoId) {
+              return <InteractiveJavaScriptDemo id={interactiveDemoId} projectPath={projectPath} />;
+            }
             const generatedVideoId = src?.startsWith("mocu-generated-video:") ? src.slice("mocu-generated-video:".length) : "";
             const generatedVideo = generatedVideoId ? generatedVideos.find((video) => video.id === generatedVideoId) : undefined;
             if (generatedVideo) return <GeneratedVideoCard video={generatedVideo} />;

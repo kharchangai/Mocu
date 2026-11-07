@@ -18,6 +18,7 @@ type AssistantMessageProps = {
   generatedImages?: GeneratedChatImage[];
   generatedAudio?: GeneratedChatAudio[];
   generatedVideos?: GeneratedChatVideo[];
+  projectPath?: string;
   postResponseWarnings?: string[];
 
   /*
@@ -111,6 +112,7 @@ function AssistantMessageImpl({
   generatedImages = [],
   generatedAudio = [],
   generatedVideos = [],
+  projectPath = "",
   postResponseWarnings = [],
   streaming = false,
   footer,
@@ -254,7 +256,7 @@ function AssistantMessageImpl({
       ) : (
         <div className="assistant-message__body">
           {streaming ? (
-            <StreamingMarkdown content={content} generatedImages={generatedImages} generatedAudio={generatedAudio} generatedVideos={generatedVideos} />
+            <StreamingMarkdown content={content} generatedImages={generatedImages} generatedAudio={generatedAudio} generatedVideos={generatedVideos} projectPath={projectPath} />
           ) : (
             <MarkdownRenderer
               content={content}
@@ -262,6 +264,7 @@ function AssistantMessageImpl({
               generatedImages={generatedImages}
               generatedAudio={generatedAudio}
               generatedVideos={generatedVideos}
+              projectPath={projectPath}
             />
           )}
         </div>
