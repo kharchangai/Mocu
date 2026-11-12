@@ -13,7 +13,7 @@
  */
 
 import { getJevDecision } from "../../../../services/ai/tools/decision/Jev_model";
-import { getAsyncLLM } from "../../../../services/ai/llm";
+import { getAsyncLLMByModel } from "../../../../services/ai/llm";
 import { runProjectMemoryExclusive } from "../projectMemoryOperationQueue";
 
 import {
@@ -428,7 +428,7 @@ async function mergePreviousCompleteTurns(
   if (!transcript.trim()) return "";
 
   try {
-    const llm = await getAsyncLLM("cheap", { temperature: 0 });
+    const llm = await getAsyncLLMByModel("scaledown/summarize", { temperature: 0 });
     const response = await llm.invoke([
       { role: "system", content: [
         "Consolidate every supplied related conversation turn into one complete memory text for another AI agent. Do not answer the user.",

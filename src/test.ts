@@ -1,75 +1,33 @@
-// import { classifyPersonalMemories } from "./chat/project/memory/personal-memory/classifyPersonalMemories";
-// import { createProjectPersonalMemoryEntries } from "./chat/project/memory/personal-memory/createPersonalMemoryEntries";
+// import { retrieveToolsForMemoryMessages } from "./services/project-evolution/retrieveToolsForMemoryMessages";
 
-// const PERSONAL_MEMORY_TEST_MESSAGES = [
-//   {
-//     name: "No personal memory",
-//     message: "What is the capital of Japan?",
-//   },
-//   {
-//     name: "One personal memory",
-//     message: "I prefer concise answers.",
-//   },
-//   {
-//     name: "Multiple personal memories",
-//     message:
-//       "I live in Tehran. I prefer concise answers. For this project, use TypeScript.",
-//   },
-// ] as const;
+// const projectPath = "E:\\mocube\\mocu";
+// const userMessage = "میخوام برام کامل و ساده توضیح بده ابزار @src/services/ai/tools/ask-user-tool.ts چطوری کار میکنه";
 
-/** Runs classification and entry preparation examples, printing results and basic checks. */
+/** Run this module in the Mocu app's DevTools console to see the result. */
 export async function runTest(): Promise<void> {
-  // console.group("[personal memory pipeline test]");
+//   console.group("[project evolution: memory tool lookup]");
+//   console.log("Project:", projectPath);
+//   console.log("Looking for user message:", userMessage);
 
-  // try {
-  //   for (const testCase of PERSONAL_MEMORY_TEST_MESSAGES) {
-  //     console.group(testCase.name);
-  //     console.log("Input message:", testCase.message);
+//   try {
+//     const matches = await retrieveToolsForMemoryMessages(projectPath, [userMessage]);
+//     console.log("Matches:", matches);
 
-  //     try {
-  //       const classification = await classifyPersonalMemories(testCase.message);
-  //       console.log("Classification result:", classification);
+//     const tools = matches.flatMap((match) => match.toolActivities.map((activity) => activity.tool));
+//     console.log("Tools used:", tools);
 
-  //       try {
-  //         // Empty classifications return [] without calling the generation or embedding models.
-  //         const entries = await createProjectPersonalMemoryEntries(classification);
-  //         const checks = {
-  //           entryCountMatchesClassifiedMemories:
-  //             entries.length === classification.memories.length,
-  //           allEntriesAreProjectScoped: entries.every(
-  //             (entry) => entry.storageScope === "project",
-  //           ),
-  //           allEntriesHavePromptsAndSearchText: entries.every(
-  //             (entry) => Boolean(entry.prompt.trim() && entry.searchText.trim()),
-  //           ),
-  //           allEntriesHaveNonEmptyFiniteEmbeddings: entries.every(
-  //             (entry) =>
-  //               entry.embedding.length > 0 &&
-  //               entry.embedding.every(Number.isFinite),
-  //           ),
-  //         };
-
-  //         console.log("Prepared personal-memory entries:", entries);
-  //         console.log("Entry validation checks:", checks);
-  //         console.log(
-  //           "Entries JSON:\n" + JSON.stringify(entries, null, 2),
-  //         );
-
-  //         if (Object.values(checks).some((passed) => !passed)) {
-  //           console.error("One or more personal-memory entry checks failed.");
-  //         } else {
-  //           console.log("Personal-memory entry checks passed.");
-  //         }
-  //       } catch (error) {
-  //         console.error("createProjectPersonalMemoryEntries failed:", error);
-  //       }
-  //     } catch (error) {
-  //       console.error("classifyPersonalMemories failed:", error);
-  //     } finally {
-  //       console.groupEnd();
-  //     }
-  //   }
-  // } finally {
-  //   console.groupEnd();
-  // }
+//     if (matches.length === 0) {
+//       console.warn("No matching user message was found in project chat history.");
+//     } else if (tools.length === 0) {
+//       console.warn("Message matched, but no tool activities were recorded for it.");
+//     } else {
+//       console.info("Test passed: matching message and tool activities were found.");
+//     }
+//   } catch (error) {
+//     console.error("Test failed:", error);
+//   } finally {
+//     console.groupEnd();
+//   }
 }
+
+// void runTest();
