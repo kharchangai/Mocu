@@ -20,7 +20,7 @@ Mocu is an **open-source desktop AI workspace** for building personal AI agents,
 - **Your judgment stays in charge.** Ideas, decisions, and goals remain yours. The agents do the lifting, not the deciding.
 - **Nothing resets between sessions.** Projects, memory, notes, and schedules keep your context alive.
 
-**[Download for Windows](https://github.com/kharchangai/Mocu/releases) · [Explore the 0.3.0 discussion](https://github.com/kharchangai/Mocu/discussions/19) · [Report a bug or share feedback](https://github.com/kharchangai/Mocu/issues)**
+**[Website](https://kharchangai.github.io/Mocu/) · [Download for Windows](https://github.com/kharchangai/Mocu/releases) · [Install guide](https://kharchangai.github.io/Mocu/install.html) · [فارسی](https://kharchangai.github.io/Mocu/fa.html) · [Report a bug or share feedback](https://github.com/kharchangai/Mocu/issues)**
 
 <!-- Marketing note: a 10–20s screen recording (Focus → agent creating a doc → schedule) placed here converts better than any copy. Add it as public/demo.gif and uncomment:
 <p align="center"><img src="public/demo.gif" alt="Mocu in action" width="100%" /></p>

@@ -1,0 +1,202 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Install Mocu on Windows — download, setup, and your first agent</title>
+<meta name="description" content="Step-by-step Mocu installation for Windows: download the installer, add a model provider and API key, create a project, and build your first agent." />
+<link rel="canonical" href="https://kharchangai.github.io/Mocu/install.html" />
+<meta name="robots" content="index,follow,max-image-preview:large" />
+<meta name="theme-color" content="#4d645d" />
+
+<meta property="og:type" content="article" />
+<meta property="og:site_name" content="Mocu" />
+<meta property="og:title" content="Install Mocu on Windows — download, setup, first agent" />
+<meta property="og:description" content="Download the installer, add your model provider, create a project, and build your first personal AI agent." />
+<meta property="og:url" content="https://kharchangai.github.io/Mocu/install.html" />
+<meta property="og:image" content="https://kharchangai.github.io/Mocu/assets/og-image.jpg" />
+<meta name="twitter:card" content="summary_large_image" />
+
+<link rel="icon" href="assets/favicon.svg" type="image/svg+xml" />
+<link rel="apple-touch-icon" href="assets/icon-180.png" />
+<link rel="stylesheet" href="assets/style.css" />
+
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@type": "HowTo",
+  "name": "Install Mocu on Windows and create your first agent",
+  "description": "Download Mocu for Windows, configure a model provider, create a project, and create a first personal agent.",
+  "totalTime": "PT10M",
+  "tool": [{"@type": "HowToTool", "name": "Windows 10 or 11 PC"}, {"@type": "HowToTool", "name": "An API key from a supported model provider"}],
+  "step": [
+    {"@type": "HowToStep", "name": "Download the installer", "text": "Open the GitHub releases page and download the Windows .exe or .msi file for the latest version.", "url": "https://kharchangai.github.io/Mocu/install.html#download"},
+    {"@type": "HowToStep", "name": "Run the installer", "text": "Run the downloaded file and finish installation. Windows may show a SmartScreen prompt for unsigned alpha builds.", "url": "https://kharchangai.github.io/Mocu/install.html#install"},
+    {"@type": "HowToStep", "name": "Add a model provider", "text": "Open Settings, add the provider you use, and paste your API key. Nothing works until a provider is configured.", "url": "https://kharchangai.github.io/Mocu/install.html#provider"},
+    {"@type": "HowToStep", "name": "Create a project", "text": "Create a project and point it at the folder you actually work in, so files, memory and history are scoped to it.", "url": "https://kharchangai.github.io/Mocu/install.html#project"},
+    {"@type": "HowToStep", "name": "Create your first agent", "text": "Describe the specialist you need in plain language and let Mocu build the agent definition.", "url": "https://kharchangai.github.io/Mocu/install.html#agent"}
+  ]
+}
+</script>
+</head>
+<body>
+<a class="skip" href="#main">Skip to content</a>
+
+<header class="site-header">
+  <div class="wrap header-inner">
+    <a class="brand" href="./" aria-label="Mocu home">
+      <svg class="brand-mark" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+        <rect x="1.5" y="1.5" width="21" height="21" rx="6" fill="none" stroke="currentColor" stroke-width="1.6"/>
+        <path d="M6.5 16.5V8l5.5 6 5.5-6v8.5" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/>
+      </svg>
+      <span>Mocu</span>
+    </a>
+    <nav aria-label="Main">
+      <a href="index.html#what">What it is</a>
+      <a href="index.html#agents">Agents</a>
+      <a href="index.html#faq">FAQ</a>
+      <a class="nav-cta" href="https://github.com/kharchangai/Mocu/releases">Download</a>
+    </nav>
+  </div>
+</header>
+
+<main id="main" class="wrap">
+  <div class="page-head">
+    <p class="eyebrow">Setup guide · about 10 minutes</p>
+    <h1>Install Mocu on Windows</h1>
+    <p class="lede">
+      Download, connect a model provider, create a project, and build your first agent. If something
+      breaks at any step, there is a troubleshooting list at the bottom.
+    </p>
+  </div>
+
+  <div class="prose">
+
+    <h2 id="download">1. Download the installer</h2>
+    <p>
+      Open the <a href="https://github.com/kharchangai/Mocu/releases">GitHub releases page</a> and grab the
+      newest release. Windows builds are attached as <code>.exe</code> (setup) and <code>.msi</code> (installer package) —
+      either works. Pick the architecture that matches your machine: <code>x64</code> for most Intel and AMD PCs,
+      <code>arm64</code> if you are on an ARM device.
+    </p>
+    <p>
+      Mocu is in alpha. Release names include the version, so note which one you installed when you report a problem.
+    </p>
+
+    <h2 id="install">2. Run it</h2>
+    <p>Run the file and follow the prompts. Two things are normal for alpha builds:</p>
+    <ul>
+      <li><strong>SmartScreen warning.</strong> Unsigned builds trigger "Windows protected your PC". Choose <em>More info → Run anyway</em>.</li>
+      <li><strong>No auto-update promise.</strong> Check the releases page occasionally; there is no silent updater guarantee in alpha.</li>
+    </ul>
+    <div class="callout">
+      Mocu writes its data to your user profile, and per-project data to a <code>.mocu/</code> folder inside each project.
+      Keep that folder if you want a project's memory and history to survive — and see the
+      <a href="https://github.com/kharchangai/Mocu/blob/main/PRIVACY.md">privacy policy</a> for what is stored.
+    </div>
+
+    <h2 id="provider">3. Connect a model provider</h2>
+    <p>
+      Mocu does not ship with a model. Open <strong>Settings</strong>, add the provider you already pay for, and paste
+      its API key. Costs are billed by that provider, not by Mocu.
+    </p>
+    <p>Worth knowing before you configure it:</p>
+    <ul>
+      <li><strong>Use one strong model for planning and a cheap one for grunt work.</strong> Most agent cost sits in the cheap, high-volume steps.</li>
+      <li><strong>Start small.</strong> A short task with a smaller model tells you whether your key, endpoint and model name are right before a long run burns tokens.</li>
+      <li><strong>Keys stay local</strong> in your app data directory. Do not paste keys into screenshots, issues or chat logs.</li>
+    </ul>
+
+    <h2 id="project">4. Create a project</h2>
+    <p>
+      A project is the unit that makes Mocu different from a chat window. Point it at the folder you actually work in.
+      Inside that project you get scoped chats, notes, docs, memory and history.
+    </p>
+    <ul>
+      <li>Ask for a task and the agent sees the project's files, not your whole disk.</li>
+      <li>Tell it something durable about this project and it stays with the project, not with the conversation.</li>
+      <li>Switch to another project and the context does not leak across.</li>
+    </ul>
+
+    <h2 id="agent">5. Create your first agent</h2>
+    <p>
+      Ask in plain language. For example:
+    </p>
+    <pre><code>Create an agent that reads my saved documents and drafts a weekly summary
+in my own style. It should use the documents folder as its source of truth
+and never invent numbers that are not in the documents.</code></pre>
+    <p>
+      Mocu creates the agent definition with a role, instructions and the tools it may call. Then:
+    </p>
+    <ul>
+      <li>Select it with <code>/agent</code> in a chat, or just ask for it by name.</li>
+      <li>Let it delegate to another agent if the task needs research plus writing.</li>
+      <li>Ask Mocu to update the agent when your workflow changes — no hand-editing required.</li>
+      <li>Schedule it to run on a recurring job once you trust the output.</li>
+    </ul>
+
+    <h2 id="optional">Optional: the parts that need extra setup</h2>
+    <h3>Python extensions</h3>
+    <p>Some bundled extensions run on Python. If one fails to start, install Python and make sure it is on your <code>PATH</code>.</p>
+    <h3>Browser Use</h3>
+    <p>
+      Browser automation goes through the Browser Bridge, which connects to a real browser session so the agent uses
+      your own logged-in state instead of a sandbox. Enable it, then select it with <code>/extension</code> for the
+      request that needs it.
+    </p>
+    <h3>Computer Control</h3>
+    <p>
+      The desktop automation extension can open apps, read windows, click and type. Treat it like handing someone your
+      mouse: enable it per request, watch the first few runs, and keep destructive actions manual.
+    </p>
+
+    <h2 id="build">Building from source instead</h2>
+    <p>
+      If you want to run the development build, you need Node.js 22, Rust, and the Tauri prerequisites for Windows.
+      Full commands for Windows, macOS and Linux are in the
+      <a href="https://github.com/kharchangai/Mocu#build-from-source">README</a>.
+    </p>
+    <pre><code>git clone https://github.com/kharchangai/Mocu.git
+cd Mocu
+npm install
+npm run tauri dev</code></pre>
+
+    <h2 id="troubleshooting">Troubleshooting</h2>
+    <ul>
+      <li><strong>The app opens but nothing answers.</strong> No provider configured, or an invalid key. Re-check Settings and try a one-line prompt with the smallest model you have.</li>
+      <li><strong>An extension does not appear.</strong> Installing an extension is not the same as activating it. Select it with <code>/extension</code> for that request.</li>
+      <li><strong>A Python extension crashes.</strong> Python is missing or not on <code>PATH</code>.</li>
+      <li><strong>Scheduled runs did not fire.</strong> Mocu has to be open at the scheduled time. On startup it catches up recently missed items.</li>
+      <li><strong>Browser automation stops on a page.</strong> Expected in alpha on dynamic sites. Take over, finish the step yourself, and report the site.</li>
+      <li><strong>Costs climbed fast.</strong> Long agent chains with a large model are the usual cause. Route routine steps to a smaller model and keep runs short while you tune the workflow.</li>
+    </ul>
+    <p>
+      Still stuck? Open an issue with your version, your provider and model, and what you expected —
+      <a href="https://github.com/kharchangai/Mocu/issues">github.com/kharchangai/Mocu/issues</a>.
+      Never include API keys or private screenshots.
+    </p>
+
+    <p style="margin-top:38px"><a class="btn primary" href="https://github.com/kharchangai/Mocu/releases">Download for Windows</a></p>
+  </div>
+</main>
+
+<footer class="site-footer">
+  <div class="wrap footer-inner">
+    <div>
+      <p class="brand-line">Mocu — More capability. Still you.</p>
+      <p class="fineprint">Alpha software. Behavior and interfaces can change between releases.</p>
+    </div>
+    <nav aria-label="Footer">
+      <a href="index.html">Home</a>
+      <a href="https://github.com/kharchangai/Mocu/blob/main/README.md">README</a>
+      <a href="https://github.com/kharchangai/Mocu/issues">Issues</a>
+      <a href="https://github.com/kharchangai/Mocu/blob/main/PRIVACY.md">Privacy</a>
+      <a href="fa.html" lang="fa" hreflang="fa">فارسی</a>
+    </nav>
+  </div>
+  <div class="wrap">
+    <p class="fineprint">© 2026 Mocu contributors · Apache License 2.0</p>
+  </div>
+</footer>
+</body>
+</html>

@@ -1,0 +1,406 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Mocu — open-source desktop AI workspace for personal AI agents</title>
+<meta name="description" content="Mocu is an open-source desktop AI workspace for Windows. Build personal AI agents with tools, skills and memory, and keep project context across sessions." />
+<link rel="canonical" href="https://kharchangai.github.io/Mocu/" />
+<meta name="robots" content="index,follow,max-image-preview:large" />
+<meta name="theme-color" content="#4d645d" />
+<meta name="author" content="kharchangai" />
+
+<meta property="og:type" content="website" />
+<meta property="og:site_name" content="Mocu" />
+<meta property="og:title" content="Mocu — open-source desktop AI workspace for personal AI agents" />
+<meta property="og:description" content="Build personal AI agents with their own tools, skills and memory. Keep project context across sessions. Automate real workflows locally, with your own API keys." />
+<meta property="og:url" content="https://kharchangai.github.io/Mocu/" />
+<meta property="og:image" content="https://kharchangai.github.io/Mocu/assets/og-image.jpg" />
+<meta property="og:image:width" content="1200" />
+<meta property="og:image:height" content="630" />
+<meta property="og:image:type" content="image/jpeg" />
+<meta property="og:image:alt" content="Mocu, a personal AI workspace built to amplify your capabilities" />
+<meta property="og:locale" content="en_US" />
+<meta property="og:locale:alternate" content="fa_IR" />
+<meta name="twitter:card" content="summary_large_image" />
+<meta name="twitter:title" content="Mocu — open-source desktop AI workspace for personal AI agents" />
+<meta name="twitter:description" content="Personal AI agents with tools, skills and memory. Local-first, open source, Windows. Bring your own API keys." />
+<meta name="twitter:image" content="https://kharchangai.github.io/Mocu/assets/og-image.jpg" />
+
+<link rel="alternate" hreflang="en" href="https://kharchangai.github.io/Mocu/" />
+<link rel="alternate" hreflang="fa" href="https://kharchangai.github.io/Mocu/fa.html" />
+<link rel="alternate" hreflang="x-default" href="https://kharchangai.github.io/Mocu/" />
+<link rel="icon" href="assets/favicon.svg" type="image/svg+xml" />
+<link rel="apple-touch-icon" href="assets/icon-180.png" />
+<link rel="preload" as="image" href="assets/mocu-hero.jpg" />
+<link rel="stylesheet" href="assets/style.css" />
+
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@graph": [
+    {
+      "@type": "SoftwareApplication",
+      "@id": "https://kharchangai.github.io/Mocu/#software",
+      "name": "Mocu",
+      "applicationCategory": "ProductivityApplication",
+      "applicationSubCategory": "AI agent workspace",
+      "operatingSystem": "Windows",
+      "description": "Open-source desktop AI workspace for building personal AI agents with tools, skills, project memory, documents, notes and scheduled runs.",
+      "url": "https://kharchangai.github.io/Mocu/",
+      "image": "https://kharchangai.github.io/Mocu/assets/og-image.jpg",
+      "softwareVersion": "0.3.2",
+      "license": "https://www.apache.org/licenses/LICENSE-2.0",
+      "isAccessibleForFree": true,
+      "downloadUrl": "https://github.com/kharchangai/Mocu/releases",
+      "codeRepository": "https://github.com/kharchangai/Mocu",
+      "programmingLanguage": ["TypeScript", "Rust", "Python"],
+      "offers": {
+        "@type": "Offer",
+        "price": "0",
+        "priceCurrency": "USD",
+        "description": "Free and open source. You supply your own model provider and API keys."
+      },
+      "featureList": [
+        "Personal specialist agents with their own tools, skills, extensions and sub-agents",
+        "Project memory that persists across sessions",
+        "Knowledge documents and notes the agent can retrieve",
+        "Scheduled reminders and scheduled agent runs",
+        "Extensions that add tools, integrations and in-app apps",
+        "Browser automation and desktop computer control",
+        "Interactive JavaScript previews rendered in chat",
+        "Local-first storage with your own model provider keys"
+      ]
+    },
+    {
+      "@type": "FAQPage",
+      "@id": "https://kharchangai.github.io/Mocu/#faq",
+      "mainEntity": [
+        {
+          "@type": "Question",
+          "name": "Is Mocu free and open source?",
+          "acceptedAnswer": {
+            "@type": "Answer",
+            "text": "Mocu is open source under the Apache 2.0 license and free to download. Model and API usage is billed by whichever provider you configure, so running agents can cost you depending on your provider and model choices."
+          }
+        },
+        {
+          "@type": "Question",
+          "name": "Does Mocu work offline?",
+          "acceptedAnswer": {
+            "@type": "Answer",
+            "text": "The app, your projects, notes, documents and memory live locally on your machine. The model calls go to the provider you choose, so responses require a network connection unless you configure a local model endpoint."
+          }
+        },
+        {
+          "@type": "Question",
+          "name": "What is the difference between Mocu and a general chat assistant?",
+          "acceptedAnswer": {
+            "@type": "Answer",
+            "text": "A general assistant starts each conversation with no knowledge of your work, so you re-explain the same context every time. Mocu stores your methods in skills, your facts in documents, your specialists as agents and your history in project memory, so the setup accumulates instead of resetting."
+          }
+        },
+        {
+          "@type": "Question",
+          "name": "Can Mocu control my computer or browser?",
+          "acceptedAnswer": {
+            "@type": "Answer",
+            "text": "Yes, through optional extensions. Browser Use drives a real browser session, and Computer Control can open apps, take window screenshots, move the mouse and type. Both are alpha capabilities, so supervise the actions and be ready to take over."
+          }
+        },
+        {
+          "@type": "Question",
+          "name": "Do I need to know how to program?",
+          "acceptedAnswer": {
+            "@type": "Answer",
+            "text": "No. You describe the agent, skill or extension you want in plain language and Mocu creates it. Developers can also build extensions directly with the bundled Node.js and Python SDKs."
+          }
+        },
+        {
+          "@type": "Question",
+          "name": "Which operating systems are supported?",
+          "acceptedAnswer": {
+            "@type": "Answer",
+            "text": "Windows installers are published for the alpha. The project is built with Tauri and can be built from source on macOS and Linux, but Windows is the tested path."
+          }
+        }
+      ]
+    },
+    {
+      "@type": "BreadcrumbList",
+      "@id": "https://kharchangai.github.io/Mocu/#breadcrumb",
+      "itemListElement": [
+        {"@type": "ListItem", "position": 1, "name": "Mocu", "item": "https://kharchangai.github.io/Mocu/"},
+        {"@type": "ListItem", "position": 2, "name": "Install on Windows", "item": "https://kharchangai.github.io/Mocu/install.html"}
+      ]
+    }
+  ]
+}
+</script>
+</head>
+<body>
+<a class="skip" href="#main">Skip to content</a>
+
+<header class="site-header">
+  <div class="wrap header-inner">
+    <a class="brand" href="./" aria-label="Mocu home">
+      <svg class="brand-mark" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+        <rect x="1.5" y="1.5" width="21" height="21" rx="6" fill="none" stroke="currentColor" stroke-width="1.6"/>
+        <path d="M6.5 16.5V8l5.5 6 5.5-6v8.5" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/>
+      </svg>
+      <span>Mocu</span>
+    </a>
+    <nav aria-label="Main">
+      <a href="#what">What it is</a>
+      <a href="#building-blocks">Building blocks</a>
+      <a href="#agents">Agents</a>
+      <a href="#faq">FAQ</a>
+      <a class="nav-cta" href="https://github.com/kharchangai/Mocu/releases">Download</a>
+    </nav>
+  </div>
+</header>
+
+<main id="main">
+
+<section class="hero">
+  <div class="wrap">
+    <p class="eyebrow">Open source · Alpha · Windows</p>
+    <h1>Your own AI workspace.<br><span class="muted">Your own agents.</span></h1>
+    <p class="lede">
+      Mocu is a desktop workspace where you build personal AI agents, hand them your real tools and
+      knowledge, and keep working with them on the same project for months — instead of re-explaining
+      yourself in a new chat window every morning.
+    </p>
+    <div class="actions">
+      <a class="btn primary" href="https://github.com/kharchangai/Mocu/releases">Download for Windows</a>
+      <a class="btn ghost" href="https://github.com/kharchangai/Mocu">View on GitHub</a>
+    </div>
+    <p class="fineprint">
+      Free and open source (Apache 2.0). Bring your own model provider and API keys — model usage is billed by your provider.
+    </p>
+    <figure class="banner">
+      <img src="assets/mocu-hero.jpg" width="1400" height="744"
+           alt="Mocu desktop workspace with project chats, saved agents, documents and schedules in one window" />
+    </figure>
+  </div>
+</section>
+
+<section id="what" class="band">
+  <div class="wrap two">
+    <div>
+      <h2>The problem with chat assistants</h2>
+      <p>
+        A general assistant starts every conversation knowing nothing about your job. It does not know your
+        editorial rules, your product's latest changes, or how your team reviews work — so you repeat all of it,
+        every single time.
+      </p>
+      <p>
+        Mocu is built the other way around. Your methods live in <strong>skills</strong>. Your facts live in
+        <strong>documents</strong>. Your specialists live in <strong>agents</strong>. Your history lives in
+        <strong>project memory</strong>. The more you use it, the less you repeat.
+      </p>
+    </div>
+    <ul class="checks">
+      <li><strong>No programming required.</strong> Describe what you need; Mocu builds the agent, the skill or the tool.</li>
+      <li><strong>Your judgment stays in charge.</strong> Ideas, decisions and goals remain yours — agents do the lifting, not the deciding.</li>
+      <li><strong>Nothing resets between sessions.</strong> Projects, memory, notes and schedules keep the context alive.</li>
+      <li><strong>Local-first.</strong> Projects, memory and documents are files on your disk, not rows in someone else's database.</li>
+    </ul>
+  </div>
+</section>
+
+<section id="building-blocks">
+  <div class="wrap">
+    <h2>Four pieces that compound</h2>
+    <p class="section-lede">Each one is useful on its own. Together they are the reason a task gets cheaper the second time you run it.</p>
+    <div class="grid">
+      <article class="card">
+        <h3>Agents</h3>
+        <p class="role">Who does the work</p>
+        <p>Specialists with a role, a working style, their own tools, skills, model and sub-agents. Saved, reusable, and editable in plain language.</p>
+      </article>
+      <article class="card">
+        <h3>Skills</h3>
+        <p class="role">How the work is done</p>
+        <p>Reusable instructions and methods. Write your process once and every agent that loads the skill follows it the same way.</p>
+      </article>
+      <article class="card">
+        <h3>Extensions</h3>
+        <p class="role">What the system can do</p>
+        <p>New tools and integrations, running as Node.js or Python programs, including MCP servers and full in-app apps with their own interface.</p>
+      </article>
+      <article class="card">
+        <h3>Memory &amp; docs</h3>
+        <p class="role">What it already knows</p>
+        <p>Project memory for decisions and preferences, knowledge documents for reference material, notes for intentions — all retrieved by relevance, not pasted in bulk.</p>
+      </article>
+    </div>
+  </div>
+</section>
+
+<section id="agents" class="band">
+  <div class="wrap">
+    <h2>Build a team, not a longer prompt</h2>
+    <p class="section-lede">You describe the team; Mocu creates it.</p>
+    <blockquote class="quote">
+      “Create a research agent that uses my reference documents, a writing agent that follows my style, and a reviewer
+      that checks the result. Let the writing agent delegate research and review to the other two.”
+    </blockquote>
+    <div class="grid three">
+      <article class="card plain">
+        <h3>Make them yours</h3>
+        <p>Define each agent's role, working style and the exact tools it may use.</p>
+      </article>
+      <article class="card plain">
+        <h3>Let them delegate</h3>
+        <p>Connect specialists into a system where one agent hands work to another.</p>
+      </article>
+      <article class="card plain">
+        <h3>Run them on a schedule</h3>
+        <p>Automate a recurring job daily, weekly or monthly, with the input you choose.</p>
+      </article>
+    </div>
+    <p class="note">
+      Mocu ships with ready-made agents for the roles people repeat most — browsing, coding, computer control,
+      research and reading. Or start from a blank one and describe your own.
+    </p>
+  </div>
+</section>
+
+<section id="capabilities">
+  <div class="wrap">
+    <h2>What it actually does today</h2>
+    <ul class="caps">
+      <li><span>Long-lived projects</span> Chat, notes, docs, memory and history scoped to one folder.</li>
+      <li><span>Two working modes</span> Focus for one goal, Step-by-step when a task needs a plan.</li>
+      <li><span>Terminal-first coding</span> Agents inspect and edit files through a real terminal instead of many small file calls.</li>
+      <li><span>Browser Use</span> Drives a real browser session through the Browser Bridge, with your own logged-in state.</li>
+      <li><span>Computer Control</span> Opens apps, reads windows, moves the mouse and types into real desktop fields.</li>
+      <li><span>Interactive previews</span> Ask for something visual and get a small runnable demo in the chat, not a wall of code.</li>
+      <li><span>Image &amp; video generation</span> Through the model provider you configure.</li>
+      <li><span>Schedule</span> Reminders, plus automatic runs of a saved agent at a time you pick.</li>
+      <li><span>In-app apps</span> Purpose-built panels with their own interface, opened inside Mocu.</li>
+      <li><span>Project History</span> A Git-inspired view for reviewing what changed in a project.</li>
+      <li><span>Notifications</span> An always-on-top desktop alert when a long agent run finishes.</li>
+      <li><span>MCP</span> Connect external tool servers so the ecosystem plugs in without waiting for a release.</li>
+    </ul>
+    <p class="note">
+      Mocu is an alpha. Browser and desktop automation are experimental; review what agents do and be ready to
+      take over. Capability and quality depend on the provider and model you configure.
+    </p>
+  </div>
+</section>
+
+<section id="start" class="band">
+  <div class="wrap two">
+    <div>
+      <h2>Get started in a few minutes</h2>
+      <ol class="steps">
+        <li><strong>Download the Windows installer</strong> from the releases page (.exe or .msi).</li>
+        <li><strong>Add your model provider</strong> and API key in Settings.</li>
+        <li><strong>Create a project</strong> and point it at the folder you actually work in.</li>
+        <li><strong>Describe one agent</strong> for the task you repeat most — then let it run.</li>
+      </ol>
+      <p><a class="btn ghost" href="install.html">Full install guide</a></p>
+    </div>
+    <div class="card flat">
+      <h3>Why people try it</h3>
+      <ul class="tight">
+        <li>They are tired of paying, per token, to re-explain the same context.</li>
+        <li>They want agents that can use their files, browser and desktop — not a sandbox demo.</li>
+        <li>They want to see and amend what the system believes about their work.</li>
+        <li>They prefer their keys, their machine and an auditable open-source app.</li>
+      </ul>
+    </div>
+  </div>
+</section>
+
+<section id="roadmap">
+  <div class="wrap">
+    <h2>Where this is going</h2>
+    <p class="section-lede">The roadmap is public. Directions are labeled honestly: shipped, in progress, or still a research question.</p>
+    <div class="grid three">
+      <article class="card plain">
+        <h3>Shipped · 0.3.x</h3>
+        <p>Project memory, project history, computer control alpha, browser bridge, image and video generation, interactive previews, notifications.</p>
+      </article>
+      <article class="card plain">
+        <h3>In progress</h3>
+        <p>Reliability for browser and desktop automation, a dependable MCP path, and a growing catalog of in-app apps.</p>
+      </article>
+      <article class="card plain">
+        <h3>Research</h3>
+        <p>A world model for agents: learn from what an agent actually did, predict the outcome before acting, and use that to improve cheap models.</p>
+      </article>
+    </div>
+    <p><a class="link" href="https://github.com/kharchangai/Mocu/issues">Follow the roadmap on GitHub →</a></p>
+  </div>
+</section>
+
+<section id="faq" class="band">
+  <div class="wrap narrow">
+    <h2>Questions people ask</h2>
+    <details>
+      <summary>Is Mocu free and open source?</summary>
+      <p>Yes — Apache 2.0, free to download. Model and API usage is billed by whichever provider you configure, so running agents can cost you depending on your provider and model choices.</p>
+    </details>
+    <details>
+      <summary>Does Mocu work offline?</summary>
+      <p>The app, your projects, notes, documents and memory live locally on your machine. Model calls go to the provider you choose, so responses need a network connection unless you point it at a local model endpoint.</p>
+    </details>
+    <details>
+      <summary>How is this different from a general chat assistant?</summary>
+      <p>A general assistant starts with no knowledge of your work, so you re-explain context every time. Mocu stores your methods in skills, your facts in documents, your specialists as agents and your history in project memory. The setup accumulates instead of resetting.</p>
+    </details>
+    <details>
+      <summary>Can it control my computer or browser?</summary>
+      <p>Through optional extensions, yes. Browser Use drives a real browser session; Computer Control can open apps, screenshot windows, move the mouse and type. Both are alpha, so supervise actions and be ready to take over.</p>
+    </details>
+    <details>
+      <summary>Do I need to know how to program?</summary>
+      <p>No. Describe the agent, skill or extension you want in plain language and Mocu creates it. Developers can build extensions directly with the bundled Node.js and Python SDKs.</p>
+    </details>
+    <details>
+      <summary>Which platforms are supported?</summary>
+      <p>Windows installers are published for the alpha. The app is built with Tauri, so macOS and Linux builds are possible from source, but Windows is the tested path.</p>
+    </details>
+    <details>
+      <summary>Where is my data stored?</summary>
+      <p>In your own project folders and in the app's local data directory on your machine — memory files under <code>.mocu/</code> inside each project. Nothing is uploaded to a Mocu server. See the <a href="https://github.com/kharchangai/Mocu/blob/main/PRIVACY.md">privacy policy</a>.</p>
+    </details>
+  </div>
+</section>
+
+<section class="cta">
+  <div class="wrap narrow center">
+    <h2>Give an agent the boring job</h2>
+    <p>Download it, describe one specialist, and let it take the repetitive part of your week.</p>
+    <div class="actions">
+      <a class="btn primary" href="https://github.com/kharchangai/Mocu/releases">Download for Windows</a>
+      <a class="btn ghost" href="https://github.com/kharchangai/Mocu">Star on GitHub</a>
+    </div>
+  </div>
+</section>
+
+</main>
+
+<footer class="site-footer">
+  <div class="wrap footer-inner">
+    <div>
+      <p class="brand-line">Mocu — More capability. Still you.</p>
+      <p class="fineprint">Alpha software. Behavior and interfaces can change between releases.</p>
+    </div>
+    <nav aria-label="Footer">
+      <a href="install.html">Install</a>
+      <a href="https://github.com/kharchangai/Mocu/blob/main/README.md">README</a>
+      <a href="https://github.com/kharchangai/Mocu/issues">Issues</a>
+      <a href="https://github.com/kharchangai/Mocu/blob/main/PRIVACY.md">Privacy</a>
+      <a href="fa.html" lang="fa" hreflang="fa">فارسی</a>
+    </nav>
+  </div>
+  <div class="wrap">
+    <p class="fineprint">© 2026 Mocu contributors · Apache License 2.0</p>
+  </div>
+</footer>
+</body>
+</html>

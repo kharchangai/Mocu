@@ -1,0 +1,4 @@
+User-agent: *
+Allow: /
+
+Sitemap: https://kharchangai.github.io/Mocu/sitemap.xml

@@ -20,7 +20,7 @@
 - **تصمیم نهایی با شماست.** ایده‌ها، قضاوت و هدف‌ها از آنِ خودتان می‌مانند. ایجنت‌ها کار را جلو می‌برند، نه تصمیم را.
 - **بین نشست‌ها هیچ‌چیز از صفر شروع نمی‌شود.** پروژه‌ها، حافظه، نوت‌ها و زمان‌بندی، زمینهٔ کار شما را زنده نگه می‌دارند.
 
-**[دریافت نسخهٔ ویندوز](https://github.com/kharchangai/Mocu/releases) · [ساخت از روی کد منبع](#ساخت-از-روی-کد-منبع) · [گزارش اشکال](https://github.com/kharchangai/Mocu/issues)**
+**[وب‌سایت](https://kharchangai.github.io/Mocu/fa.html) · [دریافت نسخهٔ ویندوز](https://github.com/kharchangai/Mocu/releases) · [راهنمای نصب](https://kharchangai.github.io/Mocu/install.html) · [ساخت از روی کد منبع](#ساخت-از-روی-کد-منبع) · [گزارش اشکال](https://github.com/kharchangai/Mocu/issues)**
 
 <!-- یادداشت مارکتینگ: یک ویدئوی کوتاه ۱۰ تا ۲۰ ثانیه‌ای (Focus ← ساخت سند توسط ایجنت ← زمان‌بندی) اینجا بیشتر از هر متنی کار می‌کند. فایل را به‌صورت public/demo.gif اضافه و این خط را از حالت توضیح خارج کنید:
 <p align="center"><img src="public/demo.gif" alt="مکو در عمل" width="100%" /></p>
