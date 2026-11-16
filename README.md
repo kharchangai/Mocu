@@ -5,7 +5,11 @@
 **Languages:** [English](README.md) · [فارسی](README.fa.md)
 
 <p align="center">
-  <img src="public/mocugit.png" alt="Mocu — an open-source desktop AI workspace for building personal AI agents" width="100%" />
+  <a href="public/github.mp4" title="Play the full-quality Mocu demo video">
+    <img src="public/mocu-demo.webp" alt="Mocu demo — AI agents, skills, apps and computer control in action" width="100%" />
+  </a>
+  <br/>
+  <sub><a href="public/github.mp4">▶ Open the full-quality demo video (23s, with audio)</a></sub>
 </p>
 
 <p align="center">

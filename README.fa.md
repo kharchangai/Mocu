@@ -5,7 +5,11 @@
 **زبان‌ها:** [English](README.md) · [فارسی](README.fa.md)
 
 <p align="center">
-  <img src="public/mocugit.png" alt="مکو — فضای کاری دسکتاپ متن‌باز برای ساخت ایجنت‌های شخصی هوش مصنوعی" width="100%" />
+  <a href="public/github.mp4" title="پخش ویدیوی نمایشی مکو با کیفیت کامل">
+    <img src="public/mocu-demo.webp" alt="نمایش مکو — ایجنت‌ها، اسکیل‌ها، اپ‌ها و کنترل کامپیوتر در عمل" width="100%" />
+  </a>
+  <br/>
+  <sub><a href="public/github.mp4">▶ ویدیوی نمایشی با کیفیت کامل را باز کنید (۲۳ ثانیه، با صدا)</a></sub>
 </p>
 
 <p align="center">
