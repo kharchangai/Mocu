@@ -211,6 +211,11 @@ import { createGraphRecorder, type GraphRecorder } from "../../graphStructure/re
 import { shouldRouteToGraphSystem } from "../../graphStructure/jevGate";
 import { cleanRunRecords } from "../../graphStructure/cleanup";
 import { buildGraph } from "../../graphStructure/graphMaker";
+import { handActionToWorldModel } from "../../services/project-evolution/evolutionPipeline";
+import { createEpisodeRunRecorder } from "../../services/project-evolution/episodeRecorder";
+import { analyzeCompletedRunErrors } from "../../services/project-evolution/completedRunErrorAnalysis";
+import { retrieveEpisodeMemoryGuidance } from "../../services/project-evolution/episodeMemoryGuidance";
+import { guideToolCall, type ToolRequest } from "../../services/project-evolution/toolGuidance";
 import { createGraphDigestTool, createGraphToolLogTool, searchRunGraphHints } from "../../graphStructure/graphDigest";
 import { createMemorySaveId, dispatchMemorySaveActivity } from "../../chat/services/memoryActivity";
 import { saveRunGraph } from "../../graphStructure/graphStorage";
@@ -2248,6 +2253,7 @@ const callProjectAgentWithHistorySession =
     const graphRecorder = createGraphRecorder({ agentKind: "project", chatId: projectChatId, projectPath: normalizedProjectPath });
     const suppressMemorySave = runnableConfig.configurable?.suppressMemorySave === true;
     let recordThisRun = false;
+    const episodeRunRecorder = createEpisodeRunRecorder({ projectPath: normalizedProjectPath });
     if (!suppressMemorySave) {
       try {
         recordThisRun = await shouldRouteToGraphSystem(userText);
@@ -2560,6 +2566,7 @@ const callProjectAgentWithHistorySession =
 
     let stoppedForStall =
       false;
+    const episodeMemoryDeferralSignatures = new Set<string>();
 
     /*
      * Run until the model stops requesting tools, i.e. until the job is
@@ -2649,6 +2656,48 @@ const callProjectAgentWithHistorySession =
           continue;
         }
 
+        // Before running a potentially repeated action, look up causal lessons.
+        // On the first strong match, return the advisory to the model without
+        // running the tool so it can reconsider its choice.
+        const guidanceRequest: ToolRequest = {
+          phase: "request",
+          tool: toolCall.name,
+          args: (toolCall.args ?? {}) as Record<string, unknown>,
+          step: currentStepNumber,
+          callId: toolCallId,
+        };
+        const deferralSignature = JSON.stringify([toolCall.name, toolCall.args ?? {}]);
+        try {
+          const episodeGuidance = await retrieveEpisodeMemoryGuidance(guidanceRequest, { signal });
+          if (episodeGuidance.guidance && !episodeMemoryDeferralSignatures.has(deferralSignature)) {
+            episodeMemoryDeferralSignatures.add(deferralSignature);
+            episodeRunRecorder.recordGuidanceUse({
+              step: currentStepNumber,
+              callId: toolCallId,
+              lessonIds: episodeGuidance.matches.map((match) => match.lesson.id),
+            });
+            const deferredResult = [
+              "NOT EXECUTED: This tool call has not run. Relevant episodic-memory experience suggests reconsidering the tool/action below.",
+              episodeGuidance.guidance,
+              "Choose an appropriate next action based on the current user request. If you still decide to use this tool, issue it again; this same call will not be deferred a second time.",
+            ].join("\n\n");
+            toolMessages.push(new ToolMessage({ content: deferredResult, tool_call_id: toolCallId, name: toolCall.name }));
+            toolResultsSummary.push(`[Tool not executed: ${toolCall.name}]\n${deferredResult}`);
+            continue;
+          }
+        } catch (error) {
+          console.warn("[Project Agent] pre-execution episode-memory lookup failed:", error);
+        }
+
+        await handActionToWorldModel({
+          phase: "request",
+          tool: toolCall.name,
+          args: (toolCall.args ?? {}) as ToolArgs,
+          step: currentStepNumber,
+          callId: toolCallId,
+        }, episodeRunRecorder);
+        throwIfAborted(signal);
+
         let execution: ProjectToolExecutionResult;
         try {
           execution = await executeProjectToolCall({
@@ -2662,6 +2711,14 @@ const callProjectAgentWithHistorySession =
             recorder: !suppressMemorySave ? graphRecorder : undefined,
           });
         } catch (error: unknown) {
+          await handActionToWorldModel({
+            phase: "response",
+            tool: toolCall.name,
+            step: currentStepNumber,
+            callId: toolCallId,
+            ok: false,
+            error: error instanceof Error ? error.message : String(error),
+          }, episodeRunRecorder);
           if (!isAbortError(error) && !signal?.aborted) throw error;
           const interruptedCalls = response.tool_calls.slice(toolCallIndex);
           for (const interruptedCall of interruptedCalls) {
@@ -2677,6 +2734,43 @@ const callProjectAgentWithHistorySession =
           break;
         }
         const { toolMessage, summary } = execution;
+        await handActionToWorldModel({
+          phase: "response",
+          tool: toolCall.name,
+          step: currentStepNumber,
+          callId: toolCallId,
+          ok: typeof toolMessage.content === "string" &&
+            toolMessage.content !== CHAT_TOOL_FAILURE_RESULT &&
+            !isFileToolError(toolMessage.content) &&
+            !/^(?:SYSTEM_ERROR:|EXECUTION_FAILED(?:\s|$)|SECURITY_BLOCKED:)/m.test(toolMessage.content),
+          result: typeof toolMessage.content === "string" ? toolMessage.content : JSON.stringify(toolMessage.content),
+          summary,
+        }, episodeRunRecorder);
+
+        // Preserve the existing recovery guidance for tools that previously
+        // failed and were later corrected in the same run.
+        try {
+          const guidanceRequest: ToolRequest = {
+            phase: "request",
+            tool: toolCall.name,
+            args: (toolCall.args ?? {}) as Record<string, unknown>,
+            step: currentStepNumber,
+            callId: toolCallId,
+          };
+          const episodeGuidance = await guideToolCall(guidanceRequest, { signal });
+          const guidanceParts = [episodeGuidance.guidance].filter((value): value is string => Boolean(value));
+          if (guidanceParts.length > 0) {
+            toolMessage.content = [
+              typeof toolMessage.content === "string"
+                ? toolMessage.content
+                : JSON.stringify(toolMessage.content),
+              "",
+              ...guidanceParts,
+            ].join("\n");
+          }
+        } catch (error) {
+          console.warn("[Project Agent] tool guidance failed:", error);
+        }
 
         /*
          * Nudge the model away from repeating the same call forever:
@@ -2858,6 +2952,29 @@ const callProjectAgentWithHistorySession =
     } catch (error) {
       console.warn("[Project Agent] Graph recording failed; user task already completed:", error);
       postResponseWarnings.push("The answer is complete, but saving this run to project graph memory failed.");
+    }
+
+    try {
+      await analyzeCompletedRunErrors({
+        userRequest: userText,
+        runId: episodeRunRecorder.runId,
+        completedWork: episodeRunRecorder.getEpisodes(),
+        guidanceUses: episodeRunRecorder.getGuidanceUses(),
+        signal,
+      });
+    } catch (error) {
+      console.warn("[Project Agent] completed-run episode memory analysis failed; user task already completed:", error);
+    }
+
+    try {
+      const episodeResult = await episodeRunRecorder.flush();
+      if (episodeResult.saved > 0 || episodeResult.error) {
+        console.log(`[Project Agent] Flushed ${episodeResult.saved} world-model episode(s)` +
+          (episodeResult.skipped ? ` (${episodeResult.skipped} already stored)` : "") +
+          (episodeResult.error ? "; error: " + episodeResult.error : ""));
+      }
+    } catch (error) {
+      console.warn("[Project Agent] World-model episode flush failed; user task already completed:", error);
     }
 
     const uniquePostResponseWarnings = [...new Set(postResponseWarnings)];
