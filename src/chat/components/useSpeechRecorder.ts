@@ -3,21 +3,12 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { transcribeAudio } from "../../services/aiService";
 
 /**
- * Speech-to-text recorder hook for the chat input.
- *
- * Records from the microphone and transcribes with the STT model the
- * user configured in Settings (the same transcribeAudio() pipeline the
- * Mocu avatar uses).
- *
- * Because the transcription endpoint is not token-streaming, live text
- * is produced with rolling transcription: every few seconds the audio
- * recorded so far is transcribed and reported through onPartialText so
- * text appears in the input box while speaking. When recording stops,
- * the full recording is transcribed once and reported through
- * onFinalText as the accurate final text.
+ * Speech-to-text recorder for the chat input. Audio stays local while the
+ * user speaks and is sent to the configured STT gateway once on stop.
+ * Gateways that support streamed transcription can report text deltas;
+ * other gateways return one transcript when the request completes.
  */
 
-const PARTIAL_TRANSCRIBE_INTERVAL_MS = 3_000;
 const LEVEL_SAMPLE_INTERVAL_MS = 60;
 const ELAPSED_TICK_MS = 500;
 const WAVEFORM_BARS = 28;
@@ -31,7 +22,7 @@ const SUPPORTED_MIME_TYPES = [
 ];
 
 export type UseSpeechRecorderOptions = {
-  /** Called with the rolling partial transcript while recording. */
+  /** Called with cumulative transcript text as streaming deltas arrive. */
   onPartialText?: (text: string) => void;
   /** Called once with the accurate full transcript after stopping. */
   onFinalText?: (text: string) => void;
@@ -51,7 +42,7 @@ export type SpeechRecorder = {
 
 /**
  * Joins the text already in the composer with a spoken transcript.
- * The streamed text replaces the previous spoken part, so partial
+ * Each streamed update replaces the previous spoken part, so partial
  * updates refine the text instead of duplicating it.
  */
 export const joinVoiceText = (base: string, spoken: string): string => {
@@ -93,7 +84,6 @@ export const useSpeechRecorder = (
 
   const levelTimerRef = useRef<number | null>(null);
   const elapsedTimerRef = useRef<number | null>(null);
-  const partialTimerRef = useRef<number | null>(null);
   const autoStopTimerRef = useRef<number | null>(null);
 
   const abortRef = useRef<AbortController | null>(null);
@@ -112,7 +102,6 @@ export const useSpeechRecorder = (
   const teardownMedia = useCallback(() => {
     clearTimer(levelTimerRef);
     clearTimer(elapsedTimerRef);
-    clearTimer(partialTimerRef);
     clearTimer(autoStopTimerRef);
 
     const stream = streamRef.current;
@@ -134,7 +123,7 @@ export const useSpeechRecorder = (
   }, []);
 
   const transcribeRecordedAudio = useCallback(
-    async (mode: "partial" | "final"): Promise<void> => {
+    async (): Promise<void> => {
       if (transcribeBusyRef.current || cancelledRef.current) {
         return;
       }
@@ -153,21 +142,23 @@ export const useSpeechRecorder = (
           type: recordedMimeTypeRef.current,
         });
 
+        let streamedText = "";
         const text = (
-          await transcribeAudio(audioBlob, abortRef.current?.signal) ?? ""
+          await transcribeAudio(audioBlob, abortRef.current?.signal, (delta) => {
+            if (cancelledRef.current) {
+              return;
+            }
+            streamedText += delta;
+            optionsRef.current.onPartialText?.(streamedText);
+          }) ?? ""
         ).trim();
 
         if (cancelledRef.current) {
           return;
         }
 
-        if (mode === "partial") {
-          if (text) {
-            optionsRef.current.onPartialText?.(text);
-          }
-        } else {
-          optionsRef.current.onFinalText?.(text);
-        }
+        optionsRef.current.onFinalText?.(text);
+
       } catch (transcribeError: unknown) {
         if (cancelledRef.current) {
           return;
@@ -178,12 +169,8 @@ export const useSpeechRecorder = (
             ? transcribeError.message
             : String(transcribeError);
 
-        if (mode === "final") {
-          setError(message);
-        } else {
-          // Partial failures are non-fatal; the final pass reports errors.
-          console.warn("[Speech] Partial transcription failed:", message);
-        }
+        setError(message);
+
       } finally {
         transcribeBusyRef.current = false;
         setIsTranscribing(false);
@@ -276,7 +263,7 @@ export const useSpeechRecorder = (
         return;
       }
 
-      void transcribeRecordedAudio("final");
+      void transcribeRecordedAudio();
     };
 
     // Waveform: sample the microphone level into a rolling bar buffer.
@@ -337,9 +324,6 @@ export const useSpeechRecorder = (
       setElapsedMs(Date.now() - startedAt);
     }, ELAPSED_TICK_MS);
 
-    partialTimerRef.current = window.setInterval(() => {
-      void transcribeRecordedAudio("partial");
-    }, PARTIAL_TRANSCRIBE_INTERVAL_MS);
 
     autoStopTimerRef.current = window.setTimeout(() => {
       mediaRecorderRef.current?.stop();
@@ -347,8 +331,8 @@ export const useSpeechRecorder = (
 
     setIsRecording(true);
 
-    // Collect small chunks frequently so partial transcriptions are fresh.
-    mediaRecorder.start(500);
+    // Collect the complete recording and send one transcription request on stop.
+    mediaRecorder.start();
   }, [teardownMedia, transcribeRecordedAudio]);
 
   const stop = useCallback((): void => {
@@ -359,7 +343,6 @@ export const useSpeechRecorder = (
     }
 
     cancelledRef.current = false;
-    clearTimer(partialTimerRef);
 
     if (mediaRecorder.state !== "inactive") {
       mediaRecorder.stop();

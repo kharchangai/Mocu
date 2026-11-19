@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { readSettings } from "../store";
-import { generateSpeech } from "./aiService";
+import { generateSpeech, transcribeAudio } from "./aiService";
 
 vi.mock("../store", () => ({
   readSettings: vi.fn(),
@@ -10,6 +10,7 @@ const mockSettings = {
   apiKey: "test-key",
   gatewayBaseUrl: "https://openrouter.ai/api/v1",
   ttsModel: "heygen/heygen-voice-1-turbo",
+  sttModel: "openai/whisper-1",
   ttsVoice: "nadine",
 };
 
@@ -80,5 +81,60 @@ describe("generateSpeech", () => {
     expect(fetchMock).toHaveBeenCalledTimes(1);
     expect(audio.type).toBe("audio/mpeg");
     expect(audio.size).toBe(3);
+  });
+});
+
+describe("transcribeAudio streaming", () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+    vi.clearAllMocks();
+  });
+
+  it("streams transcript deltas when the gateway supports it", async () => {
+    vi.mocked(readSettings).mockResolvedValue(mockSettings as never);
+    const fetchMock = vi.fn().mockResolvedValue(new Response(
+      [
+        'event: transcript.text.delta\ndata: {"type":"transcript.text.delta","delta":"hello "}\n\n',
+        'event: transcript.text.delta\ndata: {"type":"transcript.text.delta","delta":"there"}\n\n',
+        'event: transcript.text.done\ndata: {"type":"transcript.text.done","text":"hello there"}\n\n',
+        'data: [DONE]\n\n',
+      ].join(""),
+      { status: 200, headers: { "content-type": "text/event-stream" } },
+    ));
+    vi.stubGlobal("fetch", fetchMock);
+    const deltas: string[] = [];
+
+    const text = await transcribeAudio(new Blob(["audio"], { type: "audio/webm" }), undefined, (delta) => {
+      deltas.push(delta);
+    });
+
+    expect(text).toBe("hello there");
+    expect(deltas).toEqual(["hello ", "there"]);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    const body = fetchMock.mock.calls[0][1]?.body as FormData;
+    expect(body.get("stream")).toBe("true");
+  });
+
+  it("retries once without streaming when the gateway explicitly rejects it", async () => {
+    vi.mocked(readSettings).mockResolvedValue(mockSettings as never);
+    const fetchMock = vi.fn()
+      .mockResolvedValueOnce(new Response(
+        JSON.stringify({ error: { message: "This model does not support the stream option." } }),
+        { status: 400, headers: { "content-type": "application/json" } },
+      ))
+      .mockResolvedValueOnce(new Response(
+        JSON.stringify({ text: "fallback transcript" }),
+        { status: 200, headers: { "content-type": "application/json" } },
+      ));
+    vi.stubGlobal("fetch", fetchMock);
+    const onDelta = vi.fn();
+
+    const text = await transcribeAudio(new Blob(["audio"], { type: "audio/webm" }), undefined, onDelta);
+
+    expect(text).toBe("fallback transcript");
+    expect(onDelta).not.toHaveBeenCalled();
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    expect((fetchMock.mock.calls[0][1]?.body as FormData).get("stream")).toBe("true");
+    expect((fetchMock.mock.calls[1][1]?.body as FormData).get("stream")).toBeNull();
   });
 });

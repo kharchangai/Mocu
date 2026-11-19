@@ -1256,7 +1256,7 @@ export function ChatInput({
 
   /*
    * Voice input. While recording, the transcript streams into the
-   * composer (rolling transcription from the Settings STT model) and
+   * composer (streaming transcript from the Settings STT model when supported) and
    * the exact text replaces it when recording stops.
    */
   const voiceBaseValueRef = useRef('');
@@ -2277,6 +2277,12 @@ export function ChatInput({
                   : undefined
             }
             />
+            {speech.isTranscribing ? (
+              <div className="voice-transcription-status" role="status" aria-live="polite">
+                <RefreshCw size={13} className="voice-recorder-spinner" aria-hidden="true" />
+                <span>Converting speech to text…</span>
+              </div>
+            ) : null}
           </div>
 
           <div className="chat-composer-footer">

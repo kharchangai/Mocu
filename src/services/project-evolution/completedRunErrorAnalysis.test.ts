@@ -68,6 +68,68 @@ describe("analyzeCompletedRunErrors", () => {
     log.mockRestore(); warn.mockRestore(); error.mockRestore();
   });
 
+  it("analyzes and saves one lesson for repeated calls with the same command and error", async () => {
+    const { saveEpisodeMemoryLesson } = await import("./episodeMemoryStore");
+    const { getJevDecision } = await import("../ai/tools/decision/Jev_model");
+    vi.mocked(getJevDecision).mockClear();
+    vi.mocked(saveEpisodeMemoryLesson).mockClear();
+    const log = vi.spyOn(console, "log").mockImplementation(() => {});
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    const error = vi.spyOn(console, "error").mockImplementation(() => {});
+    await analyzeCompletedRunErrors({
+      userRequest: "Run the same command",
+      runId: "run-test-duplicates",
+      completedWork: [
+        { step: 1, callId: "cause", tool: "write_file", args: { path: "src/a.ts" }, ok: true, result: "saved" },
+        { step: 2, callId: "failed-1", tool: "terminal_executor", args: { command: "npm test" }, ok: false, error: "Command failed: exit code 1" },
+        { step: 3, callId: "failed-2", tool: "terminal_executor", args: { command: "  npm   test  " }, ok: false, error: "command failed: exit code 1" },
+      ],
+    });
+    expect(getJevDecision).toHaveBeenCalledTimes(2);
+    expect(saveEpisodeMemoryLesson).toHaveBeenCalledTimes(1);
+    log.mockRestore(); warn.mockRestore(); error.mockRestore();
+  });
+
+  it("batches earlier tool-call cause checks in groups of at most twenty", async () => {
+    const { getJevDecision } = await import("../ai/tools/decision/Jev_model");
+    const { saveEpisodeMemoryLesson } = await import("./episodeMemoryStore");
+    vi.mocked(getJevDecision).mockClear();
+    vi.mocked(saveEpisodeMemoryLesson).mockClear();
+    const log = vi.spyOn(console, "log").mockImplementation(() => {});
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    const error = vi.spyOn(console, "error").mockImplementation(() => {});
+    const earlierCalls = Array.from({ length: 21 }, (_, index) => ({
+      step: index + 1,
+      callId: `prior-${index + 1}`,
+      tool: "terminal_executor",
+      args: { command: `command-${index + 1}` },
+      ok: true,
+      result: "completed",
+    }));
+
+    await analyzeCompletedRunErrors({
+      userRequest: "Run a failing task",
+      runId: "run-test-batched-causes",
+      completedWork: [
+        ...earlierCalls,
+        { step: 22, callId: "failed", tool: "terminal_executor", args: { command: "npm test" }, ok: false, error: "test failed" },
+      ],
+    });
+
+    const decisionCalls = vi.mocked(getJevDecision).mock.calls;
+    expect(decisionCalls).toHaveLength(3); // One self-cause check and two batches.
+    const causeChecks = decisionCalls.slice(1);
+    expect(causeChecks.map(([request]) => Object.keys(request.questions))).toEqual([
+      Array.from({ length: 20 }, (_, index) => `earlier_tool_call_${index}_may_have_caused_failure`),
+      ["earlier_tool_call_0_may_have_caused_failure"],
+    ]);
+    expect(saveEpisodeMemoryLesson).toHaveBeenCalledWith(expect.objectContaining({
+      causes: expect.arrayContaining([expect.objectContaining({ step: 21 })]),
+    }));
+    expect((vi.mocked(saveEpisodeMemoryLesson).mock.calls[0]?.[0] as { causes: unknown[] }).causes).toHaveLength(21);
+    log.mockRestore(); warn.mockRestore(); error.mockRestore();
+  });
+
   it("scores only a comparable prevented outcome after the saved instruction was followed", async () => {
     const { updateEpisodeMemoryScore } = await import("./episodeMemoryStore");
     const log = vi.spyOn(console, "log").mockImplementation(() => {});

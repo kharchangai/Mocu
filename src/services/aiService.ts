@@ -279,9 +279,119 @@ const getResponseText = (
     .trim();
 };
 
+export type TranscriptionDeltaHandler = (delta: string) => void;
+
+const isTranscriptionStreamUnsupported = (errorText: string): boolean =>
+  /(?:stream(?:ing)?[^.]{0,100}(?:not supported|unsupported|not allowed|invalid|unknown|not accepted|rejected)|(?:not supported|unsupported|not allowed|invalid|unknown|not accepted|rejected|does not support|doesn't support|cannot support|can't support)[^.]{0,100}stream)/i.test(errorText);
+
+const getTranscriptionText = (data: unknown): string => {
+  if (typeof data === "object" && data !== null && "text" in data && typeof data.text === "string") {
+    return data.text.trim();
+  }
+
+  return "";
+};
+
+const readTranscriptionEventStream = async (
+  response: Response,
+  onDelta?: TranscriptionDeltaHandler,
+): Promise<string> => {
+  if (!response.body) {
+    return "";
+  }
+
+  const reader = response.body.getReader();
+  const decoder = new TextDecoder();
+  let buffer = "";
+  let eventName = "";
+  let dataLines: string[] = [];
+  let streamedText = "";
+  let completedText = "";
+
+  const dispatchEvent = (): void => {
+    if (dataLines.length === 0) {
+      eventName = "";
+      return;
+    }
+
+    const data = dataLines.join("\n");
+    dataLines = [];
+    const currentEvent = eventName;
+    eventName = "";
+
+    if (data === "[DONE]") {
+      return;
+    }
+
+    let payload: unknown;
+    try {
+      payload = JSON.parse(data);
+    } catch {
+      return;
+    }
+
+    if (typeof payload !== "object" || payload === null) {
+      return;
+    }
+
+    const record = payload as { type?: unknown; delta?: unknown; text?: unknown; transcript?: unknown };
+    const type = typeof record.type === "string" ? record.type : currentEvent;
+    if (/delta/i.test(type) && typeof record.delta === "string") {
+      streamedText += record.delta;
+      onDelta?.(record.delta);
+      return;
+    }
+
+    if (/(?:done|completed)$/i.test(type) || /\.done$/i.test(type)) {
+      const finalText = typeof record.text === "string" ? record.text : record.transcript;
+      if (typeof finalText === "string") {
+        completedText = finalText.trim();
+      }
+    }
+  };
+
+  const processLines = (final = false): void => {
+    const lines = buffer.split(/\r?\n/);
+    buffer = final ? "" : (lines.pop() ?? "");
+
+    for (const line of lines) {
+      if (line === "") {
+        dispatchEvent();
+      } else if (line.startsWith("data:")) {
+        dataLines.push(line.slice(5).replace(/^ /, ""));
+      } else if (line.startsWith("event:")) {
+        eventName = line.slice(6).trim();
+      }
+    }
+
+    if (final) {
+      dispatchEvent();
+    }
+  };
+
+  while (true) {
+    const { value, done } = await reader.read();
+    if (done) {
+      break;
+    }
+
+    buffer += decoder.decode(value, { stream: true });
+    processLines();
+  }
+
+  buffer += decoder.decode();
+  if (buffer.length > 0) {
+    buffer += "\n\n";
+  }
+  processLines(true);
+
+  return completedText || streamedText;
+};
+
 export async function transcribeAudio(
   audioBlob: Blob,
   signal?: AbortSignal,
+  onDelta?: TranscriptionDeltaHandler,
 ): Promise<string> {
   throwIfAborted(signal);
 
@@ -290,9 +400,9 @@ export async function transcribeAudio(
   throwIfAborted(signal);
   validateApiKey(config);
 
-  const speechBaseUrl = normalizeBaseUrl(config.gatewayBaseUrl);
+  const baseUrl = normalizeBaseUrl(config.gatewayBaseUrl);
 
-  if (!speechBaseUrl) {
+  if (!baseUrl) {
     throw new Error("Speech Base URL is missing. Configure the gateway in Settings.");
   }
 
@@ -302,64 +412,72 @@ export async function transcribeAudio(
     );
   }
 
-  const baseUrl = speechBaseUrl;
-  const formData = new FormData();
-
   const extension = audioBlob.type.includes("ogg")
     ? "ogg"
     : audioBlob.type.includes("wav")
       ? "wav"
-      : audioBlob.type.includes("mpeg") ||
-          audioBlob.type.includes("mp3")
+      : audioBlob.type.includes("mpeg") || audioBlob.type.includes("mp3")
         ? "mp3"
         : "webm";
 
-  formData.append(
-    "file",
-    audioBlob,
-    `audio.${extension}`,
-  );
+  const createFormData = (stream: boolean): FormData => {
+    const formData = new FormData();
+    formData.append("file", audioBlob, `audio.${extension}`);
+    formData.append("model", config.sttModel.trim());
+    if (stream) {
+      formData.append("stream", "true");
+    }
+    return formData;
+  };
 
-  formData.append("model", config.sttModel.trim());
-
-  const response = await fetch(
-    `${baseUrl}/audio/transcriptions`,
-    {
+  const requestTranscription = (stream: boolean): Promise<Response> =>
+    fetch(`${baseUrl}/audio/transcriptions`, {
       method: "POST",
       headers: {
         Authorization: `Bearer ${config.apiKey.trim()}`,
       },
-      body: formData,
+      body: createFormData(stream),
       signal,
-    },
-  );
+    });
 
+  let response = await requestTranscription(Boolean(onDelta));
   throwIfAborted(signal);
 
   if (!response.ok) {
     const errorText = await response.text();
+    throwIfAborted(signal);
 
-    throw new Error(
-      `STT Error (${response.status}): ${errorText}`,
-    );
+    if (onDelta && isTranscriptionStreamUnsupported(errorText)) {
+      // Retry once without streaming only when the gateway explicitly rejects it.
+      response = await requestTranscription(false);
+      throwIfAborted(signal);
+      if (!response.ok) {
+        const fallbackErrorText = await response.text();
+        throwIfAborted(signal);
+        throw new Error(`STT Error (${response.status}): ${fallbackErrorText}`);
+      }
+    } else {
+      throw new Error(`STT Error (${response.status}): ${errorText}`);
+    }
   }
 
-  const data: unknown = await response.json();
+  const contentType = response.headers.get("content-type") ?? "";
+  if (contentType.includes("text/event-stream")) {
+    const text = await readTranscriptionEventStream(response, onDelta);
+    throwIfAborted(signal);
+    return text;
+  }
 
+  const responseText = await response.text();
   throwIfAborted(signal);
 
-  if (
-    typeof data === "object" &&
-    data !== null &&
-    "text" in data &&
-    typeof data.text === "string"
-  ) {
-    return data.text.trim();
+  try {
+    return getTranscriptionText(JSON.parse(responseText) as unknown);
+  } catch {
+    // Some compatible gateways return a plain-text transcript instead of JSON.
+    return responseText.trim();
   }
-
-  return "";
 }
-
 export async function runAgent(
   userInput: string,
   signal?: AbortSignal,
